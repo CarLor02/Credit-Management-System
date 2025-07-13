@@ -4,7 +4,6 @@ DEMO/
 uploads/
 
 # 排除Markdown文档文件（根目录）
-*.md
 !README.md
 
 # 排除Python测试文件
