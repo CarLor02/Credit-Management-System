@@ -22,7 +22,7 @@ export interface UploadDocumentData {
  */
 export interface DocumentQueryParams {
   project?: string;
-  status?: 'completed' | 'processing' | 'failed';
+  status?: 'uploading' | 'completed' | 'processing' | 'failed';
   type?: 'pdf' | 'excel' | 'word' | 'image';
   search?: string;
   page?: number;
@@ -137,18 +137,74 @@ class DocumentService {
       };
     }
 
-    // 真实API调用
-    const formData = new FormData();
-    formData.append('file', data.file);
-    formData.append('name', data.name);
-    formData.append('project', data.project);
-    formData.append('type', data.type);
+    // 真实API调用 - 使用FormData上传文件
+    try {
+      const formData = new FormData();
+      formData.append('file', data.file);
+      formData.append('name', data.name);
+      formData.append('project', data.project);
+      formData.append('type', data.type);
 
-    return apiClient.request<Document>('/documents/upload', {
-      method: 'POST',
-      body: formData,
-      headers: {} // 不设置Content-Type，让浏览器自动设置
-    });
+      const response = await fetch(`${apiClient['baseUrl']}/documents/upload`, {
+        method: 'POST',
+        body: formData,
+        // 不设置Content-Type，让浏览器自动设置multipart/form-data
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      
+      // 如果后端返回的是包装格式，直接返回
+      if (responseData.success !== undefined) {
+        return responseData;
+      }
+      
+      // 否则包装成标准格式
+      return {
+        success: true,
+        data: responseData
+      };
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '上传失败'
+      };
+    }
+  }
+
+  /**
+   * 获取文档状态
+   */
+  async getDocumentStatus(id: number): Promise<ApiResponse<{status: string, progress: number, error_message?: string}>> {
+    if (MOCK_CONFIG.enabled) {
+      mockLog(`Getting document status: ${id}`);
+      await mockDelay();
+
+      const document = mockDocuments.find(d => d.id === id);
+      if (!document) {
+        return {
+          success: false,
+          error: 'Document not found'
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          status: document.status,
+          progress: document.progress || 0
+        }
+      };
+    }
+
+    // 真实API调用
+    return apiClient.get<{status: string, progress: number, error_message?: string}>(`/documents/${id}/status`);
   }
 
   /**

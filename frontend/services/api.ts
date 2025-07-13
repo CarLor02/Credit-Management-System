@@ -33,7 +33,7 @@ interface RequestConfig {
  * 基础API客户端类
  */
 class ApiClient {
-  private baseUrl: string;
+  public baseUrl: string;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;

@@ -7,13 +7,12 @@ import { projectService } from '@/services/projectService';
 import { Project } from '@/data/mockData';
 
 interface DocumentUploadProps {
+  selectedProject: string;
   onSuccess?: () => void;
 }
 
-export default function DocumentUpload({ onSuccess }: DocumentUploadProps) {
+export default function DocumentUpload({ selectedProject, onSuccess }: DocumentUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [selectedProject, setSelectedProject] = useState('');
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +57,8 @@ export default function DocumentUpload({ onSuccess }: DocumentUploadProps) {
     if (e.target.files) {
       const files = Array.from(e.target.files);
       handleFiles(files);
+      // 重置文件input，允许选择相同文件
+      e.target.value = '';
     }
   };
 
@@ -68,7 +69,6 @@ export default function DocumentUpload({ onSuccess }: DocumentUploadProps) {
     }
 
     setIsUploading(true);
-    setUploadProgress(0);
     setError(null);
 
     try {
@@ -81,9 +81,7 @@ export default function DocumentUpload({ onSuccess }: DocumentUploadProps) {
       }
 
       // 上传每个文件
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-
+      for (const file of files) {
         // 确定文件类型
         let fileType: 'pdf' | 'excel' | 'word' | 'image' = 'pdf';
         const extension = file.name.split('.').pop()?.toLowerCase();
@@ -96,6 +94,7 @@ export default function DocumentUpload({ onSuccess }: DocumentUploadProps) {
           fileType = 'image';
         }
 
+        // 上传文件，立即触发列表刷新显示"上传中"状态
         const response = await documentService.uploadDocument({
           name: file.name,
           project: selectedProjectData.name,
@@ -107,24 +106,18 @@ export default function DocumentUpload({ onSuccess }: DocumentUploadProps) {
           throw new Error(response.error || `上传文件 ${file.name} 失败`);
         }
 
-        // 更新进度
-        setUploadProgress(Math.round(((i + 1) / files.length) * 100));
-      }
-
-      // 上传成功
-      setTimeout(() => {
-        setIsUploading(false);
-        setUploadProgress(0);
-        setSelectedProject('');
+        // 立即刷新文档列表，文件会显示为"上传中"状态
         if (onSuccess) {
           onSuccess();
         }
-      }, 500);
+      }
+
+      // 上传完成，重置状态（保持项目选择）
+      setIsUploading(false);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : '上传失败');
       setIsUploading(false);
-      setUploadProgress(0);
       console.error('Upload error:', err);
     }
   };
@@ -145,76 +138,49 @@ export default function DocumentUpload({ onSuccess }: DocumentUploadProps) {
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              关联项目 *
-            </label>
-            <select
-              value={selectedProject}
-              onChange={(e) => setSelectedProject(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
-              disabled={isUploading}
-            >
-              <option value="">请选择项目</option>
-              {Array.isArray(projects) && projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              isDragOver
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center rounded-full bg-gray-100">
-              <i className="ri-upload-cloud-2-line text-2xl text-gray-600"></i>
+          {!selectedProject ? (
+            <div className="text-center py-8 text-gray-500">
+              <i className="ri-folder-add-line text-3xl mb-2"></i>
+              <p>请先在上方选择一个项目</p>
             </div>
-            <p className="text-gray-600 mb-2">拖拽文件到此处或点击上传</p>
-            <p className="text-sm text-gray-500 mb-4">
-              支持 PDF、DOC、DOCX、XLS、XLSX、TXT 格式
-            </p>
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png"
-              onChange={handleFileSelect}
-              className="hidden"
-              id="file-upload"
-              disabled={isUploading}
-            />
-            <label
-              htmlFor="file-upload"
-              className={`inline-flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                isUploading
-                  ? 'bg-gray-400 text-white cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
+          ) : (
+            <div
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                isDragOver
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-300 hover:border-gray-400'
               }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
             >
-              <i className="ri-folder-open-line mr-2"></i>
-              {isUploading ? '上传中...' : '选择文件'}
-            </label>
-          </div>
-
-          {isUploading && (
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">上传进度</span>
-                <span className="text-sm text-gray-600">{uploadProgress}%</span>
+              <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center rounded-full bg-gray-100">
+                <i className="ri-upload-cloud-2-line text-2xl text-gray-600"></i>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
-                ></div>
-              </div>
+              <p className="text-gray-600 mb-2">拖拽文件到此处或点击上传</p>
+              <p className="text-sm text-gray-500 mb-4">
+                支持 PDF、DOC、DOCX、XLS、XLSX、TXT 格式
+              </p>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="file-upload"
+                disabled={isUploading}
+              />
+              <label
+                htmlFor="file-upload"
+                className={`inline-flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                  isUploading
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                <i className="ri-folder-open-line mr-2"></i>
+                {isUploading ? '上传中...' : '选择文件'}
+              </label>
             </div>
           )}
         </div>

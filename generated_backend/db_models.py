@@ -170,6 +170,7 @@ class Project(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
+    folder_uuid = db.Column(db.String(36), nullable=False, unique=True)  # 用于文件夹命名的UUID
     type = db.Column(db.Enum(ProjectType), nullable=False)
     status = db.Column(db.Enum(ProjectStatus), default=ProjectStatus.COLLECTING, nullable=False)
     description = db.Column(db.Text)

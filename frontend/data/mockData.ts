@@ -59,7 +59,7 @@ export interface Document {
   project: string;
   type: 'pdf' | 'excel' | 'word' | 'image';
   size: string;
-  status: 'completed' | 'processing' | 'failed';
+  status: 'uploading' | 'completed' | 'processing' | 'failed';
   uploadTime: string;
   progress: number;
 }

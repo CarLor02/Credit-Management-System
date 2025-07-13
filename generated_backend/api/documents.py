@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
 from database import db
-from db_models import Document, Project, DocumentStatus
+from db_models import Document, Project, DocumentStatus, User
 from utils import validate_request, log_action
 
 def allowed_file(filename):
@@ -162,20 +162,23 @@ def register_document_routes(app):
             filename = secure_filename(file.filename)
             unique_filename = f"{uuid.uuid4().hex}_{filename}"
             
-            # 确保上传目录存在
+            # 确保上传目录存在 - 使用项目的folder_uuid创建子目录
             upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
-            if not os.path.exists(upload_folder):
-                os.makedirs(upload_folder)
+            project_folder = os.path.join(upload_folder, project.folder_uuid)
             
-            # 保存文件
-            file_path = os.path.join(upload_folder, unique_filename)
+            # 创建项目文件夹（如果不存在）
+            if not os.path.exists(project_folder):
+                os.makedirs(project_folder)
+            
+            # 保存文件到项目特定的文件夹
+            file_path = os.path.join(project_folder, unique_filename)
             file.save(file_path)
             
             # 获取文件信息
             file_size = os.path.getsize(file_path)
             file_type = get_file_type(filename)
             
-            # 创建文档记录
+            # 创建文档记录 - 初始状态为UPLOADING
             document = Document(
                 name=document_name,
                 original_filename=filename,
@@ -184,7 +187,7 @@ def register_document_routes(app):
                 file_type=file_type,
                 mime_type=file.mimetype,
                 project_id=project.id,
-                status=DocumentStatus.PROCESSING,
+                status=DocumentStatus.UPLOADING,  # 初始状态为上传中
                 progress=0,
                 upload_by=1  # TODO: 从JWT token获取用户ID
             )
@@ -195,38 +198,115 @@ def register_document_routes(app):
             # 记录日志
             log_action(
                 user_id=document.upload_by,
-                action='document_upload',
+                action='document_upload_start',
                 resource_type='document',
                 resource_id=document.id,
-                details=f'上传文档: {document.name}'
+                details=f'开始上传文档: {document.name}'
             )
-
-            # 模拟处理完成（实际应该异步处理）
-            document.status = DocumentStatus.COMPLETED
-            document.progress = 100
-            db.session.commit()
-
-            # 记录活动日志
-            try:
-                from services.stats_service import ActivityLogger
-                user = User.query.get(document.upload_by)
-                user_name = user.full_name if user else 'Unknown'
-                ActivityLogger.log_document_uploaded(
-                    document.id, document.name, project.name, document.upload_by, user_name
-                )
-            except Exception as e:
-                current_app.logger.warning(f"记录活动日志失败: {e}")
             
-            return jsonify({
+            # 先返回上传中状态的文档信息
+            upload_response = {
                 'success': True,
-                'data': document.to_dict(),
-                'message': '文档上传成功'
-            }), 201
+                'data': {
+                    'id': document.id,
+                    'name': document.name,
+                    'project': project.name,
+                    'type': document.get_frontend_file_type(),
+                    'size': document.format_file_size(),
+                    'status': 'uploading',
+                    'uploadTime': document.created_at.strftime('%Y-%m-%d %H:%M'),
+                    'progress': 0
+                },
+                'message': '文档上传开始'
+            }
+            
+            # 使用更简单的状态更新策略，避免复杂的线程处理
+            # 直接更新为处理中状态
+            document.status = DocumentStatus.PROCESSING
+            document.progress = 50
+            db.session.commit()
+            
+            # 记录上传完成日志
+            log_action(
+                user_id=document.upload_by,
+                action='document_upload_complete',
+                resource_type='document',
+                resource_id=document.id,
+                details=f'文档上传完成: {document.name}'
+            )
+            
+            # 短暂延迟后完成处理
+            import threading
+            import time
+            
+            # 保存文档ID和项目名，避免会话问题
+            doc_id = document.id
+            project_name_for_log = project.name
+            
+            def complete_processing():
+                time.sleep(2)  # 2秒后完成处理
+                with app.app_context():
+                    try:
+                        # 使用新的数据库会话查询文档
+                        doc = Document.query.get(doc_id)
+                        if doc:
+                            doc.status = DocumentStatus.COMPLETED
+                            doc.progress = 100
+                            db.session.commit()
+                            
+                            # 记录活动日志
+                            try:
+                                from services.stats_service import ActivityLogger
+                                user = User.query.get(doc.upload_by)
+                                user_name = user.full_name if user else 'Unknown'
+                                ActivityLogger.log_document_uploaded(
+                                    doc.id, doc.name, project_name_for_log, doc.upload_by, user_name
+                                )
+                            except Exception as e:
+                                current_app.logger.warning(f"记录活动日志失败: {e}")
+                                
+                    except Exception as e:
+                        current_app.logger.error(f"文档处理失败: {e}")
+                        # 如果失败，设置状态为失败
+                        try:
+                            doc = Document.query.get(doc_id)
+                            if doc:
+                                doc.status = DocumentStatus.FAILED
+                                db.session.commit()
+                        except:
+                            pass
+            
+            # 在后台线程中完成处理
+            thread = threading.Thread(target=complete_processing)
+            thread.daemon = True
+            thread.start()
+            
+            return jsonify(upload_response), 201
             
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"上传文档失败: {e}")
             return jsonify({'success': False, 'error': '上传文档失败'}), 500
+    
+    @app.route('/api/documents/<int:document_id>/status', methods=['GET'])
+    def get_document_status(document_id):
+        """获取文档状态"""
+        try:
+            document = Document.query.get_or_404(document_id)
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'id': document.id,
+                    'status': document.status.value.lower(),
+                    'progress': document.progress,
+                    'error_message': document.error_message
+                }
+            })
+            
+        except Exception as e:
+            current_app.logger.error(f"获取文档状态失败: {e}")
+            return jsonify({'success': False, 'error': '获取文档状态失败'}), 500
     
     @app.route('/api/documents/<int:document_id>/download', methods=['GET'])
     def download_document(document_id):

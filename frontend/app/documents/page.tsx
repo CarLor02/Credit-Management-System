@@ -5,11 +5,13 @@ import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import DocumentUpload from './DocumentUpload';
 import DocumentList from './DocumentList';
+import ProjectSelector from './ProjectSelector';
 
 export default function DocumentsPage() {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [selectedProject, setSelectedProject] = useState('');
 
   // 刷新文档列表的函数
   const refreshDocuments = () => {
@@ -29,6 +31,17 @@ export default function DocumentsPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div>
+            <ProjectSelector 
+              selectedProject={selectedProject}
+              onProjectChange={setSelectedProject}
+            />
+            <DocumentUpload 
+              selectedProject={selectedProject}
+              onSuccess={refreshDocuments} 
+            />
+          </div>
+          
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
               <div className="p-6 border-b border-gray-100">
@@ -36,6 +49,7 @@ export default function DocumentsPage() {
                   <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
                     {[
                       { key: 'all', label: '全部文档' },
+                      { key: 'uploading', label: '上传中' },
                       { key: 'processing', label: '处理中' },
                       { key: 'completed', label: '已完成' },
                       { key: 'failed', label: '失败' }
@@ -71,12 +85,9 @@ export default function DocumentsPage() {
             <DocumentList
               activeTab={activeTab}
               searchQuery={searchQuery}
+              selectedProject={selectedProject}
               refreshTrigger={refreshTrigger}
             />
-          </div>
-          
-          <div>
-            <DocumentUpload onSuccess={refreshDocuments} />
           </div>
         </div>
       </main>

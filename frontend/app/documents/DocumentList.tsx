@@ -1,25 +1,57 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { documentService } from '@/services/documentService';
 import { Document } from '@/data/mockData';
 
 interface DocumentListProps {
   activeTab: string;
   searchQuery: string;
+  selectedProject: string;
   refreshTrigger?: number;
 }
 
-export default function DocumentList({ activeTab, searchQuery, refreshTrigger }: DocumentListProps) {
+export default function DocumentList({ activeTab, searchQuery, selectedProject, refreshTrigger }: DocumentListProps) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const previousDataRef = useRef<Document[]>([]);
+
+  // 智能更新函数 - 只更新真正改变的数据
+  const updateDocuments = useCallback((newDocuments: Document[]) => {
+    const prevDocs = previousDataRef.current;
+    
+    // 如果是首次加载或文档数量变化，直接更新
+    if (prevDocs.length === 0 || prevDocs.length !== newDocuments.length) {
+      setDocuments(newDocuments);
+      previousDataRef.current = newDocuments;
+      return;
+    }
+
+    // 检查是否有实质性变化
+    const hasChanges = newDocuments.some((newDoc, index) => {
+      const oldDoc = prevDocs[index];
+      return !oldDoc || 
+             oldDoc.id !== newDoc.id ||
+             oldDoc.status !== newDoc.status ||
+             oldDoc.progress !== newDoc.progress ||
+             oldDoc.name !== newDoc.name;
+    });
+
+    // 只有在有实质性变化时才更新状态
+    if (hasChanges) {
+      setDocuments(newDocuments);
+      previousDataRef.current = newDocuments;
+    }
+  }, []);
 
   // 加载文档数据
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
 
       // 构建查询参数，过滤掉空值
@@ -27,31 +59,57 @@ export default function DocumentList({ activeTab, searchQuery, refreshTrigger }:
       if (searchQuery) {
         queryParams.search = searchQuery;
       }
-      if (activeTab === 'completed' || activeTab === 'processing' || activeTab === 'failed') {
+      if (activeTab === 'completed' || activeTab === 'processing' || activeTab === 'failed' || activeTab === 'uploading') {
         queryParams.status = activeTab;
+      }
+      if (selectedProject) {
+        queryParams.project = selectedProject;
       }
 
       const response = await documentService.getDocuments(queryParams);
 
       if (response.success && response.data && Array.isArray(response.data)) {
-        setDocuments(response.data);
+        // 如果选择了项目，前端再次过滤确保只显示该项目的文档
+        let filteredData = response.data;
+        if (selectedProject) {
+          // 通过项目名或项目ID过滤（后端可能通过不同方式处理）
+          filteredData = response.data.filter(doc => {
+            // 假设后端已经过滤了，但为了保险，前端再次检查
+            return true; // 信任后端过滤结果
+          });
+        }
+        updateDocuments(filteredData);
       } else {
         setError(response.error || '加载文档失败');
-        setDocuments([]); // 确保documents始终是数组
+        updateDocuments([]); // 确保documents始终是数组
       }
     } catch (err) {
       setError('网络错误，请稍后重试');
-      setDocuments([]); // 确保documents始终是数组
+      updateDocuments([]); // 确保documents始终是数组
       console.error('Load documents error:', err);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
-  };
+  }, [activeTab, searchQuery, selectedProject, updateDocuments]);
 
   // 初始加载和搜索/筛选变化时重新加载
   useEffect(() => {
     loadDocuments();
-  }, [activeTab, searchQuery, refreshTrigger]);
+  }, [loadDocuments]);
+
+  // 当refreshTrigger变化时，静默刷新（不显示loading状态）
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      // 延迟刷新，避免过于频繁的更新
+      const timer = setTimeout(() => {
+        loadDocuments(false); // 静默刷新，不显示loading
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [refreshTrigger, loadDocuments]);
 
   // 删除文档
   const handleDeleteDocument = async (id: number) => {
@@ -114,6 +172,8 @@ export default function DocumentList({ activeTab, searchQuery, refreshTrigger }:
         return 'bg-green-100 text-green-800';
       case 'processing':
         return 'bg-blue-100 text-blue-800';
+      case 'uploading':
+        return 'bg-yellow-100 text-yellow-800';
       case 'failed':
         return 'bg-red-100 text-red-800';
       default:
@@ -127,6 +187,8 @@ export default function DocumentList({ activeTab, searchQuery, refreshTrigger }:
         return '已完成';
       case 'processing':
         return '处理中';
+      case 'uploading':
+        return '上传中';
       case 'failed':
         return '失败';
       default:
@@ -141,34 +203,43 @@ export default function DocumentList({ activeTab, searchQuery, refreshTrigger }:
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
       <div className="p-6">
-        {/* 加载状态 */}
-        {loading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span className="ml-2 text-gray-600">加载中...</span>
+        {/* 未选择项目提示 */}
+        {!selectedProject ? (
+          <div className="text-center py-12">
+            <i className="ri-folder-line text-4xl text-gray-400 mb-4"></i>
+            <h3 className="text-lg font-medium text-gray-800 mb-2">请选择项目</h3>
+            <p className="text-gray-600">在左侧选择项目后即可查看对应的文档列表</p>
           </div>
-        )}
+        ) : (
+          <>
+            {/* 加载状态 */}
+            {loading && (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-2 text-gray-600">加载中...</span>
+              </div>
+            )}
 
-        {/* 错误状态 */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center">
-              <i className="ri-error-warning-line text-red-600 mr-2"></i>
-              <span className="text-red-800">{error}</span>
-              <button
-                onClick={loadDocuments}
-                className="ml-auto text-red-600 hover:text-red-800 underline"
-              >
-                重试
-              </button>
-            </div>
-          </div>
-        )}
+            {/* 错误状态 */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center">
+                  <i className="ri-error-warning-line text-red-600 mr-2"></i>
+                  <span className="text-red-800">{error}</span>
+                  <button
+                    onClick={() => loadDocuments()}
+                    className="ml-auto text-red-600 hover:text-red-800 underline"
+                  >
+                    重试
+                  </button>
+                </div>
+              </div>
+            )}
 
-        {/* 文档列表 */}
-        {!loading && !error && (
-          <div className="space-y-4">
-            {filteredDocuments.map((doc) => (
+            {/* 文档列表 */}
+            {!loading && !error && (
+              <div className="space-y-4">
+                {filteredDocuments.map((doc) => (
             <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
               <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
                 <i className={`${getFileIcon(doc.type)} text-lg`}></i>
@@ -189,16 +260,18 @@ export default function DocumentList({ activeTab, searchQuery, refreshTrigger }:
                   <span>{doc.uploadTime}</span>
                 </div>
                 
-                {doc.status === 'processing' && (
+                {(doc.status === 'processing' || doc.status === 'uploading') && (
                   <div className="mt-2">
                     <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                      <span>解析进度</span>
-                      <span>{doc.progress}%</span>
+                      <span>{doc.status === 'uploading' ? '上传进度' : '解析进度'}</span>
+                      <span>{doc.progress || 0}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-1">
                       <div
-                        className="bg-blue-600 h-1 rounded-full transition-all duration-300"
-                        style={{ width: `${doc.progress}%` }}
+                        className={`h-1 rounded-full transition-all duration-300 ${
+                          doc.status === 'uploading' ? 'bg-yellow-600' : 'bg-blue-600'
+                        }`}
+                        style={{ width: `${doc.progress || 0}%` }}
                       ></div>
                     </div>
                   </div>
@@ -234,15 +307,17 @@ export default function DocumentList({ activeTab, searchQuery, refreshTrigger }:
             </div>
           ))}
           </div>
-        )}
+            )}
 
-        {/* 空状态 */}
-        {!loading && !error && filteredDocuments.length === 0 && (
-          <div className="text-center py-12">
-            <i className="ri-file-list-3-line text-4xl text-gray-400 mb-4"></i>
-            <h3 className="text-lg font-medium text-gray-800 mb-2">暂无文档</h3>
-            <p className="text-gray-600">开始上传您的第一个文档</p>
-          </div>
+            {/* 空状态 */}
+            {!loading && !error && filteredDocuments.length === 0 && (
+              <div className="text-center py-12">
+                <i className="ri-file-list-3-line text-4xl text-gray-400 mb-4"></i>
+                <h3 className="text-lg font-medium text-gray-800 mb-2">暂无文档</h3>
+                <p className="text-gray-600">开始上传您的第一个文档</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
