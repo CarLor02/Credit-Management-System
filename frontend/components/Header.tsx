@@ -3,12 +3,18 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import MockIndicator from './MockIndicator';
 
 export default function Header() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+
+  // 检查导航项是否处于激活状态
+  const isActiveNav = (path: string) => {
+    return pathname.startsWith(path);
+  };
 
   const handleProfileClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -37,17 +43,29 @@ export default function Header() {
             </Link>
             
             <nav className="flex space-x-8">
-              <Link href="/dashboard" className="text-gray-600 hover:text-blue-600 transition-colors">
+              <Link 
+                href="/dashboard" 
+                className={`transition-colors ${isActiveNav('/dashboard') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
+              >
                 数据总览
               </Link>
-              <Link href="/projects" className="text-gray-600 hover:text-blue-600 transition-colors">
+              <Link 
+                href="/projects" 
+                className={`transition-colors ${isActiveNav('/projects') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
+              >
                 项目管理
               </Link>
-              <Link href="/documents" className="text-gray-600 hover:text-blue-600 transition-colors">
+              <Link 
+                href="/documents" 
+                className={`transition-colors ${isActiveNav('/documents') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
+              >
                 文档中心
               </Link>
               {process.env.NODE_ENV === 'development' && (
-                <Link href="/test-mock" className="text-gray-600 hover:text-blue-600 transition-colors">
+                <Link 
+                  href="/test-mock" 
+                  className={`transition-colors ${isActiveNav('/test-mock') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
+                >
                   Mock测试
                 </Link>
               )}
