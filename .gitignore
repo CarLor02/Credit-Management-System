@@ -1,0 +1,81 @@
+# 排除不需要管理的文件夹
+backend_generator/
+DEMO/
+uploads/
+
+# 排除Markdown文档文件（根目录）
+*.md
+!README.md
+
+# 排除Python测试文件
+test_*.py
+
+# Frontend dependencies and build files
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/dist/
+frontend/.vercel/
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Backend dependencies and build files
+generated_backend/__pycache__/
+generated_backend/**/__pycache__/
+generated_backend/*.pyc
+generated_backend/*.pyo
+generated_backend/*.pyd
+generated_backend/.Python
+generated_backend/env/
+generated_backend/venv/
+generated_backend/ENV/
+generated_backend/env.bak/
+generated_backend/venv.bak/
+generated_backend/instance/
+generated_backend/migrations/versions/
+generated_backend/uploads/
+generated_backend/.env
+
+# Database files
+generated_backend/*.db
+generated_backend/*.sqlite
+generated_backend/*.sqlite3
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Temporary files
+tmp/
+temp/

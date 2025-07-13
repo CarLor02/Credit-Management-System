@@ -1,0 +1,32 @@
+{
+  "name": "next-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development next dev -H 0.0.0.0 -p 3000",
+    "dev:mock": "cross-env NODE_ENV=development NEXT_PUBLIC_USE_MOCK=true next dev -H 0.0.0.0 -p 3000",
+    "dev:real": "cross-env NODE_ENV=development NEXT_PUBLIC_USE_MOCK=false next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "lint": "next lint",
+    "mock:toggle": "node scripts/toggle-mock.js",
+    "mock:on": "node scripts/toggle-mock.js on",
+    "mock:off": "node scripts/toggle-mock.js off",
+    "mock:status": "node scripts/toggle-mock.js status"
+  },
+  "dependencies": {
+    "next": "15.3.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.21",
+    "cross-env": "^7.0.3",
+    "postcss": "^8.5.5",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5"
+  }
+}

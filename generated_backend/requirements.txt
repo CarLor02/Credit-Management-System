@@ -1,0 +1,11 @@
+# 征信管理系统后端依赖
+Flask==2.3.3
+Flask-CORS==4.0.0
+Flask-SQLAlchemy==3.0.5
+Flask-Migrate==4.0.5
+SQLAlchemy==1.4.53
+PyJWT==2.8.0
+Werkzeug==2.3.7
+python-dotenv==1.0.0
+requests==2.31.0
+Jinja2==3.1.2
