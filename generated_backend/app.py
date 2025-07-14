@@ -12,7 +12,45 @@ from concurrent.futures import ThreadPoolExecutor
 from routes import register_routes
 from config import Config
 from utils import setup_logging
-from database import init_db
+from database import init_db, create_tables
+
+def init_database_if_needed(app):
+    """检查数据库是否存在，如果不存在则自动初始化"""
+    try:
+        # 获取数据库文件路径
+        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+        if db_uri.startswith('sqlite:///'):
+            db_path = db_uri.replace('sqlite:///', '')
+        else:
+            print("非SQLite数据库，跳过自动初始化")
+            return
+            
+        print(f"检查数据库文件: {db_path}")
+        
+        if not os.path.exists(db_path):
+            print(f"数据库文件不存在: {db_path}")
+            print("正在自动初始化数据库...")
+            
+            # 确保instance目录存在
+            instance_dir = os.path.dirname(db_path)
+            if not os.path.exists(instance_dir):
+                os.makedirs(instance_dir)
+                print(f"创建instance目录: {instance_dir}")
+            
+            # 创建数据库表
+            create_tables(app)
+            
+            # 创建种子数据
+            from seed_data import create_seed_data
+            create_seed_data()
+            
+            print("数据库初始化完成!")
+        else:
+            print(f"数据库文件已存在: {db_path}")
+            
+    except Exception as e:
+        print(f"数据库初始化检查失败: {e}")
+        print("请手动运行 python init_db.py 来初始化数据库")
 
 # 创建Flask应用
 app = Flask(__name__)
@@ -23,6 +61,10 @@ CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
 
 # 初始化数据库
 db = init_db(app)
+
+# 检查并初始化数据库（如果需要）
+with app.app_context():
+    init_database_if_needed(app)
 
 # 设置日志
 setup_logging(app)
@@ -63,10 +105,6 @@ def health_check():
             "message": "数据库连接失败",
             "error": str(e)
         }), 500
-
-
-
-
 
 if __name__ == '__main__':
     # 创建上传目录

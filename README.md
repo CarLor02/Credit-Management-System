@@ -19,6 +19,20 @@
 - Python 3.8+
 - npm 或 yarn
 
+### 首次使用（数据库初始化）
+
+新用户第一次使用系统时，需要初始化数据库：
+
+```bash
+# 方法1: 使用自动初始化脚本（推荐）
+python3 setup_database.py
+
+# 方法2: 手动初始化
+cd generated_backend
+pip install -r requirements.txt
+python3 init_db.py
+```
+
 ### 安装依赖
 
 #### 前端依赖
@@ -58,6 +72,35 @@ npm run dev
 - 前端：http://localhost:3000
 - 后端：http://localhost:5001
 - 后端健康检查：http://localhost:5001/health
+
+### 测试系统
+系统启动后，可以运行测试脚本验证功能：
+```bash
+python3 test_system.py
+```
+
+### 默认用户
+- 管理员: admin@example.com / admin123
+- 项目经理: manager1@example.com / manager123
+- 数据分析师: analyst1@example.com / analyst123
+
+### 故障排除
+
+#### 数据库问题
+如果遇到数据库相关错误，可以：
+1. 删除数据库文件：`rm generated_backend/instance/credit_system.db`
+2. 重新运行应用，系统会自动重新初始化
+3. 或者手动初始化：`python3 setup_database.py`
+
+#### 端口占用
+如果端口被占用，启动脚本会自动清理端口。也可以手动清理：
+```bash
+# 清理5001端口（后端）
+lsof -ti:5001 | xargs kill -9
+
+# 清理3000端口（前端）  
+lsof -ti:3000 | xargs kill -9
+```
 
 ## 功能特性
 - 项目管理

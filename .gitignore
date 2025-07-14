@@ -38,11 +38,6 @@ generated_backend/migrations/versions/
 generated_backend/uploads/
 generated_backend/.env
 
-# Database files
-generated_backend/*.db
-generated_backend/*.sqlite
-generated_backend/*.sqlite3
-
 # IDE files
 .vscode/
 .idea/

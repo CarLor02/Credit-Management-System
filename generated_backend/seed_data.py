@@ -4,6 +4,7 @@
 """
 
 import os
+import uuid
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash
 
@@ -119,6 +120,7 @@ def create_projects(users):
     projects_data = [
         {
             'name': '腾讯科技有限公司',
+            'folder_uuid': str(uuid.uuid4()),
             'type': ProjectType.ENTERPRISE,
             'status': ProjectStatus.COMPLETED,
             'description': '腾讯科技有限公司征信分析项目',
@@ -132,6 +134,7 @@ def create_projects(users):
         },
         {
             'name': '阿里巴巴集团',
+            'folder_uuid': str(uuid.uuid4()),
             'type': ProjectType.ENTERPRISE,
             'status': ProjectStatus.PROCESSING,
             'description': '阿里巴巴集团征信评估项目',
@@ -145,6 +148,7 @@ def create_projects(users):
         },
         {
             'name': '张三个人征信',
+            'folder_uuid': str(uuid.uuid4()),
             'type': ProjectType.INDIVIDUAL,
             'status': ProjectStatus.COLLECTING,
             'description': '张三个人征信分析',
@@ -158,6 +162,7 @@ def create_projects(users):
         },
         {
             'name': '字节跳动科技',
+            'folder_uuid': str(uuid.uuid4()),
             'type': ProjectType.ENTERPRISE,
             'status': ProjectStatus.COMPLETED,
             'description': '字节跳动科技征信分析',
@@ -171,6 +176,7 @@ def create_projects(users):
         },
         {
             'name': '李四个人征信',
+            'folder_uuid': str(uuid.uuid4()),
             'type': ProjectType.INDIVIDUAL,
             'status': ProjectStatus.PROCESSING,
             'description': '李四个人征信评估',
@@ -184,6 +190,7 @@ def create_projects(users):
         },
         {
             'name': '美团点评',
+            'folder_uuid': str(uuid.uuid4()),
             'type': ProjectType.ENTERPRISE,
             'status': ProjectStatus.COMPLETED,
             'description': '美团点评征信分析项目',

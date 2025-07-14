@@ -15,7 +15,10 @@ class Config:
     PORT = int(os.environ.get('PORT', 5001))
 
     # 数据库配置
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///credit_system.db'
+    # 获取当前目录的绝对路径
+    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+    DATABASE_PATH = os.path.join(BASE_DIR, 'instance', 'credit_system.db')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{DATABASE_PATH}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = os.environ.get('SQLALCHEMY_ECHO', 'False').lower() == 'true'
 
