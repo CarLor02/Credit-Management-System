@@ -118,6 +118,7 @@ def register_project_routes(app):
     def create_project():
         """创建项目"""
         try:
+            import uuid
             data = request.get_json()
             
             # 验证必需字段
@@ -133,6 +134,7 @@ def register_project_routes(app):
             # 创建项目
             project = Project(
                 name=data['name'],
+                folder_uuid=str(uuid.uuid4()),  # 生成唯一的文件夹UUID
                 type=ProjectType(data['type']),
                 description=data.get('description', ''),
                 category=data.get('category', ''),
@@ -181,25 +183,45 @@ def register_project_routes(app):
             except Exception as e:
                 current_app.logger.warning(f"记录活动日志失败: {e}")
             
-            # 返回简化的项目数据，与mock格式一致
+            # 返回完整的项目数据
             project_data = {
                 'id': project.id,
                 'name': project.name,
+                'folder_uuid': project.folder_uuid,
                 'type': project.type.value.lower(),
                 'status': project.status.value.lower(),
+                'description': project.description,
+                'category': project.category,
+                'priority': project.priority.value.lower(),
                 'score': project.score,
                 'riskLevel': project.risk_level.value.lower(),
+                'progress': project.progress,
+                'createdBy': project.created_by,
+                'assignedTo': project.assigned_to,
+                'createdAt': project.created_at.isoformat(),
+                'updatedAt': project.updated_at.isoformat(),
                 'lastUpdate': project.updated_at.strftime('%Y-%m-%d'),
-                'documents': len(list(project.documents)),
-                'progress': project.progress
+                'documents': len(list(project.documents))
             }
 
-            return jsonify(project_data), 201
+            return jsonify({
+                'success': True,
+                'message': '项目创建成功',
+                'data': project_data
+            }), 201
             
+        except ValueError as e:
+            db.session.rollback()
+            current_app.logger.error(f"创建项目参数错误: {e}")
+            return jsonify({'success': False, 'error': f'参数错误: {str(e)}'}), 400
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"创建项目失败: {e}")
-            return jsonify({'success': False, 'error': '创建项目失败'}), 500
+            # 在开发环境中提供详细错误信息
+            if current_app.debug:
+                return jsonify({'success': False, 'error': f'创建项目失败: {str(e)}'}), 500
+            else:
+                return jsonify({'success': False, 'error': '服务器内部错误'}), 500
     
     @app.route('/api/projects/<int:project_id>', methods=['PUT'])
     def update_project(project_id):
