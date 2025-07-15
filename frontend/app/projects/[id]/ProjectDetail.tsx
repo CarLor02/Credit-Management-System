@@ -1063,9 +1063,6 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
                             <h4 className="font-medium text-gray-800 truncate">{doc.name}</h4>
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDocumentStatusColor(doc.status)}`}>
-                              {getDocumentStatusText(doc.status)}
-                            </span>
                           </div>
                           <div className="flex items-center text-sm text-gray-600 space-x-4">
                             <span>{doc.project}</span>
@@ -1085,20 +1082,25 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                           )}
                         </div>
                         
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => handleDownloadDocument(doc.id, doc.name)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
-                            title="下载文档"
-                          >
-                            <i className="ri-download-line text-gray-600"></i>
-                          </button>
-                          <button
-                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
-                            title="预览文档"
-                          >
-                            <i className="ri-eye-line text-gray-600"></i>
-                          </button>
+                        <div className="flex items-center space-x-3">
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDocumentStatusColor(doc.status)}`}>
+                            {getDocumentStatusText(doc.status)}
+                          </span>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleDownloadDocument(doc.id, doc.name)}
+                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                              title="下载文档"
+                            >
+                              <i className="ri-download-line text-gray-600"></i>
+                            </button>
+                            <button
+                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                              title="预览文档"
+                            >
+                              <i className="ri-eye-line text-gray-600"></i>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )) : (
