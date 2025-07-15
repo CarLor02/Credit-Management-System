@@ -12,6 +12,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+# 导入文档处理库
+try:
+    from docx import Document as DocxDocument
+    import mammoth
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
 from flask import current_app
 from database import db
 from db_models import Document, DocumentStatus
@@ -127,7 +135,7 @@ class DocumentProcessor:
         return os.path.join(processed_dir, processed_filename)
     
     def _call_ocr_processor(self, input_file: str, output_file: str, document: Document) -> bool:
-        """调用OCR处理器"""
+        """调用OCR处理器或直接处理特定文件类型"""
         try:
             # 确保输出目录存在
             output_dir = os.path.dirname(output_file)
@@ -143,6 +151,85 @@ class DocumentProcessor:
             
             document.progress = 40
             db.session.commit()
+            
+            # 对于markdown和word文件，直接调用专门的处理方法
+            if file_type == 'markdown':
+                return self._process_markdown_direct(input_file, output_file, document)
+            elif file_type == 'word':
+                return self._process_word_direct(input_file, output_file, document)
+            else:
+                # 其他文件类型使用OCR处理
+                return self._process_with_ocr(input_file, output_file, document, file_type)
+                
+        except Exception as e:
+            current_app.logger.error(f"调用处理器失败: {e}")
+            return False
+    
+    def _process_markdown_direct(self, input_file: str, output_file: str, document: Document) -> bool:
+        """直接处理markdown文件"""
+        try:
+            # 进度为50%
+            document.progress = 50
+            db.session.commit()
+            
+            # 读取原始md文件内容
+            with open(input_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 进度为80%
+            document.progress = 80
+            db.session.commit()
+            
+            # 写入到processed目录
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            current_app.logger.info(f"markdown文件直接处理完成: {output_file}")
+            return True
+            
+        except Exception as e:
+            current_app.logger.error(f"直接处理markdown文件失败: {e}")
+            return False
+    
+    def _process_word_direct(self, input_file: str, output_file: str, document: Document) -> bool:
+        """直接处理Word文件"""
+        try:
+            # 检查是否有docx处理库
+            if not DOCX_AVAILABLE:
+                current_app.logger.error("缺少docx处理库，请安装 python-docx 和 mammoth")
+                return False
+            
+            # 进度为50%
+            document.progress = 50
+            db.session.commit()
+            
+            # 提取Word文件内容
+            markdown_content = self._extract_word_content(input_file, document.filename)
+            
+            if not markdown_content:
+                current_app.logger.error("无法提取Word文件内容")
+                return False
+            
+            # 进度为80%
+            document.progress = 80
+            db.session.commit()
+            
+            # 写入到processed目录
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(markdown_content)
+            
+            current_app.logger.info(f"Word文件直接处理完成: {output_file}")
+            return True
+            
+        except Exception as e:
+            current_app.logger.error(f"直接处理Word文件失败: {e}")
+            return False
+    
+    def _process_with_ocr(self, input_file: str, output_file: str, document: Document, file_type: str) -> bool:
+        """使用OCR处理文件"""
+        try:
+            # 获取输出目录
+            output_dir = os.path.dirname(output_file)
             
             # 构建OCR处理命令
             ocr_script = os.path.join(self.ocr_path, 'process_docs.py')
@@ -255,6 +342,10 @@ class DocumentProcessor:
             return 'html'
         elif extension in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif']:
             return 'image'
+        elif extension in ['.md', '.markdown']:
+            return 'markdown'
+        elif extension in ['.docx']:
+            return 'word'
         else:
             return None
     
@@ -416,6 +507,273 @@ class DocumentProcessor:
             if 'document' in locals():
                 self._mark_processing_failed(document, str(e))
             return False
+    
+    def process_word_file(self, document_id: int) -> bool:
+        """处理Word文件（doc/docx）"""
+        try:
+            document = Document.query.get(document_id)
+            if not document:
+                current_app.logger.error(f"文档不存在: {document_id}")
+                return False
+            
+            # 检查是否有docx处理库
+            if not DOCX_AVAILABLE:
+                current_app.logger.error("缺少docx处理库，请安装 python-docx 和 mammoth")
+                self._mark_processing_failed(document, "缺少docx处理库")
+                return False
+            
+            # 更新状态为处理中，进度为10%
+            document.status = DocumentStatus.PROCESSING
+            document.processing_started_at = datetime.utcnow()
+            document.progress = 10
+            db.session.commit()
+            
+            current_app.logger.info(f"开始处理Word文件: {document.filename}")
+            
+            # 构建输入和输出路径
+            input_file = document.file_path
+            if not os.path.exists(input_file):
+                current_app.logger.error(f"源文件不存在: {input_file}")
+                self._mark_processing_failed(document, "源文件不存在")
+                return False
+            
+            # 创建处理后文件的路径，进度为30%
+            processed_file_path = self._create_processed_file_path(document)
+            document.progress = 30
+            db.session.commit()
+            
+            # 提取Word文件内容，进度为50%
+            document.progress = 50
+            db.session.commit()
+            
+            markdown_content = self._extract_word_content(input_file, document.filename)
+            
+            if not markdown_content:
+                self._mark_processing_failed(document, "无法提取Word文件内容")
+                return False
+            
+            # 进度为80%
+            document.progress = 80
+            db.session.commit()
+            
+            # 写入到processed目录
+            with open(processed_file_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_content)
+            
+            # 更新文档状态为已完成，进度为100%
+            document.status = DocumentStatus.COMPLETED
+            document.processed_file_path = processed_file_path
+            document.processed_at = datetime.utcnow()
+            document.progress = 100
+            db.session.commit()
+            
+            current_app.logger.info(f"Word文件处理完成: {document.filename}")
+            return True
+                
+        except Exception as e:
+            current_app.logger.error(f"处理Word文件失败: {e}")
+            if 'document' in locals():
+                self._mark_processing_failed(document, str(e))
+            return False
+    
+    def _extract_word_content(self, file_path: str, filename: str) -> str:
+        """提取Word文件内容并转换为Markdown格式"""
+        try:
+            file_extension = Path(file_path).suffix.lower()
+            
+            if file_extension == '.docx':
+                # 处理.docx文件，优先使用mammoth，fallback到python-docx
+                return self._extract_docx_content(file_path, filename)
+            else:
+                current_app.logger.error(f"不支持的文件类型: {file_extension}")
+                return self._generate_unsupported_format_message(file_extension)
+                
+        except Exception as e:
+            current_app.logger.error(f"提取Word内容失败: {e}")
+            return self._generate_unsupported_format_message("处理过程中发生错误", str(e))
+    
+    def _extract_docx_content(self, file_path: str, filename: str) -> str:
+        """提取.docx文件内容，优先使用mammoth，fallback到python-docx"""
+        try:
+            # 方法1：使用mammoth（更好的markdown转换）
+            try:
+                with open(file_path, "rb") as docx_file:
+                    result = mammoth.convert_to_markdown(docx_file)
+                    if result.value and result.value.strip():
+                        # 添加文档标题
+                        document_title = Path(filename).stem
+                        markdown_content = f"# {document_title}\n\n{result.value}"
+                        
+                        # 如果有警告信息，添加到文档末尾
+                        if result.messages:
+                            warnings = [msg.message for msg in result.messages]
+                            markdown_content += f"\n\n---\n*转换警告: {'; '.join(warnings)}*"
+                        
+                        current_app.logger.info(f"使用mammoth成功转换docx文件: {filename}")
+                        return markdown_content
+                    else:
+                        current_app.logger.warning(f"mammoth转换结果为空，使用fallback方法")
+                        return self._extract_docx_with_python_docx(file_path, filename)
+            except Exception as e:
+                current_app.logger.warning(f"mammoth转换失败: {e}，使用fallback方法")
+                return self._extract_docx_with_python_docx(file_path, filename)
+                
+        except Exception as e:
+            current_app.logger.error(f"提取.docx内容失败: {e}")
+            return self._generate_doc_conversion_message("DOCX文档处理失败", str(e))
+    
+    def _extract_docx_with_python_docx(self, file_path: str, filename: str) -> str:
+        """使用python-docx提取.docx文件内容"""
+        try:
+            doc = DocxDocument(file_path)
+            markdown_content = []
+            
+            # 添加文档标题
+            document_title = Path(filename).stem
+            markdown_content.append(f"# {document_title}\n")
+            
+            # 处理段落
+            for paragraph in doc.paragraphs:
+                text = paragraph.text.strip()
+                if text:
+                    # 检查是否为标题（基于样式或格式）
+                    if paragraph.style.name.startswith('Heading'):
+                        # 根据标题级别添加#
+                        level = self._get_heading_level(paragraph.style.name)
+                        markdown_content.append(f"{'#' * level} {text}\n")
+                    else:
+                        # 检查是否为列表项
+                        if paragraph.style.name.startswith('List'):
+                            markdown_content.append(f"- {text}\n")
+                        else:
+                            # 普通段落
+                            markdown_content.append(f"{text}\n")
+            
+            # 处理表格
+            for table in doc.tables:
+                table_md = self._convert_table_to_markdown(table)
+                if table_md:
+                    markdown_content.append(table_md)
+            
+            result = '\n'.join(markdown_content)
+            current_app.logger.info(f"使用python-docx成功转换docx文件: {filename}")
+            return result
+            
+        except Exception as e:
+            current_app.logger.error(f"python-docx提取.docx内容失败: {e}")
+            return self._generate_doc_conversion_message("DOCX文档解析失败", str(e))
+    
+    def _generate_unsupported_format_message(self, format_or_reason: str, error_detail: str = None) -> str:
+        """生成不支持格式的错误信息"""
+        message = f"""# 文档格式不支持
+
+## 错误原因
+{format_or_reason}
+
+## 解决方案
+请使用以下支持的文档格式：
+
+### 推荐格式
+- **DOCX**: Microsoft Word 2007及以上版本格式
+- **Markdown**: 纯文本标记语言格式
+- **PDF**: 便携式文档格式（通过OCR处理）
+
+### 如何转换
+1. **Word文档**: 使用Microsoft Word打开文件，选择"另存为"，格式选择"Word文档(.docx)"
+2. **其他格式**: 使用相应的软件转换为支持的格式
+
+## 当前支持的文档格式
+- ✅ .docx (Microsoft Word)
+- ✅ .md (Markdown)
+- ✅ .pdf (PDF文档)
+- ✅ .xlsx/.xls (Excel表格)
+- ✅ .jpg/.jpeg/.png (图片文件)
+
+---
+*系统不再支持.doc格式文件，请转换为.docx格式后重新上传。*"""
+        
+        if error_detail:
+            message += f"\n\n## 详细错误信息\n```\n{error_detail}\n```"
+        
+        return message
+    
+    def _get_heading_level(self, style_name: str) -> int:
+        """根据样式名获取标题级别"""
+        if 'Heading 1' in style_name:
+            return 2  # 文档标题已经是#，所以从##开始
+        elif 'Heading 2' in style_name:
+            return 3
+        elif 'Heading 3' in style_name:
+            return 4
+        elif 'Heading 4' in style_name:
+            return 5
+        elif 'Heading 5' in style_name:
+            return 6
+        elif 'Heading 6' in style_name:
+            return 6
+        else:
+            return 3  # 默认为三级标题
+    
+    def _convert_table_to_markdown(self, table) -> str:
+        """将Word表格转换为Markdown表格"""
+        try:
+            if not table.rows:
+                return ""
+            
+            markdown_table = []
+            
+            # 处理表头
+            header_row = table.rows[0]
+            header_cells = [cell.text.strip() for cell in header_row.cells]
+            if any(header_cells):  # 只有当表头有内容时才添加
+                markdown_table.append('| ' + ' | '.join(header_cells) + ' |')
+                markdown_table.append('| ' + ' | '.join(['---'] * len(header_cells)) + ' |')
+                
+                # 处理数据行
+                for row in table.rows[1:]:
+                    row_cells = [cell.text.strip() for cell in row.cells]
+                    markdown_table.append('| ' + ' | '.join(row_cells) + ' |')
+            else:
+                # 没有明确的表头，所有行都作为数据行
+                for row in table.rows:
+                    row_cells = [cell.text.strip() for cell in row.cells]
+                    markdown_table.append('| ' + ' | '.join(row_cells) + ' |')
+            
+            return '\n'.join(markdown_table) + '\n\n'
+            
+        except Exception as e:
+            current_app.logger.error(f"转换表格失败: {e}")
+            return "\n[表格转换失败]\n\n"
+    
+    def _convert_to_markdown(self, text: str) -> str:
+        """将纯文本转换为基本的Markdown格式"""
+        if not text:
+            return ""
+        
+        lines = text.split('\n')
+        markdown_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                markdown_lines.append("")
+                continue
+            
+            # 简单的格式化规则
+            if line.isupper() and len(line) < 50:
+                # 全大写且较短的行可能是标题
+                markdown_lines.append(f"## {line}")
+            elif line.endswith(':') and len(line) < 50:
+                # 以冒号结尾的行可能是小标题
+                markdown_lines.append(f"### {line}")
+            elif line.startswith('•') or line.startswith('-') or line.startswith('*'):
+                # 列表项
+                markdown_lines.append(f"- {line[1:].strip()}")
+            else:
+                # 普通段落
+                markdown_lines.append(line)
+        
+        return '\n'.join(markdown_lines)
 
 # 全局文档处理器实例
 document_processor = DocumentProcessor()
