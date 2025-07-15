@@ -204,7 +204,7 @@ def register_document_routes(app):
                 details=f'开始上传文档: {document.name}'
             )
             
-            # 先返回上传中状态的文档信息
+            # 先返回上传完成状态的文档信息
             upload_response = {
                 'success': True,
                 'data': {
@@ -220,12 +220,6 @@ def register_document_routes(app):
                 'message': '文档上传开始'
             }
             
-            # 使用更简单的状态更新策略，避免复杂的线程处理
-            # 直接更新为处理中状态
-            document.status = DocumentStatus.PROCESSING
-            document.progress = 50
-            db.session.commit()
-            
             # 记录上传完成日志
             log_action(
                 user_id=document.upload_by,
@@ -235,49 +229,43 @@ def register_document_routes(app):
                 details=f'文档上传完成: {document.name}'
             )
             
-            # 短暂延迟后完成处理
-            import threading
-            import time
+            # 触发OCR处理
+            from services.document_processor import document_processor
             
             # 保存文档ID和项目名，避免会话问题
             doc_id = document.id
             project_name_for_log = project.name
             
-            def complete_processing():
-                time.sleep(2)  # 2秒后完成处理
-                with app.app_context():
-                    try:
-                        # 使用新的数据库会话查询文档
-                        doc = Document.query.get(doc_id)
-                        if doc:
-                            doc.status = DocumentStatus.COMPLETED
-                            doc.progress = 100
-                            db.session.commit()
-                            
+            def start_ocr_processing():
+                """启动OCR处理"""
+                try:
+                    with app.app_context():
+                        current_app.logger.info(f"开始OCR处理文档: {doc_id}")
+                        success = document_processor.process_document(doc_id)
+                        
+                        if success:
+                            current_app.logger.info(f"OCR处理完成: {doc_id}")
                             # 记录活动日志
                             try:
                                 from services.stats_service import ActivityLogger
-                                user = User.query.get(doc.upload_by)
-                                user_name = user.full_name if user else 'Unknown'
-                                ActivityLogger.log_document_uploaded(
-                                    doc.id, doc.name, project_name_for_log, doc.upload_by, user_name
-                                )
+                                doc = Document.query.get(doc_id)
+                                if doc:
+                                    user = User.query.get(doc.upload_by)
+                                    user_name = user.full_name if user else 'Unknown'
+                                    ActivityLogger.log_document_uploaded(
+                                        doc.id, doc.name, project_name_for_log, doc.upload_by, user_name
+                                    )
                             except Exception as e:
                                 current_app.logger.warning(f"记录活动日志失败: {e}")
-                                
-                    except Exception as e:
-                        current_app.logger.error(f"文档处理失败: {e}")
-                        # 如果失败，设置状态为失败
-                        try:
-                            doc = Document.query.get(doc_id)
-                            if doc:
-                                doc.status = DocumentStatus.FAILED
-                                db.session.commit()
-                        except:
-                            pass
+                        else:
+                            current_app.logger.error(f"OCR处理失败: {doc_id}")
+                            
+                except Exception as e:
+                    current_app.logger.error(f"OCR处理异常: {e}")
             
-            # 在后台线程中完成处理
-            thread = threading.Thread(target=complete_processing)
+            # 在后台线程中启动OCR处理
+            import threading
+            thread = threading.Thread(target=start_ocr_processing)
             thread.daemon = True
             thread.start()
             
@@ -300,7 +288,10 @@ def register_document_routes(app):
                     'id': document.id,
                     'status': document.status.value.lower(),
                     'progress': document.progress,
-                    'error_message': document.error_message
+                    'error_message': document.error_message,
+                    'processing_started_at': document.processing_started_at.isoformat() if document.processing_started_at else None,
+                    'processed_at': document.processed_at.isoformat() if document.processed_at else None,
+                    'has_processed_file': bool(document.processed_file_path and os.path.exists(document.processed_file_path)) if document.processed_file_path else False
                 }
             })
             
@@ -337,6 +328,68 @@ def register_document_routes(app):
             current_app.logger.error(f"下载文档失败: {e}")
             return jsonify({'success': False, 'error': '下载文档失败'}), 500
     
+    @app.route('/api/documents/<int:document_id>/progress', methods=['GET'])
+    def get_document_progress(document_id):
+        """获取文档处理进度"""
+        try:
+            document = Document.query.get_or_404(document_id)
+            
+            # 获取实时进度信息
+            from services.document_processor import document_processor
+            progress_info = document_processor.get_processing_progress(document_id)
+            
+            # 如果有错误，返回文档的当前状态
+            if 'error' in progress_info:
+                progress_info = {
+                    'status': document.status.value,
+                    'progress_percent': document.progress,
+                    'filename': document.filename,
+                    'processing_started_at': document.processing_started_at.isoformat() if document.processing_started_at else None,
+                    'processed_at': document.processed_at.isoformat() if document.processed_at else None,
+                    'processed_file_path': document.processed_file_path
+                }
+            
+            return jsonify({
+                'success': True,
+                'data': progress_info
+            })
+            
+        except Exception as e:
+            current_app.logger.error(f"获取文档处理进度失败: {e}")
+            return jsonify({'success': False, 'error': '获取处理进度失败'}), 500
+    
+    @app.route('/api/documents/<int:document_id>/processed-file', methods=['GET'])
+    def download_processed_file(document_id):
+        """下载处理后的文件"""
+        try:
+            document = Document.query.get_or_404(document_id)
+            
+            if not document.processed_file_path or not os.path.exists(document.processed_file_path):
+                return jsonify({'success': False, 'error': '处理后的文件不存在'}), 404
+            
+            # 记录下载日志
+            log_action(
+                user_id=1,  # TODO: 从JWT token获取用户ID
+                action='processed_document_download',
+                resource_type='document',
+                resource_id=document.id,
+                details=f'下载处理后文档: {document.name}'
+            )
+            
+            # 构建处理后的文件名
+            base_name = os.path.splitext(document.original_filename)[0]
+            processed_filename = f"{base_name}_processed.md"
+            
+            return send_file(
+                document.processed_file_path,
+                as_attachment=True,
+                download_name=processed_filename
+            )
+            
+        except Exception as e:
+            current_app.logger.error(f"下载处理后文档失败: {e}")
+            return jsonify({'success': False, 'error': '下载处理后文档失败'}), 500
+
     @app.route('/api/documents/<int:document_id>', methods=['DELETE'])
     def delete_document(document_id):
         """删除文档"""
@@ -354,16 +407,20 @@ def register_document_routes(app):
                 details=f'删除文档: {document_name}'
             )
             
+            # 删除处理后的文档
+            from services.document_processor import document_processor
+            document_processor.delete_processed_document(document)
+            
             # 删除数据库记录
             db.session.delete(document)
             db.session.commit()
             
-            # 删除文件
+            # 删除原始文件
             try:
                 if os.path.exists(file_path):
                     os.remove(file_path)
             except Exception as e:
-                current_app.logger.warning(f"删除文件失败: {e}")
+                current_app.logger.warning(f"删除原始文件失败: {e}")
             
             return jsonify({
                 'success': True,

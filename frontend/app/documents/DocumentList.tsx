@@ -111,6 +111,22 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
     }
   }, [refreshTrigger, loadDocuments]);
 
+  // 轮询正在处理的文档状态
+  useEffect(() => {
+    const processingDocs = documents.filter(doc => doc.status === 'processing' || doc.status === 'uploading');
+    
+    if (processingDocs.length === 0) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      // 静默刷新文档列表以获取最新状态
+      loadDocuments(false);
+    }, 2000); // 每2秒检查一次
+
+    return () => clearInterval(intervalId);
+  }, [documents, loadDocuments]);
+
   // 删除文档
   const handleDeleteDocument = async (id: number) => {
     try {
@@ -261,19 +277,11 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                 </div>
                 
                 {(doc.status === 'processing' || doc.status === 'uploading') && (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                      <span>{doc.status === 'uploading' ? '上传进度' : '解析进度'}</span>
-                      <span>{doc.progress || 0}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1">
-                      <div
-                        className={`h-1 rounded-full transition-all duration-300 ${
-                          doc.status === 'uploading' ? 'bg-yellow-600' : 'bg-blue-600'
-                        }`}
-                        style={{ width: `${doc.progress || 0}%` }}
-                      ></div>
-                    </div>
+                  <div className="mt-2 flex items-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600"></div>
+                    <span className="text-xs text-gray-600">
+                      {doc.status === 'uploading' ? '正在上传...' : '正在解析...'}
+                    </span>
                   </div>
                 )}
               </div>

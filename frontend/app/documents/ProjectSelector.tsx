@@ -92,7 +92,17 @@ export default function ProjectSelector({ selectedProject, onProjectChange }: Pr
                   <span>•</span>
                   <span>文档: {selectedProjectData.documents} 个</span>
                   <span>•</span>
-                  <span>进度: {selectedProjectData.progress}%</span>
+                  <div className="flex items-center space-x-1">
+                    <span>状态:</span>
+                    {selectedProjectData.status === 'processing' && (
+                      <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-300 border-t-blue-600"></div>
+                    )}
+                    <span>
+                      {selectedProjectData.status === 'processing' ? '处理中' : 
+                       selectedProjectData.status === 'completed' ? '已完成' : 
+                       selectedProjectData.status === 'collecting' ? '收集中' : '未知'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

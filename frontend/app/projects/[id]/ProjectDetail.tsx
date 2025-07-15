@@ -28,6 +28,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(true);
+  const [documentPolling, setDocumentPolling] = useState<NodeJS.Timeout | null>(null);
 
   // 项目详情数据状态
   const [financialData, setFinancialData] = useState<FinancialAnalysis[]>([]);
@@ -73,22 +74,22 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         });
 
         if (response.success && response.data) {
-          // 转换为项目详情页面需要的格式
-          const formattedDocs = response.data.map(doc => ({
-            name: doc.name,
-            size: doc.size,
-            date: doc.uploadTime.split(' ')[0], // 只取日期部分
-            type: doc.type
-          }));
-          setDocuments(formattedDocs);
+          setDocuments(response.data);
+          
+          // 检查是否有处理中的文档，如果有则启动轮询
+          const processingDocs = response.data.filter(doc => 
+            doc.status === 'processing' || doc.status === 'uploading'
+          );
+          
+          if (processingDocs.length > 0) {
+            startDocumentPolling();
+          } else {
+            stopDocumentPolling();
+          }
         }
       } catch (err) {
         console.error('Load documents error:', err);
-        // 如果加载失败，使用默认数据
-        setDocuments([
-          { name: '征信报告.pdf', size: '2.3MB', date: '2024-01-20', type: 'pdf' },
-          { name: '财务分析表.xlsx', size: '1.8MB', date: '2024-01-19', type: 'excel' }
-        ]);
+        setDocuments([]);
       } finally {
         setDocumentsLoading(false);
       }
@@ -98,6 +99,53 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       fetchDocuments();
     }
   }, [project]);
+
+  // 启动文档轮询
+  const startDocumentPolling = () => {
+    if (documentPolling) {
+      clearInterval(documentPolling);
+    }
+    
+    const interval = setInterval(async () => {
+      try {
+        const response = await documentService.getDocuments({
+          project: project?.name || ''
+        });
+        
+        if (response.success && response.data) {
+          setDocuments(response.data);
+          
+          // 检查是否还有处理中的文档
+          const processingDocs = response.data.filter(doc => 
+            doc.status === 'processing' || doc.status === 'uploading'
+          );
+          
+          if (processingDocs.length === 0) {
+            stopDocumentPolling();
+          }
+        }
+      } catch (err) {
+        console.error('Polling documents error:', err);
+      }
+    }, 2000); // 每2秒轮询一次
+    
+    setDocumentPolling(interval);
+  };
+
+  // 停止文档轮询
+  const stopDocumentPolling = () => {
+    if (documentPolling) {
+      clearInterval(documentPolling);
+      setDocumentPolling(null);
+    }
+  };
+
+  // 组件卸载时停止轮询
+  useEffect(() => {
+    return () => {
+      stopDocumentPolling();
+    };
+  }, [documentPolling]);
 
   // 加载团队成员（暂时使用模拟数据，因为后端接口尚未实现）
   useEffect(() => {
@@ -332,6 +380,72 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       case 'medium': return '中风险';
       case 'high': return '高风险';
       default: return risk;
+    }
+  };
+
+  // 获取文档状态颜色
+  const getDocumentStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'processing':
+        return 'bg-blue-100 text-blue-800';
+      case 'uploading':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'failed':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // 获取文档状态文本
+  const getDocumentStatusText = (status: string) => {
+    switch (status) {
+      case 'completed': return '已完成';
+      case 'processing': return '处理中';
+      case 'uploading': return '上传中';
+      case 'failed': return '失败';
+      default: return '未知';
+    }
+  };
+
+  // 获取文件图标
+  const getFileIcon = (type: string) => {
+    switch (type) {
+      case 'pdf':
+        return 'ri-file-pdf-line text-red-600';
+      case 'excel':
+        return 'ri-file-excel-line text-green-600';
+      case 'word':
+        return 'ri-file-word-line text-blue-600';
+      case 'image':
+        return 'ri-image-line text-purple-600';
+      default:
+        return 'ri-file-line text-gray-600';
+    }
+  };
+
+  // 下载文档
+  const handleDownloadDocument = async (id: number, name: string) => {
+    try {
+      const response = await documentService.downloadDocument(id);
+      if (response.success && response.data) {
+        const url = window.URL.createObjectURL(response.data);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert(response.error || '下载文档失败');
+      }
+    } catch (err) {
+      alert('下载文档失败，请稍后重试');
+      console.error('Download document error:', err);
     }
   };
 
@@ -832,7 +946,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
             )}
 
             {/* 个人特有标签页 */}
-            {project.type === 'personal' && activeTab === 'credit' && (
+            {project.type === 'individual' && activeTab === 'credit' && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-6">信用记录详情</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -886,7 +1000,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
               </div>
             )}
 
-            {project.type === 'personal' && activeTab === 'income' && (
+            {project.type === 'individual' && activeTab === 'income' && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-6">收入分析报告</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -923,7 +1037,10 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
               <div>
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-semibold text-gray-900">项目文档</h3>
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap">
+                  <button 
+                    onClick={handleAddDocument}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
+                  >
                     <i className="ri-upload-line mr-2"></i>
                     上传文档
                   </button>
@@ -936,41 +1053,59 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {documents.length > 0 ? documents.map((doc, index) => (
-                    <div key={index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-center mb-3">
-                        <div
-                          className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            doc.type === 'pdf' ? 'bg-red-100' :
-                              doc.type === 'excel' ? 'bg-green-100' : 'bg-blue-100'
-                          }`}
-                        >
-                          <i className={`${doc.type === 'pdf' ? 'ri-file-pdf-line text-red-600' :
-                            doc.type === 'excel' ? 'ri-file-excel-line text-green-600' :
-                              'ri-file-word-line text-blue-600'}`}></i>
+                  <div className="space-y-4">
+                    {documents.length > 0 ? documents.map((doc) => (
+                      <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
+                        <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
+                          <i className={`${getFileIcon(doc.type)} text-lg`}></i>
                         </div>
-                        <div className="ml-3 flex-1">
-                          <h4 className="font-medium text-gray-900 text-sm">{doc.name}</h4>
-                          <p className="text-xs text-gray-500">{doc.size} • {doc.date}</p>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <h4 className="font-medium text-gray-800 truncate">{doc.name}</h4>
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDocumentStatusColor(doc.status)}`}>
+                              {getDocumentStatusText(doc.status)}
+                            </span>
+                          </div>
+                          <div className="flex items-center text-sm text-gray-600 space-x-4">
+                            <span>{doc.project}</span>
+                            <span>•</span>
+                            <span>{doc.size}</span>
+                            <span>•</span>
+                            <span>{doc.uploadTime}</span>
+                          </div>
+                          
+                          {(doc.status === 'processing' || doc.status === 'uploading') && (
+                            <div className="mt-2 flex items-center space-x-2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600"></div>
+                              <span className="text-xs text-gray-600">
+                                {doc.status === 'uploading' ? '正在上传...' : '正在解析...'}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        <button className="text-gray-400 hover:text-gray-600">
-                          <i className="ri-more-2-line"></i>
-                        </button>
+                        
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleDownloadDocument(doc.id, doc.name)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                            title="下载文档"
+                          >
+                            <i className="ri-download-line text-gray-600"></i>
+                          </button>
+                          <button
+                            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                            title="预览文档"
+                          >
+                            <i className="ri-eye-line text-gray-600"></i>
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex space-x-2">
-                        <button className="flex-1 px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors">
-                          预览
-                        </button>
-                        <button className="flex-1 px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors">
-                          下载
-                        </button>
-                      </div>
-                    </div>
                     )) : (
                       <div className="text-center py-8">
                         <i className="ri-file-list-line text-4xl text-gray-300 mb-2"></i>
                         <p className="text-gray-500">暂无文档</p>
+                        <p className="text-sm text-gray-400 mt-1">点击上传文档按钮添加项目相关文档</p>
                       </div>
                     )}
                   </div>
@@ -1124,6 +1259,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       {/* 编辑项目弹窗 */}
       {showEditModal && (
         <CreateProjectModal
+          isOpen={showEditModal}
           onClose={() => setShowEditModal(false)}
           onSuccess={() => {
             setShowEditModal(false);

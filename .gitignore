@@ -36,6 +36,7 @@ generated_backend/venv.bak/
 generated_backend/instance/
 generated_backend/migrations/versions/
 generated_backend/uploads/
+generated_backend/processed/
 generated_backend/.env
 
 # IDE files

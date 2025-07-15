@@ -210,18 +210,10 @@ def register_project_routes(app):
                 'data': project_data
             }), 201
             
-        except ValueError as e:
-            db.session.rollback()
-            current_app.logger.error(f"创建项目参数错误: {e}")
-            return jsonify({'success': False, 'error': f'参数错误: {str(e)}'}), 400
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"创建项目失败: {e}")
-            # 在开发环境中提供详细错误信息
-            if current_app.debug:
-                return jsonify({'success': False, 'error': f'创建项目失败: {str(e)}'}), 500
-            else:
-                return jsonify({'success': False, 'error': '服务器内部错误'}), 500
+            return jsonify({'success': False, 'error': '创建项目失败'}), 500
     
     @app.route('/api/projects/<int:project_id>', methods=['PUT'])
     def update_project(project_id):
@@ -299,7 +291,11 @@ def register_project_routes(app):
                 current_app.logger.warning(f"记录删除日志失败: {log_error}")
                 # 继续删除操作，不因为日志失败而中断
 
-            # 简化删除逻辑，依赖数据库级联删除
+            # 删除项目相关的所有文档文件
+            from services.document_processor import document_processor
+            document_processor.delete_project_documents(project)
+
+            # 删除数据库记录（依赖级联删除）
             db.session.delete(project)
             db.session.commit()
 

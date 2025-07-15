@@ -3,6 +3,7 @@
 使用SQLAlchemy ORM
 """
 
+import os
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -241,8 +242,19 @@ class Document(db.Model):
     upload_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     processing_result = db.Column(db.Text)
     error_message = db.Column(db.Text)
+    
+    # 新增的文档处理相关字段
+    processed_file_path = db.Column(db.String(500))  # 处理后的文件路径
+    processing_started_at = db.Column(db.DateTime)   # 处理开始时间
+    processed_at = db.Column(db.DateTime)            # 处理完成时间
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    @property
+    def filename(self):
+        """文件名属性，返回原始文件名"""
+        return self.original_filename
 
     def to_dict(self):
         """转换为字典"""
@@ -256,7 +268,12 @@ class Document(db.Model):
             'progress': self.progress,
             'uploadTime': self.created_at.strftime('%Y-%m-%d %H:%M'),
             'upload_by': self.upload_by,
-            'error_message': self.error_message
+            'error_message': self.error_message,
+            # 新增处理相关信息
+            'processing_started_at': self.processing_started_at.isoformat() if self.processing_started_at else None,
+            'processed_at': self.processed_at.isoformat() if self.processed_at else None,
+            'processed_file_path': self.processed_file_path,
+            'has_processed_file': bool(self.processed_file_path and os.path.exists(self.processed_file_path)) if self.processed_file_path else False
         }
 
     def get_frontend_file_type(self):
