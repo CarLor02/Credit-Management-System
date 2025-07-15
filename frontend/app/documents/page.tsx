@@ -1,21 +1,34 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Header from '@/components/Header';
 import DocumentUpload from './DocumentUpload';
 import DocumentList from './DocumentList';
-import ProjectSelector from './ProjectSelector';
+import ProjectSelector, { ProjectSelectorRef } from './ProjectSelector';
 
 export default function DocumentsPage() {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedProject, setSelectedProject] = useState('');
+  const projectSelectorRef = useRef<ProjectSelectorRef>(null);
 
   // 刷新文档列表的函数
   const refreshDocuments = () => {
     setRefreshTrigger(prev => prev + 1);
+    // 同时刷新项目选择器以更新文档数量
+    if (projectSelectorRef.current) {
+      projectSelectorRef.current.refreshProjects();
+    }
+  };
+
+  // 文档发生变化时的回调（如删除文档）
+  const handleDocumentChange = () => {
+    // 刷新项目选择器以更新文档数量
+    if (projectSelectorRef.current) {
+      projectSelectorRef.current.refreshProjects();
+    }
   };
 
   return (
@@ -33,6 +46,7 @@ export default function DocumentsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div>
             <ProjectSelector 
+              ref={projectSelectorRef}
               selectedProject={selectedProject}
               onProjectChange={setSelectedProject}
             />
@@ -87,6 +101,7 @@ export default function DocumentsPage() {
               searchQuery={searchQuery}
               selectedProject={selectedProject}
               refreshTrigger={refreshTrigger}
+              onDocumentChange={handleDocumentChange}
             />
           </div>
         </div>

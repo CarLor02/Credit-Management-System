@@ -105,11 +105,11 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
         if (!response.success) {
           throw new Error(response.error || `上传文件 ${file.name} 失败`);
         }
+      }
 
-        // 立即刷新文档列表，文件会显示为"上传中"状态
-        if (onSuccess) {
-          onSuccess();
-        }
+      // 所有文件上传完成后，一次性刷新文档列表和项目选择器
+      if (onSuccess) {
+        onSuccess();
       }
 
       // 上传完成，重置状态（保持项目选择）
@@ -217,25 +217,6 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
             <i className="ri-refresh-line mr-2"></i>
             手动重建知识库
           </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">上传统计</h3>
-        
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">今日上传</span>
-            <span className="font-medium text-gray-800">12 个文件</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">本月上传</span>
-            <span className="font-medium text-gray-800">156 个文件</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">存储空间</span>
-            <span className="font-medium text-gray-800">2.3 GB / 10 GB</span>
-          </div>
         </div>
       </div>
     </div>

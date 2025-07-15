@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { projectService } from '@/services/projectService';
 import { Project } from '@/data/mockData';
 
@@ -9,32 +9,47 @@ interface ProjectSelectorProps {
   onProjectChange: (projectId: string) => void;
 }
 
-export default function ProjectSelector({ selectedProject, onProjectChange }: ProjectSelectorProps) {
+export interface ProjectSelectorRef {
+  refreshProjects: () => void;
+}
+
+const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ selectedProject, onProjectChange }, ref) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // 加载项目列表
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
+  const loadProjects = async (showLoading = true) => {
+    try {
+      if (showLoading) {
         setLoading(true);
-        const response = await projectService.getProjects();
-        if (response.success && response.data && Array.isArray(response.data)) {
-          setProjects(response.data);
-        } else {
-          setProjects([]);
-          setError('加载项目列表失败');
-        }
-      } catch (err) {
+      }
+      const response = await projectService.getProjects();
+      if (response.success && response.data && Array.isArray(response.data)) {
+        setProjects(response.data);
+        setError(null);
+      } else {
         setProjects([]);
-        setError('网络错误，请稍后重试');
-        console.error('Load projects error:', err);
-      } finally {
+        setError('加载项目列表失败');
+      }
+    } catch (err) {
+      setProjects([]);
+      setError('网络错误，请稍后重试');
+      console.error('Load projects error:', err);
+    } finally {
+      if (showLoading) {
         setLoading(false);
       }
-    };
+    }
+  };
 
+  // 暴露刷新函数给父组件（静默刷新，不显示loading）
+  useImperativeHandle(ref, () => ({
+    refreshProjects: () => loadProjects(false)
+  }));
+
+  // 加载项目列表
+  useEffect(() => {
     loadProjects();
   }, []);
 
@@ -118,4 +133,8 @@ export default function ProjectSelector({ selectedProject, onProjectChange }: Pr
       </div>
     </div>
   );
-}
+});
+
+ProjectSelector.displayName = 'ProjectSelector';
+
+export default ProjectSelector;

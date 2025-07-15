@@ -10,9 +10,10 @@ interface DocumentListProps {
   searchQuery: string;
   selectedProject: string;
   refreshTrigger?: number;
+  onDocumentChange?: () => void; // 新增：文档变化时的回调
 }
 
-export default function DocumentList({ activeTab, searchQuery, selectedProject, refreshTrigger }: DocumentListProps) {
+export default function DocumentList({ activeTab, searchQuery, selectedProject, refreshTrigger, onDocumentChange }: DocumentListProps) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,28 +23,50 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   const updateDocuments = useCallback((newDocuments: Document[]) => {
     const prevDocs = previousDataRef.current;
     
-    // 如果是首次加载或文档数量变化，直接更新
-    if (prevDocs.length === 0 || prevDocs.length !== newDocuments.length) {
+    // 如果是首次加载，直接更新
+    if (prevDocs.length === 0) {
       setDocuments(newDocuments);
       previousDataRef.current = newDocuments;
       return;
     }
 
-    // 检查是否有实质性变化
-    const hasChanges = newDocuments.some((newDoc, index) => {
-      const oldDoc = prevDocs[index];
-      return !oldDoc || 
-             oldDoc.id !== newDoc.id ||
-             oldDoc.status !== newDoc.status ||
-             oldDoc.progress !== newDoc.progress ||
-             oldDoc.name !== newDoc.name;
-    });
-
-    // 只有在有实质性变化时才更新状态
-    if (hasChanges) {
+    // 如果文档数量变化，直接更新
+    if (prevDocs.length !== newDocuments.length) {
       setDocuments(newDocuments);
       previousDataRef.current = newDocuments;
+      return;
     }
+
+    // 创建ID映射以便快速查找
+    const prevDocsMap = new Map(prevDocs.map(doc => [doc.id, doc]));
+    const newDocsMap = new Map(newDocuments.map(doc => [doc.id, doc]));
+
+    // 检查是否有实质性变化
+    let hasChanges = false;
+    
+    // 检查新文档是否有变化
+    for (const newDoc of newDocuments) {
+      const oldDoc = prevDocsMap.get(newDoc.id);
+      if (!oldDoc || 
+          oldDoc.status !== newDoc.status ||
+          oldDoc.progress !== newDoc.progress ||
+          oldDoc.name !== newDoc.name ||
+          oldDoc.type !== newDoc.type) {
+        hasChanges = true;
+        break;
+      }
+    }
+
+    // 如果没有变化，不更新
+    if (!hasChanges) {
+      return;
+    }
+
+    // 使用requestAnimationFrame确保在下一帧更新，减少闪烁
+    requestAnimationFrame(() => {
+      setDocuments(newDocuments);
+      previousDataRef.current = newDocuments;
+    });
   }, []);
 
   // 加载文档数据
@@ -129,15 +152,38 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
 
   // 删除文档
   const handleDeleteDocument = async (id: number) => {
+    // 确认删除
+    if (!window.confirm('确定要删除这个文档吗？此操作不可恢复。')) {
+      return;
+    }
+
     try {
+      // 乐观更新：立即从UI中移除文档
+      const docToDelete = documents.find(doc => doc.id === id);
+      if (!docToDelete) return;
+
+      const updatedDocuments = documents.filter(doc => doc.id !== id);
+      updateDocuments(updatedDocuments);
+
       const response = await documentService.deleteDocument(id);
       if (response.success) {
-        // 重新加载文档列表
-        loadDocuments();
+        // 删除成功，通知父组件文档数据发生变化（不重新加载文档列表）
+        if (onDocumentChange) {
+          onDocumentChange();
+        }
       } else {
+        // 删除失败，恢复文档
+        const restoredDocuments = [...updatedDocuments, docToDelete].sort((a, b) => a.id - b.id);
+        updateDocuments(restoredDocuments);
         alert(response.error || '删除文档失败');
       }
     } catch (err) {
+      // 网络错误，恢复文档
+      const docToDelete = documents.find(doc => doc.id === id);
+      if (docToDelete) {
+        const restoredDocuments = [...documents.filter(doc => doc.id !== id), docToDelete].sort((a, b) => a.id - b.id);
+        updateDocuments(restoredDocuments);
+      }
       alert('删除文档失败，请稍后重试');
       console.error('Delete document error:', err);
     }
@@ -254,9 +300,9 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
 
             {/* 文档列表 */}
             {!loading && !error && (
-              <div className="space-y-4">
+              <div className="space-y-4 animate-fadeIn">
                 {filteredDocuments.map((doc) => (
-            <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
+            <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-all duration-200 ease-in-out transform hover:scale-[1.01] hover:shadow-md">
               <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
                 <i className={`${getFileIcon(doc.type)} text-lg`}></i>
               </div>
@@ -290,27 +336,23 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => handleDownloadDocument(doc.id, doc.name)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
                     title="下载文档"
                   >
                     <i className="ri-download-line text-gray-600"></i>
                   </button>
                   <button
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
                     title="预览文档"
                   >
                     <i className="ri-eye-line text-gray-600"></i>
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm(`确定要删除文档 "${doc.name}" 吗？`)) {
-                        handleDeleteDocument(doc.id);
-                      }
-                    }}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                    onClick={() => handleDeleteDocument(doc.id)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-100 transition-all duration-200 btn-hover-scale"
                     title="删除文档"
                   >
-                    <i className="ri-delete-bin-line text-gray-600"></i>
+                    <i className="ri-delete-bin-line text-red-600"></i>
                   </button>
                 </div>
               </div>
