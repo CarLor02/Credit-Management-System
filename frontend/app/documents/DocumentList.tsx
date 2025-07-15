@@ -223,6 +223,8 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
         return 'ri-file-word-line text-blue-600';
       case 'image':
         return 'ri-image-line text-purple-600';
+      case 'markdown':
+        return 'ri-markdown-line text-orange-600';
       default:
         return 'ri-file-line text-gray-600';
     }

@@ -13,7 +13,7 @@ import { Document, mockDocuments } from '@/data/mockData';
 export interface UploadDocumentData {
   name: string;
   project: string;
-  type: 'pdf' | 'excel' | 'word' | 'image';
+  type: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   file: File;
 }
 
@@ -23,7 +23,7 @@ export interface UploadDocumentData {
 export interface DocumentQueryParams {
   project?: string;
   status?: 'uploading' | 'completed' | 'processing' | 'failed';
-  type?: 'pdf' | 'excel' | 'word' | 'image';
+  type?: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   search?: string;
   page?: number;
   limit?: number;

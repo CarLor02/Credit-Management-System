@@ -14,7 +14,7 @@ from utils import validate_request, log_action
 
 def allowed_file(filename):
     """检查文件类型是否允许"""
-    allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS', {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'jpg', 'jpeg', 'png'})
+    allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS', {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'jpg', 'jpeg', 'png', 'md'})
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
 def get_file_type(filename):
@@ -29,6 +29,8 @@ def get_file_type(filename):
         return 'word'
     elif ext in ['jpg', 'jpeg', 'png']:
         return 'image'
+    elif ext in ['md']:
+        return 'markdown'
     else:
         return 'other'
 
@@ -229,45 +231,82 @@ def register_document_routes(app):
                 details=f'文档上传完成: {document.name}'
             )
             
-            # 触发OCR处理
+            # 触发OCR处理或md文件处理
             from services.document_processor import document_processor
             
             # 保存文档ID和项目名，避免会话问题
             doc_id = document.id
             project_name_for_log = project.name
             
-            def start_ocr_processing():
-                """启动OCR处理"""
-                try:
-                    with app.app_context():
-                        current_app.logger.info(f"开始OCR处理文档: {doc_id}")
-                        success = document_processor.process_document(doc_id)
-                        
-                        if success:
-                            current_app.logger.info(f"OCR处理完成: {doc_id}")
-                            # 记录活动日志
-                            try:
-                                from services.stats_service import ActivityLogger
-                                doc = Document.query.get(doc_id)
-                                if doc:
-                                    user = User.query.get(doc.upload_by)
-                                    user_name = user.full_name if user else 'Unknown'
-                                    ActivityLogger.log_document_uploaded(
-                                        doc.id, doc.name, project_name_for_log, doc.upload_by, user_name
-                                    )
-                            except Exception as e:
-                                current_app.logger.warning(f"记录活动日志失败: {e}")
-                        else:
-                            current_app.logger.error(f"OCR处理失败: {doc_id}")
+            # 检查是否为md文件
+            if file_type == 'markdown':
+                # md文件直接处理，不需要OCR
+                def process_md_file():
+                    """处理md文件"""
+                    try:
+                        with app.app_context():
+                            current_app.logger.info(f"开始处理md文件: {doc_id}")
+                            success = document_processor.process_markdown_file(doc_id)
                             
-                except Exception as e:
-                    current_app.logger.error(f"OCR处理异常: {e}")
-            
-            # 在后台线程中启动OCR处理
-            import threading
-            thread = threading.Thread(target=start_ocr_processing)
-            thread.daemon = True
-            thread.start()
+                            if success:
+                                current_app.logger.info(f"md文件处理完成: {doc_id}")
+                                # 记录活动日志
+                                try:
+                                    from services.stats_service import ActivityLogger
+                                    doc = Document.query.get(doc_id)
+                                    if doc:
+                                        user = User.query.get(doc.upload_by)
+                                        user_name = user.full_name if user else 'Unknown'
+                                        ActivityLogger.log_document_uploaded(
+                                            doc.id, doc.name, project_name_for_log, doc.upload_by, user_name
+                                        )
+                                except Exception as e:
+                                    current_app.logger.warning(f"记录活动日志失败: {e}")
+                            else:
+                                current_app.logger.error(f"md文件处理失败: {doc_id}")
+                                
+                    except Exception as e:
+                        current_app.logger.error(f"md文件处理异常: {e}")
+                
+                # 在后台线程中处理md文件
+                import threading
+                thread = threading.Thread(target=process_md_file)
+                thread.daemon = True
+                thread.start()
+            else:
+                # 非md文件，使用OCR处理
+                def start_ocr_processing():
+                    """启动OCR处理"""
+                    try:
+                        with app.app_context():
+                            current_app.logger.info(f"开始OCR处理文档: {doc_id}")
+                            success = document_processor.process_document(doc_id)
+                            
+                            if success:
+                                current_app.logger.info(f"OCR处理完成: {doc_id}")
+                                # 记录活动日志
+                                try:
+                                    from services.stats_service import ActivityLogger
+                                    doc = Document.query.get(doc_id)
+                                    if doc:
+                                        user = User.query.get(doc.upload_by)
+                                        user_name = user.full_name if user else 'Unknown'
+                                        ActivityLogger.log_document_uploaded(
+                                            doc.id, doc.name, project_name_for_log, doc.upload_by, user_name
+                                        )
+                                except Exception as e:
+                                    current_app.logger.warning(f"记录活动日志失败: {e}")
+                            else:
+                                current_app.logger.error(f"OCR处理失败: {doc_id}")
+                                
+                    except Exception as e:
+                        current_app.logger.error(f"OCR处理异常: {e}")
+                
+                # 在后台线程中启动OCR处理
+                import threading
+                thread = threading.Thread(target=start_ocr_processing)
+                thread.daemon = True
+                thread.start()
             
             return jsonify(upload_response), 201
             

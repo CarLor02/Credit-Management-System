@@ -57,7 +57,7 @@ export interface Document {
   id: number;
   name: string;
   project: string;
-  type: 'pdf' | 'excel' | 'word' | 'image';
+  type: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   size: string;
   status: 'uploading' | 'completed' | 'processing' | 'failed';
   uploadTime: string;

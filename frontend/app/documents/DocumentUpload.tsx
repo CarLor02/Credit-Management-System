@@ -83,7 +83,7 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
       // 上传每个文件
       for (const file of files) {
         // 确定文件类型
-        let fileType: 'pdf' | 'excel' | 'word' | 'image' = 'pdf';
+        let fileType: 'pdf' | 'excel' | 'word' | 'image' | 'markdown' = 'pdf';
         const extension = file.name.split('.').pop()?.toLowerCase();
 
         if (extension === 'xlsx' || extension === 'xls') {
@@ -92,6 +92,8 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
           fileType = 'word';
         } else if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
           fileType = 'image';
+        } else if (extension === 'md') {
+          fileType = 'markdown';
         }
 
         // 上传文件，立即触发列表刷新显示"上传中"状态
@@ -164,7 +166,7 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
               <input
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.md"
                 onChange={handleFileSelect}
                 className="hidden"
                 id="file-upload"

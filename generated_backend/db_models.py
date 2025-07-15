@@ -287,6 +287,8 @@ class Document(db.Model):
             return 'word'
         elif extension in ['jpg', 'jpeg', 'png', 'gif']:
             return 'image'
+        elif extension in ['markdown']:
+            return 'markdown'
         else:
             return 'pdf'  # 默认返回pdf
 

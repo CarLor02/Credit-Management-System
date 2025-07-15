@@ -360,6 +360,62 @@ class DocumentProcessor:
         except Exception as e:
             current_app.logger.error(f"删除项目文档失败: {e}")
             return False
+    
+    def process_markdown_file(self, document_id: int) -> bool:
+        """处理markdown文件（无需OCR，直接复制）"""
+        try:
+            document = Document.query.get(document_id)
+            if not document:
+                current_app.logger.error(f"文档不存在: {document_id}")
+                return False
+            
+            # 更新状态为处理中，进度为10%
+            document.status = DocumentStatus.PROCESSING
+            document.processing_started_at = datetime.utcnow()
+            document.progress = 10
+            db.session.commit()
+            
+            current_app.logger.info(f"开始处理markdown文件: {document.filename}")
+            
+            # 构建输入和输出路径
+            input_file = document.file_path
+            if not os.path.exists(input_file):
+                current_app.logger.error(f"源文件不存在: {input_file}")
+                self._mark_processing_failed(document, "源文件不存在")
+                return False
+            
+            # 创建处理后文件的路径，进度为30%
+            processed_file_path = self._create_processed_file_path(document)
+            document.progress = 30
+            db.session.commit()
+            
+            # 直接复制md文件内容到processed目录，进度为70%
+            document.progress = 70
+            db.session.commit()
+            
+            # 读取原始md文件内容
+            with open(input_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 写入到processed目录
+            with open(processed_file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # 更新文档状态为已完成，进度为100%
+            document.status = DocumentStatus.COMPLETED
+            document.processed_file_path = processed_file_path
+            document.processed_at = datetime.utcnow()
+            document.progress = 100
+            db.session.commit()
+            
+            current_app.logger.info(f"markdown文件处理完成: {document.filename}")
+            return True
+                
+        except Exception as e:
+            current_app.logger.error(f"处理markdown文件失败: {e}")
+            if 'document' in locals():
+                self._mark_processing_failed(document, str(e))
+            return False
 
 # 全局文档处理器实例
 document_processor = DocumentProcessor()
