@@ -69,13 +69,6 @@ class ReportStatus(enum.Enum):
     COMPLETED = 'completed'
     FAILED = 'failed'
 
-class KnowledgeBaseStatus(enum.Enum):
-    """知识库状态枚举"""
-    CREATING = 'creating'
-    READY = 'ready'
-    UPDATING = 'updating'
-    ERROR = 'error'
-
 class BusinessLicenseStatus(enum.Enum):
     """营业执照状态枚举"""
     NORMAL = 'normal'
@@ -186,6 +179,10 @@ class Project(db.Model):
     personal_info = db.Column(JSON)  # 个人信息
     financial_data = db.Column(JSON)  # 财务数据
 
+    # 知识库相关字段
+    dataset_id = db.Column(db.String(100))  # RAG知识库的dataset_id
+    knowledge_base_name = db.Column(db.String(200))  # 知识库名称
+
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     assigned_to = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -195,7 +192,6 @@ class Project(db.Model):
     documents = db.relationship('Document', backref='project', lazy='dynamic', cascade='all, delete-orphan')
     members = db.relationship('ProjectMember', backref='project', lazy='dynamic', cascade='all, delete-orphan')
     reports = db.relationship('AnalysisReport', backref='project', lazy='dynamic', cascade='all, delete-orphan')
-    knowledge_base = db.relationship('KnowledgeBase', backref='project', uselist=False, cascade='all, delete-orphan')
     
     def to_dict(self):
         """转换为字典"""
@@ -366,37 +362,6 @@ class AnalysisReport(db.Model):
 
     def __repr__(self):
         return f'<AnalysisReport {self.title}>'
-
-class KnowledgeBase(db.Model):
-    """知识库模型"""
-    __tablename__ = 'knowledge_bases'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
-    dataset_id = db.Column(db.String(100))
-    status = db.Column(db.Enum(KnowledgeBaseStatus), default=KnowledgeBaseStatus.CREATING, nullable=False)
-    document_count = db.Column(db.Integer, default=0)
-    parsing_complete = db.Column(db.Boolean, default=False, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    def to_dict(self):
-        """转换为字典"""
-        return {
-            'id': self.id,
-            'name': self.name,
-            'project_id': self.project_id,
-            'dataset_id': self.dataset_id,
-            'status': self.status.value,
-            'document_count': self.document_count,
-            'parsing_complete': self.parsing_complete,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
-        }
-
-    def __repr__(self):
-        return f'<KnowledgeBase {self.name}>'
 
 class SystemLog(db.Model):
     """系统日志模型"""

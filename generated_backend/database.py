@@ -33,7 +33,7 @@ def create_tables(app):
     """创建所有数据库表"""
     with app.app_context():
         # 导入所有模型以确保它们被注册
-        from db_models import User, Project, Document, ProjectMember, AnalysisReport, KnowledgeBase, SystemLog, SystemSetting
+        from db_models import User, Project, Document, ProjectMember, AnalysisReport, SystemLog, SystemSetting
         
         # 创建所有表
         db.create_all()

@@ -11,10 +11,9 @@ from werkzeug.security import generate_password_hash
 from database import db
 from db_models import (
     User, Project, Document, ProjectMember, AnalysisReport, 
-    KnowledgeBase, SystemLog, SystemSetting,
+    SystemLog, SystemSetting,
     UserRole, ProjectType, ProjectStatus, Priority, RiskLevel,
-    DocumentStatus, ProjectMemberRole, ReportType, ReportStatus,
-    KnowledgeBaseStatus
+    DocumentStatus, ProjectMemberRole, ReportType, ReportStatus
 )
 
 def create_seed_data():
@@ -32,9 +31,6 @@ def create_seed_data():
     
     # 创建文档
     create_documents(projects, users)
-    
-    # 创建知识库
-    create_knowledge_bases(projects)
     
     # 创建分析报告
     create_analysis_reports(projects, users)
@@ -332,21 +328,6 @@ def create_documents(projects, users):
         db.session.add(document)
 
     print(f"创建了 {len(documents_data)} 个文档")
-
-def create_knowledge_bases(projects):
-    """创建知识库数据"""
-    for project in projects:
-        kb = KnowledgeBase(
-            name=f"{project.name}_知识库",
-            project_id=project.id,
-            dataset_id=f"dataset_{project.id}",
-            status=KnowledgeBaseStatus.READY if project.status == ProjectStatus.COMPLETED else KnowledgeBaseStatus.CREATING,
-            document_count=len(list(project.documents)),
-            parsing_complete=project.status == ProjectStatus.COMPLETED
-        )
-        db.session.add(kb)
-
-    print(f"创建了 {len(projects)} 个知识库")
 
 def create_analysis_reports(projects, users):
     """创建分析报告数据"""

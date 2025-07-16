@@ -15,6 +15,7 @@ from typing import Optional, Dict, Any
 # 导入文档处理库
 try:
     from docx import Document as DocxDocument
+    import docx2txt
     import mammoth
     DOCX_AVAILABLE = True
 except ImportError:
@@ -94,6 +95,10 @@ class DocumentProcessor:
                 db.session.commit()
                 
                 current_app.logger.info(f"文档处理完成: {document.filename}")
+                
+                # 检查是否需要创建知识库
+                self._check_and_create_knowledge_base(document)
+                
                 return True
             else:
                 self._mark_processing_failed(document, "OCR处理失败")
@@ -196,7 +201,7 @@ class DocumentProcessor:
         try:
             # 检查是否有docx处理库
             if not DOCX_AVAILABLE:
-                current_app.logger.error("缺少docx处理库，请安装 python-docx 和 mammoth")
+                current_app.logger.error("缺少docx处理库，请安装 python-docx、docx2txt 和 mammoth")
                 return False
             
             # 进度为50%
@@ -344,7 +349,7 @@ class DocumentProcessor:
             return 'image'
         elif extension in ['.md', '.markdown']:
             return 'markdown'
-        elif extension in ['.docx']:
+        elif extension in ['.doc', '.docx']:
             return 'word'
         else:
             return None
@@ -500,6 +505,10 @@ class DocumentProcessor:
             db.session.commit()
             
             current_app.logger.info(f"markdown文件处理完成: {document.filename}")
+            
+            # 检查是否需要创建知识库
+            self._check_and_create_knowledge_base(document)
+            
             return True
                 
         except Exception as e:
@@ -518,7 +527,7 @@ class DocumentProcessor:
             
             # 检查是否有docx处理库
             if not DOCX_AVAILABLE:
-                current_app.logger.error("缺少docx处理库，请安装 python-docx 和 mammoth")
+                current_app.logger.error("缺少docx处理库，请安装 python-docx、docx2txt 和 mammoth")
                 self._mark_processing_failed(document, "缺少docx处理库")
                 return False
             
@@ -568,6 +577,10 @@ class DocumentProcessor:
             db.session.commit()
             
             current_app.logger.info(f"Word文件处理完成: {document.filename}")
+            
+            # 检查是否需要创建知识库
+            self._check_and_create_knowledge_base(document)
+            
             return True
                 
         except Exception as e:
@@ -584,13 +597,16 @@ class DocumentProcessor:
             if file_extension == '.docx':
                 # 处理.docx文件，优先使用mammoth，fallback到python-docx
                 return self._extract_docx_content(file_path, filename)
+            elif file_extension == '.doc':
+                # 处理.doc文件
+                return self._extract_doc_content(file_path, filename)
             else:
                 current_app.logger.error(f"不支持的文件类型: {file_extension}")
-                return self._generate_unsupported_format_message(file_extension)
+                return self._generate_doc_conversion_message(f"不支持的文件类型: {file_extension}")
                 
         except Exception as e:
             current_app.logger.error(f"提取Word内容失败: {e}")
-            return self._generate_unsupported_format_message("处理过程中发生错误", str(e))
+            return self._generate_doc_conversion_message("文档处理过程中发生错误", str(e))
     
     def _extract_docx_content(self, file_path: str, filename: str) -> str:
         """提取.docx文件内容，优先使用mammoth，fallback到python-docx"""
@@ -663,39 +679,72 @@ class DocumentProcessor:
             current_app.logger.error(f"python-docx提取.docx内容失败: {e}")
             return self._generate_doc_conversion_message("DOCX文档解析失败", str(e))
     
-    def _generate_unsupported_format_message(self, format_or_reason: str, error_detail: str = None) -> str:
-        """生成不支持格式的错误信息"""
-        message = f"""# 文档格式不支持
-
-## 错误原因
-{format_or_reason}
-
-## 解决方案
-请使用以下支持的文档格式：
-
-### 推荐格式
-- **DOCX**: Microsoft Word 2007及以上版本格式
-- **Markdown**: 纯文本标记语言格式
-- **PDF**: 便携式文档格式（通过OCR处理）
-
-### 如何转换
-1. **Word文档**: 使用Microsoft Word打开文件，选择"另存为"，格式选择"Word文档(.docx)"
-2. **其他格式**: 使用相应的软件转换为支持的格式
-
-## 当前支持的文档格式
-- ✅ .docx (Microsoft Word)
-- ✅ .md (Markdown)
-- ✅ .pdf (PDF文档)
-- ✅ .xlsx/.xls (Excel表格)
-- ✅ .jpg/.jpeg/.png (图片文件)
-
----
-*系统不再支持.doc格式文件，请转换为.docx格式后重新上传。*"""
-        
-        if error_detail:
-            message += f"\n\n## 详细错误信息\n```\n{error_detail}\n```"
-        
-        return message
+    def _extract_doc_content(self, file_path: str, filename: str) -> str:
+        """提取.doc文件内容"""
+        try:
+            # 方法1：使用docx2txt
+            try:
+                content = docx2txt.process(file_path)
+                if content and content.strip():
+                    document_title = Path(filename).stem
+                    markdown_content = f"# {document_title}\n\n{self._convert_to_markdown(content)}"
+                    current_app.logger.info(f"使用docx2txt成功转换doc文件: {filename}")
+                    return markdown_content
+                else:
+                    current_app.logger.warning(f"docx2txt未能提取到内容")
+                    return self._extract_doc_content_fallback(file_path, filename)
+            except Exception as e:
+                error_msg = str(e)
+                current_app.logger.warning(f"docx2txt处理失败: {error_msg}")
+                
+                # 检查是否是文件格式问题
+                if "not a zip file" in error_msg.lower() or "bad zip file" in error_msg.lower():
+                    # 这是真正的.doc文件，不是.docx文件
+                    return self._generate_doc_conversion_message("旧版本的.doc文件格式（非OpenXML）")
+                elif "no such file" in error_msg.lower() or "not found" in error_msg.lower():
+                    return self._generate_doc_conversion_message("文件不存在或无法访问")
+                else:
+                    # 尝试fallback方法
+                    return self._extract_doc_content_fallback(file_path, filename)
+                    
+        except Exception as e:
+            current_app.logger.error(f"提取.doc内容失败: {e}")
+            return self._generate_doc_conversion_message("DOC文档处理失败", str(e))
+    
+    def _extract_doc_content_fallback(self, file_path: str, filename: str) -> str:
+        """使用备用方法提取.doc文件内容"""
+        try:
+            # 尝试使用python-docx打开.doc文件（有时也能工作）
+            doc = DocxDocument(file_path)
+            content = []
+            
+            for paragraph in doc.paragraphs:
+                text = paragraph.text.strip()
+                if text:
+                    content.append(text)
+            
+            if content:
+                document_title = Path(filename).stem
+                content_text = '\n'.join(content)
+                markdown_content = f"# {document_title}\n\n{self._convert_to_markdown(content_text)}"
+                current_app.logger.info(f"使用python-docx fallback成功转换doc文件: {filename}")
+                return markdown_content
+            else:
+                return self._generate_doc_conversion_message("文档内容为空")
+            
+        except Exception as e:
+            error_msg = str(e)
+            current_app.logger.error(f"备用方法提取.doc内容失败: {error_msg}")
+            
+            # 分析错误类型，提供更有用的错误信息
+            if "not a zip file" in error_msg.lower():
+                return self._generate_doc_conversion_message("旧版本的.doc文件格式")
+            elif "not a valid file" in error_msg.lower():
+                return self._generate_doc_conversion_message("文件格式不正确或已损坏")
+            elif "unsupported format" in error_msg.lower():
+                return self._generate_doc_conversion_message("不支持的文件格式")
+            else:
+                return self._generate_doc_conversion_message("未知错误", error_msg)
     
     def _get_heading_level(self, style_name: str) -> int:
         """根据样式名获取标题级别"""
@@ -774,6 +823,110 @@ class DocumentProcessor:
                 markdown_lines.append(line)
         
         return '\n'.join(markdown_lines)
+    
+    def _generate_doc_conversion_message(self, reason: str, error_detail: str = None) -> str:
+        """生成doc文件转换错误的信息"""
+        message = f"""# 文档内容提取失败
+
+## 错误原因
+{reason}
+
+## 解决方案
+1. **推荐方案**: 使用Microsoft Word打开此文件，另存为.docx格式后重新上传
+2. **替代方案**: 使用在线文档转换工具将.doc转换为.docx格式
+3. **备用方案**: 将文档内容复制到新的Word文档中保存为.docx格式
+
+## 技术说明
+- 当前系统支持现代的.docx格式（Office 2007及以上版本）
+- 使用mammoth库进行高质量的markdown转换
+- 旧版本的.doc格式（Office 97-2003）需要转换后才能正确解析
+- 如果文件实际上是.docx格式但扩展名为.doc，请直接重命名为.docx
+
+## 支持的文档格式
+- ✅ .docx (推荐，支持完整格式转换)
+- ✅ .md (Markdown)
+- ✅ .pdf (通过OCR)
+- ❌ .doc (需要转换)
+
+---
+*如果问题持续存在，请检查文档是否完整且未损坏。*"""
+        
+        if error_detail:
+            message += f"\n\n## 详细错误信息\n```\n{error_detail}\n```"
+        
+        return message
+    
+    def _check_and_create_knowledge_base(self, document: Document):
+        """检查并创建知识库（如果是首次上传）"""
+        try:
+            # 导入知识库服务
+            from services.knowledge_base_service import knowledge_base_service
+            
+            project_id = document.project_id
+            user_id = document.upload_by
+            
+            # 检查是否是首次上传（即当前文档是项目的第一个完成的文档）
+            completed_docs_count = Document.query.filter_by(
+                project_id=project_id,
+                status=DocumentStatus.COMPLETED
+            ).count()
+            
+            current_app.logger.info(f"项目 {project_id} 已完成文档数量: {completed_docs_count}")
+            
+            # 如果是首次上传完成的文档，创建知识库
+            if completed_docs_count == 1:  # 当前文档是第一个完成的文档
+                current_app.logger.info(f"项目 {project_id} 首次上传文档完成，开始创建知识库")
+                
+                # 创建知识库
+                dataset_id = knowledge_base_service.create_knowledge_base_for_project(
+                    project_id=project_id,
+                    user_id=user_id
+                )
+                
+                if dataset_id:
+                    current_app.logger.info(f"成功为项目 {project_id} 创建知识库，dataset_id: {dataset_id}")
+                    
+                    # 上传当前文档到知识库
+                    self._upload_document_to_knowledge_base(document)
+                else:
+                    current_app.logger.error(f"为项目 {project_id} 创建知识库失败")
+            else:
+                current_app.logger.info(f"项目 {project_id} 已有其他完成的文档，知识库应该已存在")
+                
+                # 上传当前文档到已存在的知识库
+                self._upload_document_to_knowledge_base(document)
+                
+        except Exception as e:
+            current_app.logger.error(f"检查和创建知识库失败: {e}")
+            # 不影响文档处理的主流程，只记录错误
+    
+    def _upload_document_to_knowledge_base(self, document: Document):
+        """将文档上传到知识库"""
+        try:
+            from services.knowledge_base_service import knowledge_base_service
+            
+            # 检查项目是否有知识库
+            project = document.project
+            if not project or not project.dataset_id:
+                current_app.logger.warning(f"项目 {document.project_id} 没有知识库，跳过文档上传")
+                return
+            
+            current_app.logger.info(f"开始上传文档 {document.name} 到知识库 {project.dataset_id}")
+            
+            # 上传文档到知识库
+            success = knowledge_base_service.upload_document_to_knowledge_base(
+                project_id=document.project_id,
+                document_id=document.id
+            )
+            
+            if success:
+                current_app.logger.info(f"成功上传文档 {document.name} 到知识库")
+            else:
+                current_app.logger.error(f"上传文档 {document.name} 到知识库失败")
+                
+        except Exception as e:
+            current_app.logger.error(f"上传文档到知识库异常: {e}")
+            # 不影响文档处理的主流程，只记录错误
 
 # 全局文档处理器实例
 document_processor = DocumentProcessor()

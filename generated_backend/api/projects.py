@@ -7,7 +7,7 @@ from sqlalchemy import or_, and_
 from datetime import datetime
 
 from database import db
-from db_models import Project, User, ProjectMember, Document, KnowledgeBase, SystemLog
+from db_models import Project, User, ProjectMember, Document, SystemLog
 from db_models import ProjectType, ProjectStatus, Priority, RiskLevel, ProjectMemberRole
 from utils import validate_request, log_action
 
@@ -153,13 +153,6 @@ def register_project_routes(app):
                 role=ProjectMemberRole.OWNER
             )
             db.session.add(member)
-            
-            # 创建知识库
-            knowledge_base = KnowledgeBase(
-                name=f"{project.name}_知识库",
-                project_id=project.id
-            )
-            db.session.add(knowledge_base)
             
             db.session.commit()
             

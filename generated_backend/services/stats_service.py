@@ -7,7 +7,7 @@ from datetime import datetime, date, timedelta
 from sqlalchemy import func, and_, or_
 from database import db
 from db_models import (
-    Project, Document, User, AnalysisReport, KnowledgeBase,
+    Project, Document, User, AnalysisReport,
     DashboardStats, ActivityLog, ProjectStatus, DocumentStatus, RiskLevel
 )
 
