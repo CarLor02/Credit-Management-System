@@ -524,7 +524,7 @@ def _check_and_create_knowledge_base(doc_id, project_name):
         project_name: 项目名称
     """
     try:
-        from services.rag_service import rag_service
+        from services.knowledge_base_service import knowledge_base_service
         
         # 获取文档信息
         document = Document.query.get(doc_id)
@@ -538,9 +538,10 @@ def _check_and_create_knowledge_base(doc_id, project_name):
             return
             
         # 检查项目是否已经有知识库
-        existing_kb = KnowledgeBase.query.filter_by(project_id=project.id).first()
-        if existing_kb:
-            current_app.logger.info(f"项目已有知识库: {project.name}, KB ID: {existing_kb.id}")
+        if project.dataset_id:
+            current_app.logger.info(f"项目已有知识库: {project.name}, Dataset ID: {project.dataset_id}")
+            # 如果已有知识库，直接上传当前文档
+            knowledge_base_service.upload_document_to_knowledge_base(project.id, document.id)
             return
         
         # 检查当前项目是否是首次上传文件（即只有一个文档且已处理完成）
@@ -553,52 +554,31 @@ def _check_and_create_knowledge_base(doc_id, project_name):
             current_app.logger.info(f"项目还没有完成首次文档处理或已有多个文档: {project.name}, 完成数量: {completed_docs}")
             return
         
-        # 获取用户信息
-        user = User.query.get(document.upload_by)
-        user_name = user.full_name if user else 'Unknown'
+        current_app.logger.info(f"开始为项目创建知识库: {project.name}")
         
-        current_app.logger.info(f"开始为项目创建知识库: {project.name}, 用户: {user_name}")
-        
-        # 调用RAG服务创建知识库
-        result = rag_service.create_knowledge_base(
-            user_name=user_name,
-            project_name=project.name,
-            description=f"项目 {project.name} 的知识库"
+        # 调用知识库服务创建知识库
+        dataset_id = knowledge_base_service.create_knowledge_base_for_project(
+            project_id=project.id,
+            user_id=document.upload_by
         )
         
-        if result.get('success'):
-            # 创建知识库记录
-            kb_name = result.get('kb_name', f"{user_name}_{project.name}")
-            dataset_id = result.get('dataset_id')
-            
-            knowledge_base = KnowledgeBase(
-                name=kb_name,
-                project_id=project.id,
-                dataset_id=dataset_id,
-                status=KnowledgeBaseStatus.CREATING,
-                document_count=0,
-                parsing_complete=False
-            )
-            
-            db.session.add(knowledge_base)
-            db.session.commit()
-            
-            current_app.logger.info(f"知识库创建成功: {kb_name}, Dataset ID: {dataset_id}")
+        if dataset_id:
+            current_app.logger.info(f"知识库创建成功: {project.knowledge_base_name}, Dataset ID: {dataset_id}")
             
             # 记录日志
             log_action(
                 user_id=document.upload_by,
                 action='knowledge_base_create',
-                resource_type='knowledge_base',
-                resource_id=knowledge_base.id,
-                details=f'自动创建知识库: {kb_name}'
+                resource_type='project',
+                resource_id=project.id,
+                details=f'自动创建知识库: {project.knowledge_base_name}'
             )
             
             # 将当前文档上传到知识库
-            _upload_document_to_knowledge_base(document, knowledge_base)
+            knowledge_base_service.upload_document_to_knowledge_base(project.id, document.id)
             
         else:
-            current_app.logger.error(f"创建知识库失败: {result.get('error')}")
+            current_app.logger.error(f"创建知识库失败: {project.name}")
             
     except Exception as e:
         current_app.logger.error(f"检查并创建知识库失败: {e}")
@@ -610,56 +590,28 @@ def _upload_document_to_knowledge_base(document, knowledge_base):
     
     Args:
         document: 文档对象
-        knowledge_base: 知识库对象
+        knowledge_base: 知识库对象 (已废弃，改用project.dataset_id)
     """
     try:
-        from services.rag_service import rag_service
+        from services.knowledge_base_service import knowledge_base_service
         
         # 检查是否有处理后的文件
         if not document.processed_file_path or not os.path.exists(document.processed_file_path):
             current_app.logger.warning(f"文档没有处理后的文件: {document.id}")
             return
             
-        current_app.logger.info(f"开始上传文档到知识库: {document.name} -> {knowledge_base.name}")
+        current_app.logger.info(f"开始上传文档到知识库: {document.name}")
         
-        # 上传文档到RAG知识库
-        result = rag_service.upload_document_to_kb(
-            dataset_id=knowledge_base.dataset_id,
-            file_path=document.processed_file_path,
-            filename=f"{document.name}.md"
+        # 直接使用知识库服务上传文档
+        success = knowledge_base_service.upload_document_to_knowledge_base(
+            project_id=document.project_id,
+            document_id=document.id
         )
         
-        if result.get('success'):
-            document_id = result.get('document_id')
-            current_app.logger.info(f"文档上传到知识库成功: {document.name}, RAG Doc ID: {document_id}")
-            
-            # 更新知识库文档数量
-            knowledge_base.document_count += 1
-            knowledge_base.status = KnowledgeBaseStatus.UPDATING
-            
-            # 启动文档解析任务
-            parse_result = rag_service.parse_documents_in_kb(
-                dataset_id=knowledge_base.dataset_id,
-                document_ids=[document_id]
-            )
-            
-            if parse_result.get('success'):
-                current_app.logger.info(f"文档解析任务启动成功: {parse_result.get('task_id')}")
-                
-                # 这里可以考虑异步监控解析状态
-                # 暂时将状态设置为更新中
-                knowledge_base.status = KnowledgeBaseStatus.UPDATING
-                
-            else:
-                current_app.logger.error(f"启动文档解析任务失败: {parse_result.get('error')}")
-                knowledge_base.status = KnowledgeBaseStatus.ERROR
-                
-            db.session.commit()
-            
+        if success:
+            current_app.logger.info(f"文档上传到知识库成功: {document.name}")
         else:
-            current_app.logger.error(f"上传文档到知识库失败: {result.get('error')}")
-            knowledge_base.status = KnowledgeBaseStatus.ERROR
-            db.session.commit()
+            current_app.logger.error(f"上传文档到知识库失败: {document.name}")
             
     except Exception as e:
         current_app.logger.error(f"上传文档到知识库失败: {e}")

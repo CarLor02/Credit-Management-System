@@ -167,18 +167,22 @@ class KnowledgeBaseService:
                 logger.error(f"处理后的文件不存在: {document.processed_file_path}")
                 return False
             
+            # 生成正确的文件名 - 确保是.md扩展名
+            base_name = os.path.splitext(document.name)[0]  # 去掉原始扩展名
+            md_filename = f"{base_name}.md"
+            
             # 上传文件到知识库
-            rag_document_id = self._upload_file_to_dataset(project.dataset_id, document.processed_file_path, document.name)
+            rag_document_id = self._upload_file_to_dataset(project.dataset_id, document.processed_file_path, md_filename)
             if not rag_document_id:
-                logger.error(f"上传文件到知识库失败: {document.name}")
+                logger.error(f"上传文件到知识库失败: {md_filename}")
                 return False
             
             # 触发文档解析
             success = self._parse_document_in_dataset(project.dataset_id, rag_document_id)
             if success:
-                logger.info(f"成功上传并解析文档到知识库: {document.name}")
+                logger.info(f"成功上传并解析文档到知识库: {md_filename}")
             else:
-                logger.warning(f"文档上传成功但解析失败: {document.name}")
+                logger.warning(f"文档上传成功但解析失败: {md_filename}")
                 
             return True
             
