@@ -22,6 +22,7 @@ frontend/.env.test.local
 frontend/.env.production.local
 
 # Backend dependencies and build files
+OCR/__pycache__/
 generated_backend/__pycache__/
 generated_backend/**/__pycache__/
 generated_backend/*.pyc

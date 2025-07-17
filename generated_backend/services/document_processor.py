@@ -94,6 +94,7 @@ class DocumentProcessor:
                 db.session.commit()
                 
                 current_app.logger.info(f"文档处理完成: {document.name}")
+                self._check_and_create_knowledge_base(document)
                 return True
             else:
                 self._mark_processing_failed(document, "OCR处理失败")
