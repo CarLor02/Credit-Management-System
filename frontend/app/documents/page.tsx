@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -60,28 +59,7 @@ export default function DocumentsPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
               <div className="p-6 border-b border-gray-100">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
-                  <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
-                    {[
-                      { key: 'all', label: '全部文档' },
-                      { key: 'uploading', label: '上传中' },
-                      { key: 'processing', label: '处理中' },
-                      { key: 'completed', label: '已完成' },
-                      { key: 'failed', label: '失败' }
-                    ].map((tab) => (
-                      <button
-                        key={tab.key}
-                        onClick={() => setActiveTab(tab.key)}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                          activeTab === tab.key
-                            ? 'bg-white text-blue-600 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-800'
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                  
+                  {/* 只保留搜索框，移除状态筛选 */}
                   <div className="relative">
                     <i className="ri-search-line absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
                     <input
@@ -97,7 +75,7 @@ export default function DocumentsPage() {
             </div>
             
             <DocumentList
-              activeTab={activeTab}
+              activeTab={''} // 传空字符串，后端不做状态筛选
               searchQuery={searchQuery}
               selectedProject={selectedProject}
               refreshTrigger={refreshTrigger}

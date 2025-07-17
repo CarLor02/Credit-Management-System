@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -61,14 +60,6 @@ export default function Header() {
               >
                 文档中心
               </Link>
-              {process.env.NODE_ENV === 'development' && (
-                <Link 
-                  href="/test-mock" 
-                  className={`transition-colors ${isActiveNav('/test-mock') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
-                >
-                  Mock测试
-                </Link>
-              )}
             </nav>
           </div>
 

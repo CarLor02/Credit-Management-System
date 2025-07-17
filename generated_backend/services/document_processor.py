@@ -66,7 +66,7 @@ class DocumentProcessor:
             document.progress = 10
             db.session.commit()
             
-            current_app.logger.info(f"开始处理文档: {document.filename}")
+            current_app.logger.info(f"开始处理文档: {document.name}")
             
             # 构建输入和输出路径
             input_file = document.file_path
@@ -87,18 +87,13 @@ class DocumentProcessor:
             success = self._call_ocr_processor(input_file, processed_file_path, document)
             
             if success:
-                # 更新文档状态为已完成，进度为100%
-                document.status = DocumentStatus.COMPLETED
+                # 更新文档状态，进度为50%（完成文件处理，准备上传知识库）
                 document.processed_file_path = processed_file_path
                 document.processed_at = datetime.utcnow()
-                document.progress = 100
+                document.progress = 50
                 db.session.commit()
                 
-                current_app.logger.info(f"文档处理完成: {document.filename}")
-                
-                # 检查是否需要创建知识库
-                self._check_and_create_knowledge_base(document)
-                
+                current_app.logger.info(f"文档处理完成: {document.name}")
                 return True
             else:
                 self._mark_processing_failed(document, "OCR处理失败")
@@ -857,7 +852,7 @@ class DocumentProcessor:
         return message
     
     def _check_and_create_knowledge_base(self, document: Document):
-        """检查并创建知识库（如果是首次上传）"""
+        """检查并创建知识库（仅在首次上传且项目知识库ID为空时创建）"""
         try:
             # 导入知识库服务
             from services.knowledge_base_service import knowledge_base_service
@@ -865,7 +860,20 @@ class DocumentProcessor:
             project_id = document.project_id
             user_id = document.upload_by
             
-            # 检查是否是首次上传（即当前文档是项目的第一个完成的文档）
+            # 获取项目信息
+            project = document.project
+            if not project:
+                current_app.logger.error(f"项目不存在: {project_id}")
+                return
+            
+            # 检查项目是否已有知识库
+            if project.dataset_id:
+                current_app.logger.info(f"项目 {project_id} 已有知识库 {project.dataset_id}，直接上传文档")
+                # 项目已有知识库，直接上传文档
+                self._upload_document_to_knowledge_base(document)
+                return
+            
+            # 项目没有知识库，检查是否是首次上传
             completed_docs_count = Document.query.filter_by(
                 project_id=project_id,
                 status=DocumentStatus.COMPLETED
@@ -873,9 +881,9 @@ class DocumentProcessor:
             
             current_app.logger.info(f"项目 {project_id} 已完成文档数量: {completed_docs_count}")
             
-            # 如果是首次上传完成的文档，创建知识库
+            # 只有在首次上传且项目知识库ID为空时才创建知识库
             if completed_docs_count == 1:  # 当前文档是第一个完成的文档
-                current_app.logger.info(f"项目 {project_id} 首次上传文档完成，开始创建知识库")
+                current_app.logger.info(f"项目 {project_id} 首次上传文档完成且知识库ID为空，开始创建知识库")
                 
                 # 创建知识库
                 dataset_id = knowledge_base_service.create_knowledge_base_for_project(
@@ -891,10 +899,7 @@ class DocumentProcessor:
                 else:
                     current_app.logger.error(f"为项目 {project_id} 创建知识库失败")
             else:
-                current_app.logger.info(f"项目 {project_id} 已有其他完成的文档，知识库应该已存在")
-                
-                # 上传当前文档到已存在的知识库
-                self._upload_document_to_knowledge_base(document)
+                current_app.logger.warning(f"项目 {project_id} 不是首次上传或知识库创建条件不满足，跳过知识库创建")
                 
         except Exception as e:
             current_app.logger.error(f"检查和创建知识库失败: {e}")

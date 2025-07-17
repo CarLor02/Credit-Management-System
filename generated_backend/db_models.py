@@ -45,10 +45,13 @@ class RiskLevel(enum.Enum):
 
 class DocumentStatus(enum.Enum):
     """文档状态枚举"""
-    UPLOADING = 'uploading'
-    PROCESSING = 'processing'
-    COMPLETED = 'completed'
-    FAILED = 'failed'
+    UPLOADING = 'uploading'                    # 本地上传中
+    PROCESSING = 'processing'                  # 处理文件中
+    UPLOADING_TO_KB = 'uploading_to_kb'       # 上传知识库中
+    PARSING_KB = 'parsing_kb'                  # 知识库解析中
+    COMPLETED = 'completed'                    # 知识库解析成功
+    FAILED = 'failed'                          # 失败
+    KB_PARSE_FAILED = 'kb_parse_failed'        # 知识库解析失败
 
 class ProjectMemberRole(enum.Enum):
     """项目成员角色枚举"""

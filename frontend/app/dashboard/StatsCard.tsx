@@ -5,25 +5,59 @@ interface StatsCardProps {
   title: string;
   value: string;
   change: string;
-  trend: 'up' | 'down';
+  trend: 'up' | 'down' | 'stable';
   icon: string;
+  color?: string;
 }
 
-export default function StatsCard({ title, value, change, trend, icon }: StatsCardProps) {
+export default function StatsCard({ title, value, change, trend, icon, color }: StatsCardProps) {
+  const getTrendColor = () => {
+    switch (trend) {
+      case 'up':
+        return 'text-green-600';
+      case 'down':
+        return 'text-red-600';
+      case 'stable':
+        return 'text-gray-600';
+      default:
+        return 'text-gray-600';
+    }
+  };
+
+  const getTrendBgColor = () => {
+    switch (trend) {
+      case 'up':
+        return 'bg-green-100';
+      case 'down':
+        return 'bg-red-100';
+      case 'stable':
+        return 'bg-gray-100';
+      default:
+        return 'bg-gray-100';
+    }
+  };
+
+  const getTrendIcon = () => {
+    switch (trend) {
+      case 'up':
+        return 'ri-arrow-up-line';
+      case 'down':
+        return 'ri-arrow-down-line';
+      case 'stable':
+        return 'ri-subtract-line';
+      default:
+        return 'ri-subtract-line';
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
       <div className="flex items-center justify-between mb-4">
-        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-          trend === 'up' ? 'bg-green-100' : 'bg-red-100'
-        }`}>
-          <i className={`${icon} text-xl ${
-            trend === 'up' ? 'text-green-600' : 'text-red-600'
-          }`}></i>
+        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${getTrendBgColor()}`}>
+          <i className={`${icon} text-xl ${color || getTrendColor()}`}></i>
         </div>
-        <div className={`flex items-center text-sm font-medium ${
-          trend === 'up' ? 'text-green-600' : 'text-red-600'
-        }`}>
-          <i className={`${trend === 'up' ? 'ri-arrow-up-line' : 'ri-arrow-down-line'} mr-1`}></i>
+        <div className={`flex items-center text-sm font-medium ${getTrendColor()}`}>
+          <i className={`${getTrendIcon()} mr-1`}></i>
           {change}
         </div>
       </div>

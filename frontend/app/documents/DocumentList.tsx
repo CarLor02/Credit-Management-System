@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -136,7 +135,12 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
 
   // 轮询正在处理的文档状态
   useEffect(() => {
-    const processingDocs = documents.filter(doc => doc.status === 'processing' || doc.status === 'uploading');
+    const processingDocs = documents.filter(doc => 
+      doc.status === 'uploading' || 
+      doc.status === 'processing' || 
+      doc.status === 'uploading_to_kb' || 
+      doc.status === 'parsing_kb'
+    );
     
     if (processingDocs.length === 0) {
       return;
@@ -149,6 +153,22 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
 
     return () => clearInterval(intervalId);
   }, [documents, loadDocuments]);
+
+  // 重试知识库解析
+  const handleRetryKnowledgeBaseParsing = async (documentId: number) => {
+    try {
+      const response = await documentService.retryKnowledgeBaseParsing(documentId);
+      if (response.success) {
+        // 重试成功，立即刷新文档状态
+        loadDocuments(false);
+      } else {
+        alert(response.error || '重试失败');
+      }
+    } catch (err) {
+      alert('重试失败，请稍后重试');
+      console.error('Retry knowledge base parsing error:', err);
+    }
+  };
 
   // 删除文档
   const handleDeleteDocument = async (id: number) => {
@@ -234,12 +254,18 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
     switch (status) {
       case 'completed':
         return 'bg-green-100 text-green-800';
-      case 'processing':
-        return 'bg-blue-100 text-blue-800';
       case 'uploading':
         return 'bg-yellow-100 text-yellow-800';
+      case 'processing':
+        return 'bg-blue-100 text-blue-800';
+      case 'uploading_to_kb':
+        return 'bg-purple-100 text-purple-800';
+      case 'parsing_kb':
+        return 'bg-indigo-100 text-indigo-800';
       case 'failed':
         return 'bg-red-100 text-red-800';
+      case 'kb_parse_failed':
+        return 'bg-orange-100 text-orange-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -248,13 +274,19 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   const getStatusText = (status: string) => {
     switch (status) {
       case 'completed':
-        return '已完成';
-      case 'processing':
-        return '处理中';
+        return '知识库解析成功';
       case 'uploading':
-        return '上传中';
+        return '本地上传中';
+      case 'processing':
+        return '处理文件中';
+      case 'uploading_to_kb':
+        return '上传知识库中';
+      case 'parsing_kb':
+        return '知识库解析中';
       case 'failed':
         return '失败';
+      case 'kb_parse_failed':
+        return '知识库解析失败';
       default:
         return '未知';
     }
@@ -321,12 +353,26 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                   <span>{doc.uploadTime}</span>
                 </div>
                 
-                {(doc.status === 'processing' || doc.status === 'uploading') && (
+                {(doc.status === 'uploading' || doc.status === 'processing' || doc.status === 'uploading_to_kb' || doc.status === 'parsing_kb') && (
                   <div className="mt-2 flex items-center space-x-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600"></div>
                     <span className="text-xs text-gray-600">
-                      {doc.status === 'uploading' ? '正在上传...' : '正在解析...'}
+                      {doc.status === 'uploading' && '正在上传...'}
+                      {doc.status === 'processing' && '正在处理文件...'}
+                      {doc.status === 'uploading_to_kb' && '正在上传到知识库...'}
+                      {doc.status === 'parsing_kb' && '正在知识库中解析...'}
                     </span>
+                  </div>
+                )}
+                
+                {doc.status === 'kb_parse_failed' && (
+                  <div className="mt-2 flex items-center space-x-2">
+                    <button
+                      onClick={() => handleRetryKnowledgeBaseParsing(doc.id)}
+                      className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 transition-colors"
+                    >
+                      重试解析
+                    </button>
                   </div>
                 )}
               </div>

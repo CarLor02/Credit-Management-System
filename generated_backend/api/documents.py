@@ -74,7 +74,7 @@ def register_document_routes(app):
                 query = query.filter(Document.project_id == project_id)
             
             # 状态过滤
-            if status and status in ['uploading', 'processing', 'completed', 'failed']:
+            if status and status in ['uploading', 'processing', 'uploading_to_kb', 'parsing_kb', 'completed', 'failed', 'kb_parse_failed']:
                 query = query.filter(Document.status == DocumentStatus(status))
             
             # 文件类型过滤
@@ -250,8 +250,7 @@ def register_document_routes(app):
                             
                             if success:
                                 current_app.logger.info(f"md文件处理完成: {doc_id}")
-                                # 检查是否需要创建知识库
-                                _check_and_create_knowledge_base(doc_id, project_name_for_log)
+                                # 知识库创建和上传由document_processor处理，这里不再重复调用
                                 
                                 # 记录活动日志
                                 try:
@@ -287,8 +286,7 @@ def register_document_routes(app):
                             
                             if success:
                                 current_app.logger.info(f"Word文件处理完成: {doc_id}")
-                                # 检查是否需要创建知识库
-                                _check_and_create_knowledge_base(doc_id, project_name_for_log)
+                                # 知识库创建和上传由document_processor处理，这里不再重复调用
                                 
                                 # 记录活动日志
                                 try:
@@ -324,8 +322,7 @@ def register_document_routes(app):
                             
                             if success:
                                 current_app.logger.info(f"OCR处理完成: {doc_id}")
-                                # 检查是否需要创建知识库
-                                _check_and_create_knowledge_base(doc_id, project_name_for_log)
+                                # 知识库创建和上传由document_processor处理，这里不再重复调用
                                 
                                 # 记录活动日志
                                 try:
@@ -513,6 +510,78 @@ def register_document_routes(app):
             db.session.rollback()
             current_app.logger.error(f"删除文档失败: {e}")
             return jsonify({'success': False, 'error': '删除文档失败'}), 500
+
+    @app.route('/api/documents/<int:document_id>/retry', methods=['POST'])
+    def retry_document_processing(document_id):
+        """重试文档处理"""
+        try:
+            document = Document.query.get_or_404(document_id)
+            
+            # 只有知识库解析失败的文档才能重试
+            if document.status != DocumentStatus.KB_PARSE_FAILED:
+                return jsonify({'success': False, 'error': '只有知识库解析失败的文档才能重试'}), 400
+            
+            # 重置状态为上传知识库中
+            document.status = DocumentStatus.UPLOADING_TO_KB
+            document.error_message = None
+            document.progress = 60
+            db.session.commit()
+            
+            # 记录重试日志
+            log_action(
+                user_id=1,  # TODO: 从JWT token获取用户ID
+                action='document_retry',
+                resource_type='document',
+                resource_id=document.id,
+                details=f'重试知识库解析: {document.name}'
+            )
+            
+            # 重新触发知识库上传和解析流程
+            from services.knowledge_base_service import knowledge_base_service
+            import threading
+            
+            def retry_kb_processing():
+                """重试知识库处理函数"""
+                try:
+                    with app.app_context():
+                        current_app.logger.info(f"重试知识库处理: {document.id}")
+                        
+                        # 重新上传文档到知识库
+                        success = knowledge_base_service.upload_document_to_knowledge_base(
+                            project_id=document.project_id,
+                            document_id=document.id
+                        )
+                        
+                        if success:
+                            current_app.logger.info(f"重试知识库处理成功: {document.id}")
+                        else:
+                            current_app.logger.error(f"重试知识库处理失败: {document.id}")
+                            
+                except Exception as e:
+                    current_app.logger.error(f"重试知识库处理异常: {e}")
+                    try:
+                        # 更新状态为失败
+                        doc = Document.query.get(document.id)
+                        if doc:
+                            doc.status = DocumentStatus.KB_PARSE_FAILED
+                            doc.error_message = f"重试异常: {str(e)}"
+                            db.session.commit()
+                    except:
+                        pass
+            
+            # 在后台线程中重试
+            thread = threading.Thread(target=retry_kb_processing)
+            thread.daemon = True
+            thread.start()
+            
+            return jsonify({
+                'success': True,
+                'message': '重试知识库解析已启动'
+            })
+            
+        except Exception as e:
+            current_app.logger.error(f"重试文档处理失败: {e}")
+            return jsonify({'success': False, 'error': '重试文档处理失败'}), 500
 
 def _check_and_create_knowledge_base(doc_id, project_name):
     """

@@ -62,7 +62,7 @@ echo -e "${YELLOW}正在启动后端服务...${NC}"
 
 # 启动后端服务
 cd "$BACKEND_DIR"
-python3 app.py &
+python app.py &
 
 echo -e "${GREEN}✓ 后端服务已启动${NC}"
 echo -e "${GREEN}  - 后端服务地址: http://localhost:$BACKEND_PORT${NC}"

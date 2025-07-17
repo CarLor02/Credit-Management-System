@@ -96,7 +96,7 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
           fileType = 'markdown';
         }
 
-        // 上传文件，立即触发列表刷新显示"上传中"状态
+        // 上传文件，立即触发列表刷新显示"本地上传中"状态
         const response = await documentService.uploadDocument({
           name: file.name,
           project: selectedProjectData.name,
@@ -107,9 +107,14 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
         if (!response.success) {
           throw new Error(response.error || `上传文件 ${file.name} 失败`);
         }
+
+        // 立即触发列表刷新，显示"本地上传中"状态
+        if (onSuccess) {
+          onSuccess();
+        }
       }
 
-      // 所有文件上传完成后，一次性刷新文档列表和项目选择器
+      // 所有文件上传完成后，最终刷新文档列表
       if (onSuccess) {
         onSuccess();
       }

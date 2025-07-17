@@ -68,8 +68,8 @@ export default function UpgradePage() {
     daysLeft: 342
   };
 
-  const getColorClasses = (color, type) => {
-    const colorMap = {
+  const getColorClasses = (color: string, type: string) => {
+    const colorMap: Record<string, Record<string, string>> = {
       gray: {
         border: 'border-gray-300',
         bg: 'bg-gray-50',
@@ -89,7 +89,7 @@ export default function UpgradePage() {
         button: 'bg-blue-600 hover:bg-blue-700'
       }
     };
-    return colorMap[color][type];
+    return colorMap[color]?.[type] || '';
   };
 
   return (
@@ -174,14 +174,14 @@ export default function UpgradePage() {
                   <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
                   <div className="flex items-center justify-center">
                     <span className="text-3xl font-bold text-gray-900">
-                      ¥{plan.price[billingCycle]}
+                      ¥{plan.price[billingCycle as keyof typeof plan.price]}
                     </span>
                     <span className="text-gray-600 ml-2">
                       /{billingCycle === 'monthly' ? '月' : '年'}
                     </span>
                   </div>
                   <div className="text-sm text-gray-500 mt-1">
-                    原价 ¥{plan.originalPrice[billingCycle]}
+                    原价 ¥{plan.originalPrice[billingCycle as keyof typeof plan.originalPrice]}
                   </div>
                 </div>
 

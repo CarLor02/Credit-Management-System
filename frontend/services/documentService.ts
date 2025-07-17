@@ -22,7 +22,7 @@ export interface UploadDocumentData {
  */
 export interface DocumentQueryParams {
   project?: string;
-  status?: 'uploading' | 'completed' | 'processing' | 'failed';
+  status?: 'uploading' | 'processing' | 'uploading_to_kb' | 'parsing_kb' | 'completed' | 'failed' | 'kb_parse_failed';
   type?: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   search?: string;
   page?: number;
@@ -233,6 +233,44 @@ class DocumentService {
 
     // 真实API调用
     return apiClient.delete<void>(`/documents/${id}`);
+  }
+
+  /**
+   * 重试知识库解析
+   */
+  async retryKnowledgeBaseParsing(id: number): Promise<ApiResponse<void>> {
+    if (MOCK_CONFIG.enabled) {
+      mockLog(`Retrying knowledge base parsing for document ${id}`);
+      await mockDelay();
+
+      const document = mockDocuments.find(d => d.id === id);
+      if (!document) {
+        return {
+          success: false,
+          error: 'Document not found'
+        };
+      }
+
+      // 模拟重试成功
+      document.status = 'parsing_kb';
+      document.progress = 0;
+
+      // 模拟解析进度
+      setTimeout(() => {
+        const doc = mockDocuments.find(d => d.id === id);
+        if (doc) {
+          doc.progress = 100;
+          doc.status = 'completed';
+        }
+      }, 3000);
+
+      return {
+        success: true
+      };
+    }
+
+    // 真实API调用
+    return apiClient.post<void>(`/documents/${id}/retry`, {});
   }
 
   /**
