@@ -29,7 +29,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
+      <div className="max-w-md w-full animate-fadeIn">
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-800 mb-2">征信管理系统</h1>
@@ -136,21 +136,23 @@ export default function LoginPage() {
               </div>
             )}
 
-            <Link href="/dashboard">
-              <button
-                type="submit"
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                {loginType === 'login' ? '登录' : '注册'}
-              </button>
-            </Link>
+            <div className="mt-6">
+              <Link href="/dashboard">
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  {loginType === 'login' ? '登录' : '注册'}
+                </button>
+              </Link>
+            </div>
           </form>
 
           {loginType === 'login' && (
             <div className="mt-4 text-center">
-              <a href="#" className="text-blue-600 hover:text-blue-800 text-sm">
+              <Link href="/reset-password" className="text-blue-600 hover:text-blue-800 text-sm">
                 忘记密码？
-              </a>
+              </Link>
             </div>
           )}
 

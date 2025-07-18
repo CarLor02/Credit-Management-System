@@ -54,7 +54,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8 animate-fadeIn">
         {/* 头部信息卡片 */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-8">
           <div className="flex items-start justify-between">

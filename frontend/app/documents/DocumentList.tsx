@@ -85,7 +85,7 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
         queryParams.status = activeTab;
       }
       if (selectedProject) {
-        queryParams.project = selectedProject;
+        queryParams.project_id = selectedProject; // 使用 project_id 参数
       }
 
       const response = await documentService.getDocuments(queryParams);

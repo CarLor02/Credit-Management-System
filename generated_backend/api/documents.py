@@ -45,7 +45,7 @@ def register_document_routes(app):
             page = request.args.get('page', 1, type=int)
             limit = request.args.get('limit', 20, type=int)
             search = request.args.get('search', '')
-            project_id = request.args.get('project', type=int)
+            project_id = request.args.get('project_id', type=int)
             status = request.args.get('status', '')
             file_type = request.args.get('type', '')
 

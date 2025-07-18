@@ -6,7 +6,7 @@ import Link from 'next/link';
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-4xl w-full text-center">
+      <div className="max-w-4xl w-full text-center animate-fadeIn">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-4">征信管理系统</h1>
           <p className="text-xl text-gray-600 mb-8">企业与个人征信数据管理平台</p>

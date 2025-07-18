@@ -22,6 +22,7 @@ export interface UploadDocumentData {
  */
 export interface DocumentQueryParams {
   project?: string;
+  project_id?: number | string;
   status?: 'uploading' | 'processing' | 'uploading_to_kb' | 'parsing_kb' | 'completed' | 'failed' | 'kb_parse_failed';
   type?: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   search?: string;
@@ -46,6 +47,19 @@ class DocumentService {
           filteredDocuments = filteredDocuments.filter(d => 
             d.project.toLowerCase().includes(params.project!.toLowerCase())
           );
+        }
+        if (params.project_id) {
+          // 需要根据project_id过滤，首先需要获取项目名称
+          const { mockProjects } = await import('@/data/mockData');
+          const targetProject = mockProjects.find(p => p.id == params.project_id);
+          if (targetProject) {
+            filteredDocuments = filteredDocuments.filter(d => 
+              d.project === targetProject.name
+            );
+          } else {
+            // 如果找不到项目，返回空数组
+            filteredDocuments = [];
+          }
         }
         if (params.status) {
           filteredDocuments = filteredDocuments.filter(d => d.status === params.status);

@@ -34,7 +34,7 @@ export default function DocumentsPage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       
-      <main className="p-6">
+      <main className="p-6 animate-fadeIn">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-800 mb-2">文档管理</h1>

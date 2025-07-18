@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Header from '@/components/Header';
 import CreateProjectModal from '../CreateProjectModal';
 import { projectService } from '@/services/projectService';
 import { documentService } from '@/services/documentService';
@@ -46,7 +47,12 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       try {
         setLoading(true);
         setError(null);
-        const response = await projectService.getProjectById(parseInt(projectId));
+        
+        // 添加最小加载时间，避免闪烁
+        const [response] = await Promise.all([
+          projectService.getProjectById(parseInt(projectId)),
+          new Promise(resolve => setTimeout(resolve, 300)) // 最小300ms加载时间
+        ]);
         
         if (response.success && response.data) {
           setProject(response.data);
@@ -67,10 +73,12 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   // 加载项目文档
   useEffect(() => {
     const fetchDocuments = async () => {
+      if (!project?.id) return; // 如果没有项目ID，不加载文档
+      
       try {
         setDocumentsLoading(true);
         const response = await documentService.getDocuments({
-          project: project?.name || ''
+          project_id: project.id
         });
 
         if (response.success && response.data) {
@@ -78,7 +86,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           
           // 检查是否有处理中的文档，如果有则启动轮询
           const processingDocs = response.data.filter(doc => 
-            doc.status === 'processing' || doc.status === 'uploading'
+            doc.status === 'processing' || doc.status === 'uploading' || 
+            doc.status === 'uploading_to_kb' || doc.status === 'parsing_kb'
           );
           
           if (processingDocs.length > 0) {
@@ -95,10 +104,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       }
     };
 
-    if (project) {
-      fetchDocuments();
-    }
-  }, [project]);
+    fetchDocuments();
+  }, [project?.id]); // 依赖项目ID而不是整个项目对象
 
   // 启动文档轮询
   const startDocumentPolling = () => {
@@ -108,8 +115,10 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     
     const interval = setInterval(async () => {
       try {
+        if (!project?.id) return; // 如果没有项目ID，停止轮询
+        
         const response = await documentService.getDocuments({
-          project: project?.name || ''
+          project_id: project.id
         });
         
         if (response.success && response.data) {
@@ -117,7 +126,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           
           // 检查是否还有处理中的文档
           const processingDocs = response.data.filter(doc => 
-            doc.status === 'processing' || doc.status === 'uploading'
+            doc.status === 'processing' || doc.status === 'uploading' ||
+            doc.status === 'uploading_to_kb' || doc.status === 'parsing_kb'
           );
           
           if (processingDocs.length === 0) {
@@ -282,10 +292,29 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   // 加载中状态
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent mb-4"></div>
-          <p className="text-gray-600">加载项目数据...</p>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        
+        {/* 头部面包屑 */}
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <Link href="/projects" className="hover:text-blue-600">
+                项目管理
+              </Link>
+              <i className="ri-arrow-right-s-line"></i>
+              <span className="text-gray-400">加载中...</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent mb-4"></div>
+              <p className="text-gray-600">加载项目数据...</p>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -294,28 +323,47 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   // 错误状态
   if (error || !project) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 max-w-md w-full">
-          <div className="text-center mb-6">
-            <div className="inline-block rounded-full h-12 w-12 bg-red-100 flex items-center justify-center mb-4">
-              <i className="ri-error-warning-line text-red-600 text-xl"></i>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        
+        {/* 头部面包屑 */}
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <Link href="/projects" className="hover:text-blue-600">
+                项目管理
+              </Link>
+              <i className="ri-arrow-right-s-line"></i>
+              <span className="text-gray-400">加载失败</span>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">加载失败</h2>
-            <p className="text-gray-600">{error || '无法加载项目数据'}</p>
           </div>
-          <div className="flex space-x-3">
-            <button
-              onClick={() => router.push('/projects')}
-              className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              返回项目列表
-            </button>
-            <button
-              onClick={() => router.refresh()}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              重试
-            </button>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex items-center justify-center h-64">
+            <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 max-w-md w-full">
+              <div className="text-center mb-6">
+                <div className="inline-block rounded-full h-12 w-12 bg-red-100 flex items-center justify-center mb-4">
+                  <i className="ri-error-warning-line text-red-600 text-xl"></i>
+                </div>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">加载失败</h2>
+                <p className="text-gray-600">{error || '无法加载项目数据'}</p>
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => router.push('/projects')}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  返回项目列表
+                </button>
+                <button
+                  onClick={() => router.refresh()}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  重试
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -388,12 +436,18 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     switch (status) {
       case 'completed':
         return 'bg-green-100 text-green-800';
-      case 'processing':
-        return 'bg-blue-100 text-blue-800';
       case 'uploading':
         return 'bg-yellow-100 text-yellow-800';
+      case 'processing':
+        return 'bg-blue-100 text-blue-800';
+      case 'uploading_to_kb':
+        return 'bg-purple-100 text-purple-800';
+      case 'parsing_kb':
+        return 'bg-indigo-100 text-indigo-800';
       case 'failed':
         return 'bg-red-100 text-red-800';
+      case 'kb_parse_failed':
+        return 'bg-orange-100 text-orange-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -402,10 +456,13 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   // 获取文档状态文本
   const getDocumentStatusText = (status: string) => {
     switch (status) {
-      case 'completed': return '已完成';
-      case 'processing': return '处理中';
-      case 'uploading': return '上传中';
+      case 'completed': return '知识库解析成功';
+      case 'uploading': return '本地上传中';
+      case 'processing': return '处理文件中';
+      case 'uploading_to_kb': return '上传知识库中';
+      case 'parsing_kb': return '知识库解析中';
       case 'failed': return '失败';
+      case 'kb_parse_failed': return '知识库解析失败';
       default: return '未知';
     }
   };
@@ -451,8 +508,67 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     }
   };
 
+  // 重试知识库解析
+  const handleRetryKnowledgeBaseParsing = async (documentId: number) => {
+    try {
+      const response = await documentService.retryKnowledgeBaseParsing(documentId);
+      if (response.success) {
+        // 重试成功，立即刷新文档状态
+        const updatedResponse = await documentService.getDocuments({
+          project_id: project?.id || 0
+        });
+        if (updatedResponse.success && updatedResponse.data) {
+          setDocuments(updatedResponse.data);
+        }
+      } else {
+        alert(response.error || '重试失败');
+      }
+    } catch (err) {
+      alert('重试失败，请稍后重试');
+      console.error('Retry knowledge base parsing error:', err);
+    }
+  };
+
+  // 删除文档
+  const handleDeleteDocument = async (id: number) => {
+    // 确认删除
+    if (!window.confirm('确定要删除这个文档吗？此操作不可恢复。')) {
+      return;
+    }
+
+    try {
+      // 乐观更新：立即从UI中移除文档
+      const docToDelete = documents.find(doc => doc.id === id);
+      if (!docToDelete) return;
+
+      const updatedDocuments = documents.filter(doc => doc.id !== id);
+      setDocuments(updatedDocuments);
+
+      const response = await documentService.deleteDocument(id);
+      if (response.success) {
+        // 删除成功，不需要额外处理
+      } else {
+        // 删除失败，恢复文档
+        const restoredDocuments = [...updatedDocuments, docToDelete].sort((a, b) => a.id - b.id);
+        setDocuments(restoredDocuments);
+        alert(response.error || '删除文档失败');
+      }
+    } catch (err) {
+      // 网络错误，恢复文档
+      const docToDelete = documents.find(doc => doc.id === id);
+      if (docToDelete) {
+        const restoredDocuments = [...documents.filter(doc => doc.id !== id), docToDelete].sort((a, b) => a.id - b.id);
+        setDocuments(restoredDocuments);
+      }
+      alert('删除文档失败，请稍后重试');
+      console.error('Delete document error:', err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <Header />
+      
       {/* 头部面包屑 */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -466,7 +582,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8 animate-fadeIn">
         {/* 项目标题区域 */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-8">
           <div className="flex items-start justify-between">
@@ -1057,7 +1173,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                 ) : (
                   <div className="space-y-4">
                     {documents.length > 0 ? documents.map((doc) => (
-                      <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
+                      <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-all duration-200 ease-in-out transform hover:scale-[1.01] hover:shadow-md">
                         <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
                           <i className={`${getFileIcon(doc.type)} text-lg`}></i>
                         </div>
@@ -1074,12 +1190,26 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                             <span>{doc.uploadTime}</span>
                           </div>
                           
-                          {(doc.status === 'processing' || doc.status === 'uploading') && (
+                          {(doc.status === 'uploading' || doc.status === 'processing' || doc.status === 'uploading_to_kb' || doc.status === 'parsing_kb') && (
                             <div className="mt-2 flex items-center space-x-2">
                               <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600"></div>
                               <span className="text-xs text-gray-600">
-                                {doc.status === 'uploading' ? '正在上传...' : '正在解析...'}
+                                {doc.status === 'uploading' && '正在上传...'}
+                                {doc.status === 'processing' && '正在处理文件...'}
+                                {doc.status === 'uploading_to_kb' && '正在上传到知识库...'}
+                                {doc.status === 'parsing_kb' && '正在知识库中解析...'}
                               </span>
+                            </div>
+                          )}
+                          
+                          {doc.status === 'kb_parse_failed' && (
+                            <div className="mt-2 flex items-center space-x-2">
+                              <button
+                                onClick={() => handleRetryKnowledgeBaseParsing(doc.id)}
+                                className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 transition-colors"
+                              >
+                                重试解析
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1091,16 +1221,23 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                           <div className="flex items-center space-x-2">
                             <button
                               onClick={() => handleDownloadDocument(doc.id, doc.name)}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
                               title="下载文档"
                             >
                               <i className="ri-download-line text-gray-600"></i>
                             </button>
                             <button
-                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors"
+                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
                               title="预览文档"
                             >
                               <i className="ri-eye-line text-gray-600"></i>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteDocument(doc.id)}
+                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-100 transition-all duration-200 btn-hover-scale"
+                              title="删除文档"
+                            >
+                              <i className="ri-delete-bin-line text-red-600"></i>
                             </button>
                           </div>
                         </div>

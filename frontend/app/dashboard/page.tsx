@@ -82,7 +82,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       
-      <main className="p-6">
+      <main className="p-6 animate-fadeIn">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-800 mb-2">数据总览</h1>
           <p className="text-gray-600">征信管理系统核心指标监控</p>
