@@ -1,8 +1,9 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Portal from '@/components/Portal';
 
 interface Project {
   id: number;
@@ -23,6 +24,47 @@ interface ProjectCardProps {
 
 export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // ESC键关闭弹窗
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showDeleteModal && !isDeleting) {
+        setShowDeleteModal(false);
+      }
+    };
+
+    if (showDeleteModal) {
+      document.addEventListener('keydown', handleEscape);
+      // 防止页面滚动
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [showDeleteModal, isDeleting]);
+
+  // ESC键关闭弹窗
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showDeleteModal && !isDeleting) {
+        setShowDeleteModal(false);
+      }
+    };
+
+    if (showDeleteModal) {
+      document.addEventListener('keydown', handleEscape);
+      // 防止页面滚动
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [showDeleteModal, isDeleting]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -76,11 +118,18 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
     }
   };
 
-  const handleDelete = () => {
-    if (onDelete) {
-      onDelete(project.id);
+  const handleDelete = async () => {
+    if (onDelete && !isDeleting) {
+      setIsDeleting(true);
+      try {
+        await onDelete(project.id);
+        setShowDeleteModal(false);
+      } catch (error) {
+        // 错误处理由父组件处理，这里不需要额外操作
+      } finally {
+        setIsDeleting(false);
+      }
     }
-    setShowDeleteModal(false);
   };
 
   return (
@@ -149,39 +198,74 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
           </Link>
           <button
             onClick={() => setShowDeleteModal(true)}
-            className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-lg border border-red-300 hover:bg-red-50 hover:border-red-400 transition-colors group"
+            title="删除项目"
           >
-            <i className="ri-more-2-line text-gray-600"></i>
+            <i className="ri-delete-bin-line text-red-500 group-hover:text-red-600"></i>
           </button>
         </div>
       </div>
 
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-            <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
-              <i className="ri-delete-bin-line text-red-600 text-xl"></i>
-            </div>
-            <h3 className="text-lg font-medium text-gray-800 text-center mb-2">确认删除项目</h3>
-            <p className="text-gray-600 text-center mb-6">
-              您确定要删除项目 "<span className="font-medium">{project.name}</span>" 吗？此操作无法撤销。
-            </p>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap"
-              >
-                确认删除
-              </button>
+        <Portal>
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 9999
+            }}
+            onClick={(e) => {
+              // 点击遮罩层关闭弹窗
+              if (e.target === e.currentTarget && !isDeleting) {
+                setShowDeleteModal(false);
+              }
+            }}
+          >
+            <div 
+              className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl animate-fadeIn"
+              style={{
+                maxHeight: '90vh',
+                overflow: 'auto'
+              }}
+              onClick={(e) => e.stopPropagation()} // 防止点击弹窗内容时关闭
+            >
+              <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+                <i className="ri-error-warning-line text-red-600 text-xl"></i>
+              </div>
+              <h3 className="text-lg font-medium text-gray-800 text-center mb-2">确认删除项目</h3>
+              <p className="text-gray-600 text-center mb-6">
+                您确定要删除项目 "<span className="font-medium">{project.name}</span>" 吗？此操作无法撤销。
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      删除中...
+                    </>
+                  ) : (
+                    '确认删除'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
     </>
   );

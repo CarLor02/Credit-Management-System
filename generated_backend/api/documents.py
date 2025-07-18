@@ -486,6 +486,14 @@ def register_document_routes(app):
                 details=f'删除文档: {document_name}'
             )
             
+            # 从知识库中删除文档
+            try:
+                from services.knowledge_base_service import knowledge_base_service
+                knowledge_base_service.delete_document_from_knowledge_base(document.project_id, document.id)
+            except Exception as kb_error:
+                current_app.logger.warning(f"从知识库删除文档失败: {kb_error}")
+                # 继续删除操作，不因为知识库删除失败而中断
+            
             # 删除处理后的文档
             from services.document_processor import document_processor
             document_processor.delete_processed_document(document)
@@ -611,16 +619,6 @@ def _check_and_create_knowledge_base(doc_id, project_name):
             current_app.logger.info(f"项目已有知识库: {project.name}, Dataset ID: {project.dataset_id}")
             # 如果已有知识库，直接上传当前文档
             knowledge_base_service.upload_document_to_knowledge_base(project.id, document.id)
-            return
-        
-        # 检查当前项目是否是首次上传文件（即只有一个文档且已处理完成）
-        completed_docs = Document.query.filter_by(
-            project_id=project.id,
-            status=DocumentStatus.COMPLETED
-        ).count()
-        
-        if completed_docs != 1:
-            current_app.logger.info(f"项目还没有完成首次文档处理或已有多个文档: {project.name}, 完成数量: {completed_docs}")
             return
         
         current_app.logger.info(f"开始为项目创建知识库: {project.name}")

@@ -853,7 +853,7 @@ class DocumentProcessor:
         return message
     
     def _check_and_create_knowledge_base(self, document: Document):
-        """检查并创建知识库（仅在首次上传且项目知识库ID为空时创建）"""
+        """检查并创建知识库（当项目没有知识库时自动创建）"""
         try:
             # 导入知识库服务
             from services.knowledge_base_service import knowledge_base_service
@@ -874,33 +874,22 @@ class DocumentProcessor:
                 self._upload_document_to_knowledge_base(document)
                 return
             
-            # 项目没有知识库，检查是否是首次上传
-            completed_docs_count = Document.query.filter_by(
+            # 项目没有知识库，为项目创建知识库
+            current_app.logger.info(f"项目 {project_id} 没有知识库，开始创建知识库")
+            
+            # 创建知识库
+            dataset_id = knowledge_base_service.create_knowledge_base_for_project(
                 project_id=project_id,
-                status=DocumentStatus.COMPLETED
-            ).count()
+                user_id=user_id
+            )
             
-            current_app.logger.info(f"项目 {project_id} 已完成文档数量: {completed_docs_count}")
-            
-            # 只有在首次上传且项目知识库ID为空时才创建知识库
-            if completed_docs_count == 1:  # 当前文档是第一个完成的文档
-                current_app.logger.info(f"项目 {project_id} 首次上传文档完成且知识库ID为空，开始创建知识库")
+            if dataset_id:
+                current_app.logger.info(f"成功为项目 {project_id} 创建知识库，dataset_id: {dataset_id}")
                 
-                # 创建知识库
-                dataset_id = knowledge_base_service.create_knowledge_base_for_project(
-                    project_id=project_id,
-                    user_id=user_id
-                )
-                
-                if dataset_id:
-                    current_app.logger.info(f"成功为项目 {project_id} 创建知识库，dataset_id: {dataset_id}")
-                    
-                    # 上传当前文档到知识库
-                    self._upload_document_to_knowledge_base(document)
-                else:
-                    current_app.logger.error(f"为项目 {project_id} 创建知识库失败")
+                # 上传当前文档到知识库
+                self._upload_document_to_knowledge_base(document)
             else:
-                current_app.logger.warning(f"项目 {project_id} 不是首次上传或知识库创建条件不满足，跳过知识库创建")
+                current_app.logger.error(f"为项目 {project_id} 创建知识库失败")
                 
         except Exception as e:
             current_app.logger.error(f"检查和创建知识库失败: {e}")

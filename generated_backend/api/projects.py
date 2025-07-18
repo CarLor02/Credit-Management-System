@@ -284,6 +284,14 @@ def register_project_routes(app):
                 current_app.logger.warning(f"记录删除日志失败: {log_error}")
                 # 继续删除操作，不因为日志失败而中断
 
+            # 删除项目相关的知识库
+            try:
+                from services.knowledge_base_service import knowledge_base_service
+                knowledge_base_service.delete_knowledge_base(project.id)
+            except Exception as kb_error:
+                current_app.logger.warning(f"删除知识库失败: {kb_error}")
+                # 继续删除操作，不因为知识库删除失败而中断
+
             # 删除项目相关的所有文档文件
             from services.document_processor import document_processor
             document_processor.delete_project_documents(project)

@@ -64,3 +64,56 @@
     opacity: 0.5;
   }
 }
+
+/* 弹窗居中显示样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+  /* 确保弹窗相对于视窗居中，而不是整个页面 */
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+  position: relative;
+  max-height: 90vh;
+  max-width: 28rem;
+  width: 100%;
+  overflow-y: auto;
+  transform: translateZ(0); /* 触发硬件加速 */
+  /* 确保内容始终在视窗中央 */
+  margin: auto;
+}
+
+/* 确保在所有设备上都能居中 */
+@media (max-height: 600px) {
+  .modal-content {
+    max-height: 95vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-overlay {
+    padding: 0.75rem;
+  }
+  
+  .modal-content {
+    max-width: 100%;
+  }
+}
+
+/* 防止页面滚动时弹窗位置偏移 */
+.modal-overlay.show {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+}

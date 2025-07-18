@@ -92,8 +92,11 @@ export default function ProjectsPage() {
     try {
       const response = await projectService.deleteProject(id);
       if (response.success) {
-        // 重新加载项目列表
-        loadProjects();
+        // 重新加载项目列表和统计数据
+        await Promise.all([loadProjects(), loadAllProjects()]);
+        
+        // 可以添加成功提示（可选）
+        // 这里可以使用 toast 或其他通知方式
       } else {
         alert(response.error || '删除项目失败');
       }

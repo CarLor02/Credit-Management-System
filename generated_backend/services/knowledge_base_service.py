@@ -185,6 +185,9 @@ class KnowledgeBaseService:
                 db.session.commit()
                 return False
             
+            # 保存RAG文档ID
+            document.rag_document_id = rag_document_id
+            
             # 更新状态为知识库解析中
             document.status = DocumentStatus.PARSING_KB
             document.progress = 80
@@ -500,6 +503,176 @@ class KnowledgeBaseService:
             return False
         except Exception as e:
             logger.error(f"触发文档解析异常: {e}")
+            return False
+
+    def delete_knowledge_base(self, project_id: int) -> bool:
+        """
+        删除项目的知识库
+        
+        Args:
+            project_id: 项目ID
+            
+        Returns:
+            是否成功删除知识库
+        """
+        try:
+            self._get_config()
+            
+            # 获取项目信息
+            project = Project.query.get(project_id)
+            if not project:
+                logger.error(f"项目不存在: {project_id}")
+                return False
+            
+            if not project.dataset_id:
+                logger.info(f"项目没有关联的知识库: {project.name}")
+                return True
+            
+            # 调用RAG API删除知识库
+            success = self._delete_dataset_via_api(project.dataset_id)
+            if success:
+                # 清除项目中的知识库信息
+                project.dataset_id = None
+                project.knowledge_base_name = None
+                db.session.commit()
+                logger.info(f"成功删除项目知识库: {project.name}")
+                return True
+            else:
+                logger.error(f"删除项目知识库失败: {project.name}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"删除知识库异常: {e}")
+            return False
+
+    def _delete_dataset_via_api(self, dataset_id: str) -> bool:
+        """
+        通过API删除数据集
+        
+        Args:
+            dataset_id: 数据集ID
+            
+        Returns:
+            是否删除成功
+        """
+        try:
+            url = f"{self.rag_api_base_url}/api/v1/datasets"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.rag_api_key}"
+            }
+            data = {
+                "ids": [dataset_id]
+            }
+            
+            logger.info(f"调用RAG API删除数据集: {dataset_id}")
+            response = requests.delete(url, headers=headers, json=data, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            if result.get("code") == 0:
+                logger.info(f"成功删除数据集: {dataset_id}")
+                return True
+            else:
+                logger.error(f"删除数据集失败: {result.get('message')}")
+                return False
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"删除数据集请求失败: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"删除数据集异常: {e}")
+            return False
+
+    def delete_document_from_knowledge_base(self, project_id: int, document_id: int) -> bool:
+        """
+        从知识库中删除文档
+        
+        Args:
+            project_id: 项目ID
+            document_id: 文档ID（数据库中的）
+            
+        Returns:
+            是否成功删除文档
+        """
+        try:
+            self._get_config()
+            
+            # 获取项目和文档信息
+            project = Project.query.get(project_id)
+            if not project:
+                logger.error(f"项目不存在: {project_id}")
+                return False
+                
+            if not project.dataset_id:
+                logger.info(f"项目没有关联的知识库: {project.name}")
+                return True
+            
+            # 获取文档信息
+            from db_models import Document
+            document = Document.query.get(document_id)
+            if not document:
+                logger.error(f"文档不存在: {document_id}")
+                return False
+            
+            if not document.rag_document_id:
+                logger.info(f"文档没有关联的RAG文档ID: {document.name}")
+                return True
+            
+            # 调用RAG API删除文档
+            success = self._delete_document_via_api(project.dataset_id, document.rag_document_id)
+            if success:
+                # 清除文档中的RAG信息
+                document.rag_document_id = None
+                db.session.commit()
+                logger.info(f"成功从知识库删除文档: {document.name}")
+                return True
+            else:
+                logger.error(f"从知识库删除文档失败: {document.name}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"从知识库删除文档异常: {e}")
+            return False
+
+    def _delete_document_via_api(self, dataset_id: str, document_id: str) -> bool:
+        """
+        通过API删除文档
+        
+        Args:
+            dataset_id: 数据集ID
+            document_id: RAG文档ID
+            
+        Returns:
+            是否删除成功
+        """
+        try:
+            url = f"{self.rag_api_base_url}/api/v1/datasets/{dataset_id}/documents"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.rag_api_key}"
+            }
+            data = {
+                "ids": [document_id]
+            }
+            
+            logger.info(f"调用RAG API删除文档: {document_id}")
+            response = requests.delete(url, headers=headers, json=data, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            if result.get("code") == 0:
+                logger.info(f"成功删除文档: {document_id}")
+                return True
+            else:
+                logger.error(f"删除文档失败: {result.get('message')}")
+                return False
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"删除文档请求失败: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"删除文档异常: {e}")
             return False
 # 全局服务实例
 knowledge_base_service = KnowledgeBaseService()

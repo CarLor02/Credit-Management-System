@@ -247,6 +247,9 @@ class Document(db.Model):
     processing_started_at = db.Column(db.DateTime)   # 处理开始时间
     processed_at = db.Column(db.DateTime)            # 处理完成时间
     
+    # 知识库相关字段
+    rag_document_id = db.Column(db.String(100))      # RAG系统中的文档ID
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
