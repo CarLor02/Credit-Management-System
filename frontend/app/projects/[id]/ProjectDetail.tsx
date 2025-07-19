@@ -9,6 +9,7 @@ import CreateProjectModal from '../CreateProjectModal';
 import { projectService } from '@/services/projectService';
 import { documentService } from '@/services/documentService';
 import { projectDetailService, FinancialAnalysis, BusinessStatus, TimelineEvent } from '@/services/projectDetailService';
+import { apiClient } from '@/services/api';
 import { Project } from '@/data/mockData';
 
 interface ProjectDetailProps {
@@ -270,17 +271,53 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     };
   };
 
-  const handleDownloadReport = () => {
-    if (project && project.progress >= 75) {
-      // 模拟下载
-      const link = document.createElement('a');
-      link.href = '#';
-      link.download = `${project.name}_征信分析报告.pdf`;
-      link.click();
-      setShowDownloadModal(false);
-      alert('报告下载已开始');
-    } else {
-      setShowDownloadModal(true);
+  // 生成征信报告状态
+  const [reportGenerating, setReportGenerating] = useState(false);
+
+  const handleDownloadReport = async () => {
+    if (!project) return;
+
+    try {
+      setReportGenerating(true);
+
+      // 调用后端API生成报告
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        workflow_run_id?: string;
+        content?: string;
+        file_path?: string;
+        parsing_complete?: boolean;
+        error?: string;
+      }>('/generate_report', {
+        dataset_id: project.dataset_id, // 使用dataset_id作为fallback
+        company_name: project.name,
+        knowledge_name: project.knowledge_base_name // knowledge_base_name
+      });
+
+      if (response.success && response.data?.success) {
+        // 报告生成成功，创建下载链接
+        const content = response.data.content || '';
+        const blob = new Blob([content], { type: 'text/markdown' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${project.name}_征信分析报告_${new Date().toISOString().split('T')[0]}.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        alert('征信报告生成并下载成功！');
+      } else {
+        const errorMsg = response.data?.error || response.error || '生成报告失败，请稍后重试';
+        alert(errorMsg);
+      }
+    } catch (error) {
+      console.error('Generate report error:', error);
+      alert('生成报告失败，请检查网络连接');
+    } finally {
+      setReportGenerating(false);
     }
   };
 
@@ -614,10 +651,24 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
               </button>
               <button
                 onClick={handleDownloadReport}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium whitespace-nowrap"
+                disabled={reportGenerating}
+                className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
+                  reportGenerating
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-700'
+                }`}
               >
-                <i className="ri-download-line mr-2"></i>
-                生成征信报告
+                {reportGenerating ? (
+                  <>
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-download-line mr-2"></i>
+                    生成征信报告
+                  </>
+                )}
               </button>
             </div>
           </div>
