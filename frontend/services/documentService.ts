@@ -159,8 +159,37 @@ class DocumentService {
       formData.append('project', data.project);
       formData.append('type', data.type);
 
+      // 获取认证token
+      const token = localStorage.getItem('auth_token');
+      const headers: Record<string, string> = {};
+
+      if (token) {
+        // 检查token是否过期
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          const isExpired = payload.exp * 1000 < Date.now();
+
+          if (!isExpired) {
+            headers['Authorization'] = `Bearer ${token}`;
+          } else {
+            // Token过期，清除本地存储并抛出错误
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            throw new Error('登录已过期，请重新登录');
+          }
+        } catch (error) {
+          // Token格式错误，清除本地存储并抛出错误
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          throw new Error('认证信息无效，请重新登录');
+        }
+      } else {
+        throw new Error('请先登录');
+      }
+
       const response = await fetch(`${apiClient['baseUrl']}/documents/upload`, {
         method: 'POST',
+        headers: headers,
         body: formData,
         // 不设置Content-Type，让浏览器自动设置multipart/form-data
       });
@@ -171,18 +200,18 @@ class DocumentService {
       }
 
       const responseData = await response.json();
-      
+
       // 如果后端返回的是包装格式，直接返回
       if (responseData.success !== undefined) {
         return responseData;
       }
-      
+
       // 否则包装成标准格式
       return {
         success: true,
         data: responseData
       };
-      
+
     } catch (error) {
       console.error('Upload error:', error);
       return {
@@ -313,8 +342,113 @@ class DocumentService {
       };
     }
 
+    // 真实API调用 - 下载原始文件
+    return apiClient.getBlob(`/documents/${id}/download`);
+  }
+
+  /**
+   * 下载处理后的文档
+   */
+  async downloadProcessedDocument(id: number): Promise<ApiResponse<Blob>> {
+    if (MOCK_CONFIG.enabled) {
+      mockLog(`Downloading processed document ${id}`);
+      await mockDelay();
+
+      const document = mockDocuments.find(d => d.id === id);
+      if (!document) {
+        return {
+          success: false,
+          error: 'Document not found'
+        };
+      }
+
+      // 创建一个模拟的Markdown文件blob
+      const mockContent = `# ${document.name}\n\n这是处理后的Markdown内容示例。\n\n## 文档信息\n- 项目: ${document.project}\n- 大小: ${document.size}\n- 上传时间: ${document.uploadTime}`;
+      const blob = new Blob([mockContent], { type: 'text/markdown' });
+
+      return {
+        success: true,
+        data: blob
+      };
+    }
+
+    // 真实API调用 - 下载处理后的文件
+    return apiClient.getBlob(`/documents/${id}/processed-file`);
+  }
+
+  /**
+   * 预览文档内容
+   */
+  async previewDocument(id: number): Promise<ApiResponse<{
+    content: string;
+    document_name: string;
+    original_filename: string;
+    file_type: string;
+    processed_at: string | null;
+  }>> {
+    if (MOCK_CONFIG.enabled) {
+      mockLog(`Previewing document ${id}`);
+      await mockDelay();
+
+      const document = mockDocuments.find(d => d.id === id);
+      if (!document) {
+        return {
+          success: false,
+          error: 'Document not found'
+        };
+      }
+
+      // 创建模拟的预览内容
+      const mockContent = `# ${document.name}
+
+这是文档的预览内容示例。
+
+## 文档信息
+- **项目**: ${document.project}
+- **文件大小**: ${document.size}
+- **上传时间**: ${document.uploadTime}
+- **处理状态**: ${document.status}
+
+## 内容概要
+
+这里是文档的主要内容。在实际应用中，这里会显示经过AI处理后的Markdown格式内容。
+
+### 表格示例
+
+| 项目 | 值 |
+|------|-----|
+| 文档类型 | ${document.type} |
+| 处理进度 | ${document.progress}% |
+
+### 列表示例
+
+- 项目一
+- 项目二
+- 项目三
+
+> 注意：这是模拟数据，实际内容会根据文档处理结果显示。
+`;
+
+      return {
+        success: true,
+        data: {
+          content: mockContent,
+          document_name: document.name,
+          original_filename: document.name,
+          file_type: document.type,
+          processed_at: new Date().toISOString()
+        }
+      };
+    }
+
     // 真实API调用
-    return apiClient.get<Blob>(`/documents/${id}/download`);
+    return apiClient.get<{
+      content: string;
+      document_name: string;
+      original_filename: string;
+      file_type: string;
+      processed_at: string | null;
+    }>(`/documents/${id}/preview`);
   }
 }
 

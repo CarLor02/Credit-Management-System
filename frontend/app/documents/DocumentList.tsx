@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { documentService } from '@/services/documentService';
 import { Document } from '@/data/mockData';
+import DocumentPreview from '@/components/DocumentPreview';
 
 interface DocumentListProps {
   activeTab: string;
@@ -17,6 +18,9 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const previousDataRef = useRef<Document[]>([]);
+
+  // 预览相关状态
+  const [previewDocument, setPreviewDocument] = useState<{ id: number; name: string } | null>(null);
 
   // 智能更新函数 - 只更新真正改变的数据
   const updateDocuments = useCallback((newDocuments: Document[]) => {
@@ -210,7 +214,7 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   };
 
   // 下载文档
-  const handleDownloadDocument = async (id: number, name: string) => {
+  const handleDownloadDocument = async (id: number, name: string, type: string) => {
     try {
       const response = await documentService.downloadDocument(id);
       if (response.success && response.data) {
@@ -219,7 +223,34 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
-        a.download = name;
+
+        // 确保文件名包含正确的扩展名
+        let filename = name;
+        if (filename && !filename.includes('.')) {
+          // 根据文件类型添加扩展名
+          switch (type) {
+            case 'pdf':
+              filename += '.pdf';
+              break;
+            case 'excel':
+              filename += '.xlsx';
+              break;
+            case 'word':
+              filename += '.docx';
+              break;
+            case 'image':
+              filename += '.jpg';
+              break;
+            case 'markdown':
+              filename += '.md';
+              break;
+            default:
+              // 保持原文件名
+              break;
+          }
+        }
+
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -231,6 +262,16 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
       alert('下载文档失败，请稍后重试');
       console.error('Download document error:', err);
     }
+  };
+
+  // 预览文档
+  const handlePreviewDocument = (id: number, name: string) => {
+    setPreviewDocument({ id, name });
+  };
+
+  // 关闭预览
+  const handleClosePreview = () => {
+    setPreviewDocument(null);
   };
 
   const getFileIcon = (type: string) => {
@@ -383,17 +424,19 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                 </span>
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => handleDownloadDocument(doc.id, doc.name)}
+                    onClick={() => handleDownloadDocument(doc.id, doc.name, doc.type)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
-                    title="下载文档"
+                    title="下载原始文档"
                   >
                     <i className="ri-download-line text-gray-600"></i>
                   </button>
                   <button
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
+                    onClick={() => handlePreviewDocument(doc.id, doc.name)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-100 transition-all duration-200 btn-hover-scale"
                     title="预览文档"
+                    disabled={doc.status !== 'completed'}
                   >
-                    <i className="ri-eye-line text-gray-600"></i>
+                    <i className={`ri-eye-line ${doc.status === 'completed' ? 'text-blue-600' : 'text-gray-400'}`}></i>
                   </button>
                   <button
                     onClick={() => handleDeleteDocument(doc.id)}
@@ -420,6 +463,16 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
           </>
         )}
       </div>
+
+      {/* 文档预览模态框 */}
+      {previewDocument && (
+        <DocumentPreview
+          documentId={previewDocument.id}
+          documentName={previewDocument.name}
+          isOpen={!!previewDocument}
+          onClose={handleClosePreview}
+        />
+      )}
     </div>
   );
 }

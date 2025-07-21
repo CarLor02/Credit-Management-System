@@ -9,8 +9,9 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
 from database import db
-from db_models import Document, Project, DocumentStatus, User
+from db_models import Document, Project, DocumentStatus, User, UserRole
 from utils import validate_request, log_action
+from api.auth import token_required
 
 def allowed_file(filename):
     """检查文件类型是否允许"""
@@ -38,6 +39,7 @@ def register_document_routes(app):
     """注册文档相关路由"""
     
     @app.route('/api/documents', methods=['GET'])
+    @token_required
     def get_documents():
         """获取文档列表"""
         try:
@@ -59,6 +61,18 @@ def register_document_routes(app):
 
             # 构建查询
             query = Document.query.join(Project)
+
+            # 根据用户角色筛选数据
+            current_user = request.current_user
+            if current_user.role != UserRole.ADMIN:
+                # 非管理员只能看到自己上传的文档或自己项目中的文档
+                query = query.filter(
+                    or_(
+                        Document.upload_by == current_user.id,
+                        Project.created_by == current_user.id,
+                        Project.assigned_to == current_user.id
+                    )
+                )
 
             # 搜索过滤
             if search:
@@ -108,10 +122,19 @@ def register_document_routes(app):
             return jsonify({'success': False, 'error': '获取文档列表失败'}), 500
     
     @app.route('/api/documents/<int:document_id>', methods=['GET'])
+    @token_required
     def get_document(document_id):
         """获取文档详情"""
         try:
+            current_user = request.current_user
             document = Document.query.get_or_404(document_id)
+
+            # 检查用户是否有权限访问此文档
+            if current_user.role != UserRole.ADMIN:
+                if (document.upload_by != current_user.id and
+                    document.project.created_by != current_user.id and
+                    document.project.assigned_to != current_user.id):
+                    return jsonify({'error': '您没有权限访问此文档'}), 403
 
             # 使用简化的格式与mock保持一致
             document_data = {
@@ -133,32 +156,41 @@ def register_document_routes(app):
             return jsonify({'success': False, 'error': '获取文档详情失败'}), 500
     
     @app.route('/api/documents/upload', methods=['POST'])
+    @token_required
     def upload_document():
         """上传文档"""
         try:
+            current_user = request.current_user
+
             # 检查文件
             if 'file' not in request.files:
                 return jsonify({'success': False, 'error': '没有文件被上传'}), 400
-            
+
             file = request.files['file']
             if file.filename == '':
                 return jsonify({'success': False, 'error': '没有选择文件'}), 400
-            
+
             # 检查文件类型
             if not allowed_file(file.filename):
                 return jsonify({'success': False, 'error': '不支持的文件类型'}), 400
-            
+
             # 获取其他参数
             project_name = request.form.get('project')
             document_name = request.form.get('name', file.filename)
-            
+
             if not project_name:
                 return jsonify({'success': False, 'error': '缺少项目信息'}), 400
-            
+
             # 查找项目
             project = Project.query.filter_by(name=project_name).first()
             if not project:
                 return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+            # 检查用户是否有权限向此项目上传文档
+            if current_user.role != UserRole.ADMIN:
+                if (project.created_by != current_user.id and
+                    project.assigned_to != current_user.id):
+                    return jsonify({'error': '您没有权限向此项目上传文档'}), 403
             
             # 生成安全的文件名
             filename = secure_filename(file.filename)
@@ -191,7 +223,7 @@ def register_document_routes(app):
                 project_id=project.id,
                 status=DocumentStatus.UPLOADING,  # 初始状态为上传中
                 progress=0,
-                upload_by=1  # TODO: 从JWT token获取用户ID
+                upload_by=current_user.id  # 使用当前用户ID
             )
             
             db.session.add(document)
@@ -379,30 +411,69 @@ def register_document_routes(app):
             return jsonify({'success': False, 'error': '获取文档状态失败'}), 500
     
     @app.route('/api/documents/<int:document_id>/download', methods=['GET'])
+    @token_required
     def download_document(document_id):
         """下载文档"""
         try:
+            current_user = request.current_user
             document = Document.query.get_or_404(document_id)
-            
+
+            # 检查用户是否有权限访问此文档
+            if current_user.role != UserRole.ADMIN:
+                if (document.upload_by != current_user.id and
+                    document.project.created_by != current_user.id and
+                    document.project.assigned_to != current_user.id):
+                    return jsonify({'error': '您没有权限访问此文档'}), 403
+
             # 检查文件是否存在
             if not os.path.exists(document.file_path):
                 return jsonify({'success': False, 'error': '文件不存在'}), 404
-            
+
             # 记录日志
             log_action(
-                user_id=1,  # TODO: 从JWT token获取用户ID
+                user_id=current_user.id,  # 使用当前用户ID
                 action='document_download',
                 resource_type='document',
                 resource_id=document.id,
                 details=f'下载文档: {document.name}'
             )
-            
+
+            # 处理中文文件名，优先使用文档名称（通常包含中文）
+            # 优先使用document.name（用户设置的名称），如果没有则使用original_filename
+            filename = document.name or document.original_filename
+
+            # 确保文件名包含扩展名
+            if filename and not os.path.splitext(filename)[1]:
+                # 如果没有扩展名，根据文件类型添加
+                if document.file_type == 'pdf':
+                    filename += '.pdf'
+                elif document.file_type == 'excel':
+                    filename += '.xlsx'
+                elif document.file_type == 'word':
+                    filename += '.docx'
+                elif document.file_type == 'image':
+                    filename += '.jpg'
+                elif document.file_type == 'markdown':
+                    filename += '.md'
+                else:
+                    # 尝试从原始路径获取扩展名
+                    original_ext = os.path.splitext(document.file_path)[1]
+                    if original_ext:
+                        filename += original_ext
+
+            # 确保文件名使用UTF-8编码
+            try:
+                filename = filename.encode('utf-8').decode('utf-8')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                # 如果编码失败，使用安全的文件名
+                filename = f"document_{document.id}{os.path.splitext(document.file_path)[1]}"
+
             return send_file(
                 document.file_path,
                 as_attachment=True,
-                download_name=document.original_filename
+                download_name=filename
             )
-            
+
         except Exception as e:
             current_app.logger.error(f"下载文档失败: {e}")
             return jsonify({'success': False, 'error': '下载文档失败'}), 500
@@ -438,48 +509,161 @@ def register_document_routes(app):
             return jsonify({'success': False, 'error': '获取处理进度失败'}), 500
     
     @app.route('/api/documents/<int:document_id>/processed-file', methods=['GET'])
+    @token_required
     def download_processed_file(document_id):
         """下载处理后的文件"""
         try:
+            current_user = request.current_user
             document = Document.query.get_or_404(document_id)
-            
+
+            # 检查用户是否有权限访问此文档
+            if current_user.role != UserRole.ADMIN:
+                if (document.upload_by != current_user.id and
+                    document.project.created_by != current_user.id and
+                    document.project.assigned_to != current_user.id):
+                    return jsonify({'error': '您没有权限访问此文档'}), 403
+
             if not document.processed_file_path or not os.path.exists(document.processed_file_path):
                 return jsonify({'success': False, 'error': '处理后的文件不存在'}), 404
-            
+
             # 记录下载日志
             log_action(
-                user_id=1,  # TODO: 从JWT token获取用户ID
+                user_id=current_user.id,  # 使用当前用户ID
                 action='processed_document_download',
                 resource_type='document',
                 resource_id=document.id,
                 details=f'下载处理后文档: {document.name}'
             )
-            
-            # 构建处理后的文件名
-            base_name = os.path.splitext(document.original_filename)[0]
+
+            # 构建处理后的文件名，优先使用文档名称（通常包含中文）
+            # 优先使用document.name（用户设置的名称），如果没有则使用original_filename
+            original_filename = document.name or document.original_filename
+
+            # 确保原始文件名包含扩展名
+            if original_filename and not os.path.splitext(original_filename)[1]:
+                # 如果没有扩展名，根据文件类型添加
+                if document.file_type == 'pdf':
+                    original_filename += '.pdf'
+                elif document.file_type == 'excel':
+                    original_filename += '.xlsx'
+                elif document.file_type == 'word':
+                    original_filename += '.docx'
+                elif document.file_type == 'image':
+                    original_filename += '.jpg'
+                elif document.file_type == 'markdown':
+                    original_filename += '.md'
+
+            try:
+                # 确保文件名使用UTF-8编码
+                original_filename = original_filename.encode('utf-8').decode('utf-8')
+                base_name = os.path.splitext(original_filename)[0]
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                # 如果编码失败，使用安全的文件名
+                base_name = f"document_{document.id}"
+
             processed_filename = f"{base_name}_processed.md"
-            
+
             return send_file(
                 document.processed_file_path,
                 as_attachment=True,
                 download_name=processed_filename
             )
-            
+
         except Exception as e:
             current_app.logger.error(f"下载处理后文档失败: {e}")
             return jsonify({'success': False, 'error': '下载处理后文档失败'}), 500
 
+    @app.route('/api/documents/<int:document_id>/preview', methods=['GET'])
+    @token_required
+    def preview_document(document_id):
+        """预览处理后的文档内容"""
+        try:
+            current_user = request.current_user
+            document = Document.query.get_or_404(document_id)
+
+            # 检查用户是否有权限访问此文档
+            if current_user.role != UserRole.ADMIN:
+                if (document.upload_by != current_user.id and
+                    document.project.created_by != current_user.id and
+                    document.project.assigned_to != current_user.id):
+                    return jsonify({'error': '您没有权限访问此文档'}), 403
+
+            if not document.processed_file_path or not os.path.exists(document.processed_file_path):
+                return jsonify({'success': False, 'error': '处理后的文件不存在，请等待文件处理完成'}), 404
+
+            # 读取处理后的Markdown文件内容
+            try:
+                with open(document.processed_file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                # 如果UTF-8解码失败，尝试其他编码
+                try:
+                    with open(document.processed_file_path, 'r', encoding='gbk') as f:
+                        content = f.read()
+                except UnicodeDecodeError:
+                    with open(document.processed_file_path, 'r', encoding='latin-1') as f:
+                        content = f.read()
+
+            # 记录预览日志
+            log_action(
+                user_id=current_user.id,
+                action='document_preview',
+                resource_type='document',
+                resource_id=document.id,
+                details=f'预览文档: {document.name}'
+            )
+
+            # 构建用户友好的文件名
+            display_name = document.name or document.original_filename
+            if display_name and not os.path.splitext(display_name)[1]:
+                # 如果没有扩展名，根据文件类型添加
+                if document.file_type == 'pdf':
+                    display_name += '.pdf'
+                elif document.file_type == 'excel':
+                    display_name += '.xlsx'
+                elif document.file_type == 'word':
+                    display_name += '.docx'
+                elif document.file_type == 'image':
+                    display_name += '.jpg'
+                elif document.file_type == 'markdown':
+                    display_name += '.md'
+
+            return jsonify({
+                'success': True,
+                'data': {
+                    'content': content,
+                    'document_name': document.name,
+                    'original_filename': document.original_filename,
+                    'display_name': display_name,  # 添加用于显示的文件名
+                    'file_type': document.file_type,
+                    'processed_at': document.updated_at.isoformat() if document.updated_at else None
+                }
+            })
+
+        except Exception as e:
+            current_app.logger.error(f"预览文档失败: {e}")
+            return jsonify({'success': False, 'error': '预览文档失败'}), 500
+
     @app.route('/api/documents/<int:document_id>', methods=['DELETE'])
+    @token_required
     def delete_document(document_id):
         """删除文档"""
         try:
+            current_user = request.current_user
             document = Document.query.get_or_404(document_id)
+
+            # 检查用户是否有权限删除此文档
+            if current_user.role != UserRole.ADMIN:
+                if (document.upload_by != current_user.id and
+                    document.project.created_by != current_user.id):
+                    return jsonify({'error': '您没有权限删除此文档'}), 403
+
             document_name = document.name
             file_path = document.file_path
-            
+
             # 记录日志
             log_action(
-                user_id=1,  # TODO: 从JWT token获取用户ID
+                user_id=current_user.id,  # 使用当前用户ID
                 action='document_delete',
                 resource_type='document',
                 resource_id=document.id,

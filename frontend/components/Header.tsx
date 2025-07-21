@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
+import { useAuth } from '../contexts/AuthContext';
 import MockIndicator from './MockIndicator';
 
 export default function Header() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   // 检查导航项是否处于激活状态
   const isActiveNav = (path: string) => {
@@ -25,6 +27,13 @@ export default function Header() {
     e.preventDefault();
     setIsProfileOpen(false);
     router.push('/upgrade');
+  };
+
+  const handleLogout = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsProfileOpen(false);
+    await logout();
+    router.push('/login');
   };
 
   return (
@@ -74,9 +83,21 @@ export default function Header() {
                 className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                  <i className="ri-user-line text-white text-sm"></i>
+                  {user?.avatar_url ? (
+                    <img
+                      src={user.avatar_url}
+                      alt={user.full_name}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-white text-sm font-medium">
+                      {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
+                    </span>
+                  )}
                 </div>
-                <span className="text-gray-700 font-medium">张三</span>
+                <span className="text-gray-700 font-medium">
+                  {user?.full_name || user?.username || '用户'}
+                </span>
                 <i className="ri-arrow-down-s-line text-gray-400"></i>
               </button>
               
@@ -95,9 +116,12 @@ export default function Header() {
                     升级会员
                   </button>
                   <hr className="my-2" />
-                  <Link href="/login" className="block px-4 py-2 text-gray-700 hover:bg-gray-50">
+                  <button
+                    onClick={handleLogout}
+                    className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50"
+                  >
                     退出登录
-                  </Link>
+                  </button>
                 </div>
               )}
             </div>

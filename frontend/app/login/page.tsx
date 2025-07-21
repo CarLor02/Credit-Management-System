@@ -1,23 +1,88 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function LoginPage() {
   const [loginType, setLoginType] = useState('login');
   const [formData, setFormData] = useState({
+    username: '',
     email: '',
     password: '',
     confirmPassword: '',
-    name: '',
+    full_name: '',
     phone: ''
   });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const { login, register, isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  // 如果已经登录，重定向到仪表板
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, router]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // 这里添加登录/注册逻辑
-    console.log('提交表单:', formData);
+    setError('');
+    setIsLoading(true);
+
+    try {
+      if (loginType === 'login') {
+        // 登录逻辑
+        if (!formData.username || !formData.password) {
+          setError('请输入用户名和密码');
+          return;
+        }
+
+        const result = await login(formData.username, formData.password);
+        if (result.success) {
+          router.push('/dashboard');
+        } else {
+          setError(result.error || '登录失败');
+        }
+      } else {
+        // 注册逻辑
+        if (!formData.username || !formData.email || !formData.password || !formData.full_name) {
+          setError('请填写所有必填字段');
+          return;
+        }
+
+        if (formData.password !== formData.confirmPassword) {
+          setError('两次输入的密码不一致');
+          return;
+        }
+
+        if (formData.password.length < 6) {
+          setError('密码长度至少6位');
+          return;
+        }
+
+        const result = await register({
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          full_name: formData.full_name
+        });
+
+        if (result.success) {
+          router.push('/dashboard');
+        } else {
+          setError(result.error || '注册失败');
+        }
+      }
+    } catch (error) {
+      setError('网络错误，请稍后重试');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -25,6 +90,8 @@ export default function LoginPage() {
       ...formData,
       [e.target.name]: e.target.value
     });
+    // 清除错误信息
+    if (error) setError('');
   };
 
   return (
@@ -59,36 +126,81 @@ export default function LoginPage() {
             </button>
           </div>
 
+          {/* 错误提示 */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {loginType === 'register' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  姓名
+                  姓名 <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
-                  name="name"
-                  value={formData.name}
+                  name="full_name"
+                  value={formData.full_name}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="请输入您的姓名"
+                  required
                 />
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                邮箱
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="请输入您的邮箱"
-              />
-            </div>
+            {loginType === 'register' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  用户名 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请输入用户名"
+                  required
+                />
+              </div>
+            )}
+
+            {loginType === 'login' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  用户名 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请输入用户名"
+                  required
+                />
+              </div>
+            )}
+
+            {loginType === 'register' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  邮箱 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请输入您的邮箱"
+                  required
+                />
+              </div>
+            )}
 
             {loginType === 'register' && (
               <div>
@@ -108,7 +220,7 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                密码
+                密码 <span className="text-red-500">*</span>
               </label>
               <input
                 type="password"
@@ -116,14 +228,16 @@ export default function LoginPage() {
                 value={formData.password}
                 onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="请输入密码"
+                placeholder={loginType === 'register' ? '请输入密码（至少6位）' : '请输入密码'}
+                required
+                minLength={loginType === 'register' ? 6 : undefined}
               />
             </div>
 
             {loginType === 'register' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  确认密码
+                  确认密码 <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="password"
@@ -132,19 +246,26 @@ export default function LoginPage() {
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="请确认密码"
+                  required
                 />
               </div>
             )}
 
             <div className="mt-6">
-              <Link href="/dashboard">
-                <button
-                  type="submit"
-                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  {loginType === 'login' ? '登录' : '注册'}
-                </button>
-              </Link>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    {loginType === 'login' ? '登录中...' : '注册中...'}
+                  </>
+                ) : (
+                  loginType === 'login' ? '登录' : '注册'
+                )}
+              </button>
             </div>
           </form>
 

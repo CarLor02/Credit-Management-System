@@ -7,14 +7,16 @@ from sqlalchemy import or_, and_
 from datetime import datetime
 
 from database import db
-from db_models import Project, User, ProjectMember, Document, SystemLog
+from db_models import Project, User, ProjectMember, Document, SystemLog, UserRole
 from db_models import ProjectType, ProjectStatus, Priority, RiskLevel, ProjectMemberRole
 from utils import validate_request, log_action
+from api.auth import token_required
 
 def register_project_routes(app):
     """注册项目相关路由"""
     
     @app.route('/api/projects', methods=['GET'])
+    @token_required
     def get_projects():
         """获取项目列表"""
         try:
@@ -27,6 +29,17 @@ def register_project_routes(app):
 
             # 构建查询
             query = Project.query
+
+            # 根据用户角色筛选数据
+            current_user = request.current_user
+            if current_user.role != UserRole.ADMIN:
+                # 非管理员只能看到自己创建的项目或被分配的项目
+                query = query.filter(
+                    or_(
+                        Project.created_by == current_user.id,
+                        Project.assigned_to == current_user.id
+                    )
+                )
 
             # 搜索过滤
             if search and search not in ['undefined', 'null', '']:
@@ -85,10 +98,17 @@ def register_project_routes(app):
             return jsonify({'error': '获取项目列表失败'}), 500
     
     @app.route('/api/projects/<int:project_id>', methods=['GET'])
+    @token_required
     def get_project(project_id):
         """获取项目详情"""
         try:
+            current_user = request.current_user
             project = Project.query.get_or_404(project_id)
+
+            # 检查用户是否有权限访问此项目
+            if current_user.role != UserRole.ADMIN:
+                if project.created_by != current_user.id and project.assigned_to != current_user.id:
+                    return jsonify({'error': '您没有权限访问此项目'}), 403
 
             # 使用完整的格式，包含扩展信息
             project_data = {
@@ -115,22 +135,24 @@ def register_project_routes(app):
             return jsonify({'error': '获取项目详情失败'}), 500
     
     @app.route('/api/projects', methods=['POST'])
+    @token_required
     def create_project():
         """创建项目"""
         try:
             import uuid
             data = request.get_json()
-            
+            current_user = request.current_user
+
             # 验证必需字段
             required_fields = ['name', 'type']
             for field in required_fields:
                 if field not in data:
                     return jsonify({'success': False, 'error': f'缺少必需字段: {field}'}), 400
-            
+
             # 验证项目类型
             if data['type'] not in ['enterprise', 'individual']:
                 return jsonify({'success': False, 'error': '无效的项目类型'}), 400
-            
+
             # 创建项目
             project = Project(
                 name=data['name'],
@@ -139,7 +161,7 @@ def register_project_routes(app):
                 description=data.get('description', ''),
                 category=data.get('category', ''),
                 priority=Priority(data.get('priority', 'medium')),
-                created_by=1,  # TODO: 从JWT token获取用户ID
+                created_by=current_user.id,  # 使用当前用户ID
                 assigned_to=data.get('assigned_to')
             )
             
@@ -209,10 +231,18 @@ def register_project_routes(app):
             return jsonify({'success': False, 'error': '创建项目失败'}), 500
     
     @app.route('/api/projects/<int:project_id>', methods=['PUT'])
+    @token_required
     def update_project(project_id):
         """更新项目"""
         try:
+            current_user = request.current_user
             project = Project.query.get_or_404(project_id)
+
+            # 检查用户是否有权限修改此项目
+            if current_user.role != UserRole.ADMIN:
+                if project.created_by != current_user.id:
+                    return jsonify({'error': '您没有权限修改此项目'}), 403
+
             data = request.get_json()
             
             # 更新字段
@@ -260,13 +290,21 @@ def register_project_routes(app):
             return jsonify({'success': False, 'error': '更新项目失败'}), 500
     
     @app.route('/api/projects/<int:project_id>', methods=['DELETE'])
+    @token_required
     def delete_project(project_id):
         """删除项目"""
         try:
+            current_user = request.current_user
+
             # 检查项目是否存在
             project = Project.query.get(project_id)
             if not project:
                 return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+            # 检查用户是否有权限删除此项目
+            if current_user.role != UserRole.ADMIN:
+                if project.created_by != current_user.id:
+                    return jsonify({'error': '您没有权限删除此项目'}), 403
 
             project_name = project.name
             current_app.logger.info(f"开始删除项目: {project_name} (ID: {project_id})")
@@ -274,7 +312,7 @@ def register_project_routes(app):
             # 先记录日志（在删除之前）
             try:
                 log_action(
-                    user_id=1,  # TODO: 从JWT token获取用户ID
+                    user_id=current_user.id,  # 使用当前用户ID
                     action='project_delete',
                     resource_type='project',
                     resource_id=project.id,

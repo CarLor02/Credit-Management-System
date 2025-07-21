@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import StatsCard from './StatsCard';
 import RecentActivity from './RecentActivity';
 import RiskTrends from './RiskTrends';
@@ -79,30 +80,32 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      
-      <main className="p-6 animate-fadeIn">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">数据总览</h1>
-          <p className="text-gray-600">征信管理系统核心指标监控</p>
-        </div>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => (
-            <StatsCard key={index} {...stat} />
-          ))}
-        </div>
+        <main className="p-6 animate-fadeIn">
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">数据总览</h1>
+            <p className="text-gray-600">征信管理系统核心指标监控</p>
+          </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <RiskTrends dashboardData={dashboardData} />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {stats.map((stat, index) => (
+              <StatsCard key={index} {...stat} />
+            ))}
           </div>
-          <div>
-            <RecentActivity />
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <RiskTrends dashboardData={dashboardData} />
+            </div>
+            <div>
+              <RecentActivity />
+            </div>
           </div>
-        </div>
-      </main>
-    </div>
+        </main>
+      </div>
+    </ProtectedRoute>
   );
 }

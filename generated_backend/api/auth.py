@@ -123,7 +123,78 @@ def register_auth_routes(app):
         except Exception as e:
             current_app.logger.error(f"用户登录失败: {e}")
             return jsonify({'success': False, 'error': '登录失败'}), 500
-    
+
+    @app.route('/api/auth/register', methods=['POST'])
+    def register():
+        """用户注册"""
+        try:
+            data = request.get_json()
+
+            # 验证必填字段
+            required_fields = ['username', 'email', 'password', 'full_name']
+            for field in required_fields:
+                if not data or not data.get(field):
+                    return jsonify({'success': False, 'error': f'{field}不能为空'}), 400
+
+            # 检查用户名是否已存在
+            existing_user = User.query.filter_by(username=data['username']).first()
+            if existing_user:
+                return jsonify({'success': False, 'error': '用户名已存在'}), 400
+
+            # 检查邮箱是否已存在
+            existing_email = User.query.filter_by(email=data['email']).first()
+            if existing_email:
+                return jsonify({'success': False, 'error': '邮箱已被使用'}), 400
+
+            # 验证密码长度
+            if len(data['password']) < 6:
+                return jsonify({'success': False, 'error': '密码长度至少6位'}), 400
+
+            # 创建新用户
+            new_user = User(
+                username=data['username'],
+                email=data['email'],
+                full_name=data['full_name'],
+                role=UserRole.USER  # 默认角色为普通用户
+            )
+            new_user.set_password(data['password'])
+
+            # 保存到数据库
+            db.session.add(new_user)
+            db.session.commit()
+
+            # 生成token
+            token = generate_token(new_user.id)
+
+            # 记录注册日志
+            log_action(
+                user_id=new_user.id,
+                action='user_register',
+                details=f'用户 {new_user.username} 注册成功',
+                ip_address=request.remote_addr
+            )
+
+            # 记录活动日志
+            try:
+                from services.stats_service import ActivityLogger
+                ActivityLogger.log_user_register(new_user.id, new_user.full_name)
+            except Exception as e:
+                current_app.logger.warning(f"记录活动日志失败: {e}")
+
+            return jsonify({
+                'success': True,
+                'data': {
+                    'token': token,
+                    'user': new_user.to_dict()
+                },
+                'message': '注册成功'
+            })
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"用户注册失败: {e}")
+            return jsonify({'success': False, 'error': '注册失败'}), 500
+
     @app.route('/api/auth/logout', methods=['POST'])
     @token_required
     def logout():
