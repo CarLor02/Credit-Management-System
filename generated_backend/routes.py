@@ -16,6 +16,7 @@ from api.documents import register_document_routes
 from api.auth import register_auth_routes
 from api.project_details import register_project_detail_routes
 from api.stats import register_stats_routes as register_new_stats_routes
+from api.reports import register_report_routes
 
 def register_routes(app):
     """注册所有API路由"""
@@ -34,6 +35,9 @@ def register_routes(app):
 
     # 注册统计信息路由
     register_new_stats_routes(app)
+
+    # 注册报告生成路由
+    register_report_routes(app)
 
 # 旧的统计路由已移动到 api/stats.py
 

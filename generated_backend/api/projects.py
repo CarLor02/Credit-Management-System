@@ -86,7 +86,10 @@ def register_project_routes(app):
                     'riskLevel': project.risk_level.value.lower(),
                     'lastUpdate': project.updated_at.strftime('%Y-%m-%d'),
                     'documents': len(list(project.documents)),
-                    'progress': project.progress
+                    'progress': project.progress,
+                    # 知识库相关字段
+                    'dataset_id': project.dataset_id,
+                    'knowledge_base_name': project.knowledge_base_name
                 }
                 projects_data.append(project_dict)
 
@@ -121,6 +124,9 @@ def register_project_routes(app):
                 'lastUpdate': project.updated_at.strftime('%Y-%m-%d'),
                 'documents': len(list(project.documents)),
                 'progress': project.progress,
+                # 知识库相关字段
+                'dataset_id': project.dataset_id,
+                'knowledge_base_name': project.knowledge_base_name,
                 # 添加扩展信息
                 'companyInfo': project.company_info,
                 'personalInfo': project.personal_info,

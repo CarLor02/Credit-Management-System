@@ -46,6 +46,9 @@ export interface Project {
   lastUpdate: string;
   documents: number;
   progress: number;
+  // 知识库相关字段
+  dataset_id?: string;
+  knowledge_base_name?: string;
   // 扩展信息
   companyInfo?: CompanyInfo;
   personalInfo?: PersonalInfo;

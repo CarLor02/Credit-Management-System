@@ -39,6 +39,9 @@ class Config:
     REPORT_API_URL = os.environ.get('REPORT_API_URL', 'http://172.16.76.203/v1/workflows/run')
     REPORT_API_KEY = os.environ.get('REPORT_API_KEY', 'app-zLDrndvfJ81HaTWD3gXXVJaq')
 
+    # Mock API配置
+    USE_MOCK_API = os.environ.get('USE_MOCK_API', 'True').lower() == 'true'
+
 class DevelopmentConfig(Config):
     """开发环境配置"""
     DEBUG = True
