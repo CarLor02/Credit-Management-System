@@ -86,17 +86,17 @@ export default function Header() {
                   {user?.avatar_url ? (
                     <img
                       src={user.avatar_url}
-                      alt={user.full_name}
+                      alt={user.username}
                       className="w-8 h-8 rounded-full object-cover"
                     />
                   ) : (
                     <span className="text-white text-sm font-medium">
-                      {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
+                      {user?.username?.charAt(0) || 'U'}
                     </span>
                   )}
                 </div>
                 <span className="text-gray-700 font-medium">
-                  {user?.full_name || user?.username || '用户'}
+                  {user?.username || '用户'}
                 </span>
                 <i className="ri-arrow-down-s-line text-gray-400"></i>
               </button>

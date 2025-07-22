@@ -346,7 +346,7 @@ def register_stats_routes(app):
                     'type': log.action,
                     'title': title,
                     'description': description,
-                    'user_name': user.full_name if user else '系统',
+                    'user_name': user.username if user else '系统',
                     'created_at': log.created_at.isoformat(),
                     'relative_time': relative_time
                 })

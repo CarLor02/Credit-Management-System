@@ -15,7 +15,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (userData: { username: string; email: string; password: string; full_name: string }) => Promise<{ success: boolean; error?: string }>;
+  register: (userData: { username: string; email: string; password: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   refreshUser: () => Promise<void>;
@@ -114,7 +114,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   /**
    * 用户注册
    */
-  const register = async (userData: { username: string; email: string; password: string; full_name: string }) => {
+  const register = async (userData: { username: string; email: string; password: string; phone?: string }) => {
     try {
       setIsLoading(true);
       const response = await authService.register(userData);

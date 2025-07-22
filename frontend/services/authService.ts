@@ -15,7 +15,7 @@ export interface User {
   id: number;
   username: string;
   email: string;
-  full_name: string;
+  phone?: string;
   role: UserRole;
   avatar_url?: string;
   is_active: boolean;
@@ -35,7 +35,7 @@ export interface RegisterRequest {
   username: string;
   email: string;
   password: string;
-  full_name: string;
+  phone?: string;
 }
 
 // 登录响应接口
@@ -154,7 +154,7 @@ class AuthService {
           id: 1,
           username: 'admin',
           email: 'admin@example.com',
-          full_name: '系统管理员',
+          phone: '13800138000',
           role: 'admin',
           avatar_url: '',
           is_active: true,
@@ -208,7 +208,7 @@ class AuthService {
         id: Date.now(),
         username: userData.username,
         email: userData.email,
-        full_name: userData.full_name,
+        phone: userData.phone,
         role: 'user',
         avatar_url: '',
         is_active: true,

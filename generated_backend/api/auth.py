@@ -107,7 +107,7 @@ def register_auth_routes(app):
             # 记录活动日志
             try:
                 from services.stats_service import ActivityLogger
-                ActivityLogger.log_user_login(user.id, user.full_name or user.username)
+                ActivityLogger.log_user_login(user.id, user.username)
             except Exception as e:
                 current_app.logger.warning(f"记录活动日志失败: {e}")
             
@@ -131,7 +131,7 @@ def register_auth_routes(app):
             data = request.get_json()
 
             # 验证必填字段
-            required_fields = ['username', 'email', 'password', 'full_name']
+            required_fields = ['username', 'email', 'password']
             for field in required_fields:
                 if not data or not data.get(field):
                     return jsonify({'success': False, 'error': f'{field}不能为空'}), 400
@@ -154,7 +154,7 @@ def register_auth_routes(app):
             new_user = User(
                 username=data['username'],
                 email=data['email'],
-                full_name=data['full_name'],
+                phone=data.get('phone'),  # 可选的手机号
                 role=UserRole.USER  # 默认角色为普通用户
             )
             new_user.set_password(data['password'])
@@ -177,7 +177,7 @@ def register_auth_routes(app):
             # 记录活动日志
             try:
                 from services.stats_service import ActivityLogger
-                ActivityLogger.log_user_register(new_user.id, new_user.full_name)
+                ActivityLogger.log_user_register(new_user.id, new_user.username)
             except Exception as e:
                 current_app.logger.warning(f"记录活动日志失败: {e}")
 
@@ -240,14 +240,14 @@ def register_auth_routes(app):
             user = request.current_user
             
             # 更新允许的字段
-            if 'full_name' in data:
-                user.full_name = data['full_name']
             if 'email' in data:
                 # 检查邮箱是否已存在
                 existing_user = User.query.filter_by(email=data['email']).first()
                 if existing_user and existing_user.id != user.id:
                     return jsonify({'success': False, 'error': '邮箱已被使用'}), 400
                 user.email = data['email']
+            if 'phone' in data:
+                user.phone = data['phone']
             if 'avatar_url' in data:
                 user.avatar_url = data['avatar_url']
             
@@ -323,7 +323,6 @@ def register_auth_routes(app):
             if search:
                 query = query.filter(
                     User.username.contains(search) |
-                    User.full_name.contains(search) |
                     User.email.contains(search)
                 )
             

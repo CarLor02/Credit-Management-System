@@ -80,8 +80,8 @@ python3 test_system.py
 ```
 
 ### 默认用户
-- 管理员: admin@example.com / admin123
-- 普通用户: user1@example.com / user123
+- 管理员: admin / admin123
+- 普通用户: user1 / user123
 
 ### 故障排除
 

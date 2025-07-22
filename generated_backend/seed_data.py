@@ -31,28 +31,28 @@ def create_users():
             'username': 'admin',
             'email': 'admin@example.com',
             'password': 'admin123',
-            'full_name': '系统管理员',
+            'phone': '13800138000',
             'role': UserRole.ADMIN
         },
         {
             'username': 'user1',
             'email': 'user1@example.com',
             'password': 'user123',
-            'full_name': '普通用户张三',
+            'phone': '13800138001',
             'role': UserRole.USER
         },
         {
             'username': 'user2',
             'email': 'user2@example.com',
             'password': 'user123',
-            'full_name': '普通用户李四',
+            'phone': '13800138002',
             'role': UserRole.USER
         },
         {
             'username': 'user3',
             'email': 'user3@example.com',
             'password': 'user123',
-            'full_name': '普通用户王五',
+            'phone': '13800138003',
             'role': UserRole.USER
         }
     ]
@@ -70,7 +70,7 @@ def create_users():
         user = User(
             username=user_data['username'],
             email=user_data['email'],
-            full_name=user_data['full_name'],
+            phone=user_data.get('phone'),
             role=user_data['role'],
             is_active=True,
             last_login=datetime.now(timezone.utc) - timedelta(days=1)

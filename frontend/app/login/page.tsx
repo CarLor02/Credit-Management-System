@@ -13,7 +13,6 @@ export default function LoginPage() {
     email: '',
     password: '',
     confirmPassword: '',
-    full_name: '',
     phone: ''
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -50,7 +49,7 @@ export default function LoginPage() {
         }
       } else {
         // 注册逻辑
-        if (!formData.username || !formData.email || !formData.password || !formData.full_name) {
+        if (!formData.username || !formData.email || !formData.password) {
           setError('请填写所有必填字段');
           return;
         }
@@ -69,7 +68,7 @@ export default function LoginPage() {
           username: formData.username,
           email: formData.email,
           password: formData.password,
-          full_name: formData.full_name
+          phone: formData.phone
         });
 
         if (result.success) {
@@ -134,22 +133,7 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {loginType === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  姓名 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="full_name"
-                  value={formData.full_name}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="请输入您的姓名"
-                  required
-                />
-              </div>
-            )}
+
 
             {loginType === 'register' && (
               <div>

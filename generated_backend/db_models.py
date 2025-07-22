@@ -117,7 +117,7 @@ class User(db.Model):
     username = db.Column(db.String(50), unique=True, nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    full_name = db.Column(db.String(100), nullable=False)
+    phone = db.Column(db.String(20))  # 手机号字段
     role = db.Column(db.Enum(UserRole), default=UserRole.USER, nullable=False)
     avatar_url = db.Column(db.String(255))
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -147,7 +147,7 @@ class User(db.Model):
             'id': self.id,
             'username': self.username,
             'email': self.email,
-            'full_name': self.full_name,
+            'phone': self.phone,
             'role': self.role.value,
             'avatar_url': self.avatar_url,
             'is_active': self.is_active,
@@ -323,7 +323,7 @@ class ProjectMember(db.Model):
             'id': self.id,
             'project_id': self.project_id,
             'user_id': self.user_id,
-            'user_name': self.user.full_name if self.user else '',
+            'user_name': self.user.username if self.user else '',
             'role': self.role.value,
             'permissions': self.permissions,
             'joined_at': self.joined_at.isoformat()
@@ -386,7 +386,7 @@ class SystemLog(db.Model):
         return {
             'id': self.id,
             'user_id': self.user_id,
-            'user_name': self.user.full_name if self.user else 'System',
+            'user_name': self.user.username if self.user else 'System',
             'action': self.action,
             'resource_type': self.resource_type,
             'resource_id': self.resource_id,
@@ -503,7 +503,7 @@ class ActivityLog(db.Model):
             'title': self.title,
             'description': self.description,
             'user_id': self.user_id,
-            'user_name': self.user.full_name if self.user else 'System',
+            'user_name': self.user.username if self.user else 'System',
             'resource_type': self.resource_type,
             'resource_id': self.resource_id,
             'metadata': self.activity_metadata,
@@ -742,10 +742,10 @@ class ProjectTimeline(db.Model):
             'related_document_id': self.related_document_id,
             'related_document_name': self.related_document.name if self.related_document else None,
             'related_user_id': self.related_user_id,
-            'related_user_name': self.related_user.full_name if self.related_user else None,
+            'related_user_name': self.related_user.username if self.related_user else None,
             'progress': self.progress,
             'created_by': self.created_by,
-            'creator_name': self.creator.full_name if self.creator else None,
+            'creator_name': self.creator.username if self.creator else None,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }

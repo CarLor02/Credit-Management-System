@@ -197,7 +197,7 @@ def register_project_routes(app):
             try:
                 from services.stats_service import ActivityLogger
                 user = User.query.get(project.created_by)
-                user_name = user.full_name if user else 'Unknown'
+                user_name = user.username if user else 'Unknown'
                 ActivityLogger.log_project_created(
                     project.id, project.name, project.created_by, user_name
                 )

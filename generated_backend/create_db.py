@@ -39,7 +39,7 @@ def create_database():
             username='admin',
             email='admin@example.com',
             password_hash=generate_password_hash('admin123'),
-            full_name='系统管理员',
+            phone='13800138000',
             role=UserRole.ADMIN,
             is_active=True,
             last_login=datetime.now(),

@@ -2,21 +2,21 @@
 
 import { useState } from 'react';
 import Header from '@/components/Header';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState('info');
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
+  const { user } = useAuth();
 
-  // 用户数据
+  // 用户数据 - 使用真实用户数据，如果没有则使用默认值
   const userData = {
-    name: '张三',
-    email: 'zhangsan@example.com',
-    phone: '138****1234',
-    department: '风险管理部',
-    position: '高级分析师',
-    joinDate: '2023-03-15',
-    avatar: 'ZS',
+    username: user?.username || 'admin',
+    email: user?.email || 'admin@example.com',
+    phone: user?.phone || '13800138000',
+    joinDate: user?.created_at ? new Date(user.created_at).toLocaleDateString() : '2023-03-15',
+    avatar: user?.username?.charAt(0).toUpperCase() || 'A',
     points: 2580,
     memberLevel: 'VIP金卡',
     membershipExpiry: '2024-12-31',
@@ -63,10 +63,10 @@ export default function ProfilePage() {
                 <span className="text-2xl font-bold text-white">{userData.avatar}</span>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 mb-2">{userData.name}</h1>
+                <h1 className="text-2xl font-bold text-gray-900 mb-2">{userData.username}</h1>
                 <div className="space-y-1 text-sm text-gray-600">
-                  <p>{userData.department} · {userData.position}</p>
                   <p>{userData.email}</p>
+                  <p>{userData.phone}</p>
                   <p>加入时间：{userData.joinDate}</p>
                 </div>
               </div>
@@ -172,9 +172,9 @@ export default function ProfilePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">姓名</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">用户名</label>
                       <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600">
-                        {userData.name}
+                        {userData.username}
                       </div>
                     </div>
                     <div>
@@ -183,24 +183,12 @@ export default function ProfilePage() {
                         {userData.email}
                       </div>
                     </div>
+                  </div>
+                  <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">手机号</label>
                       <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600">
                         {userData.phone}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">部门</label>
-                      <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600">
-                        {userData.department}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">职位</label>
-                      <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600">
-                        {userData.position}
                       </div>
                     </div>
                     <div>
@@ -381,11 +369,12 @@ export default function ProfilePage() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">编辑个人资料</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">姓名</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">用户名</label>
                 <input
                   type="text"
-                  defaultValue={userData.name}
+                  defaultValue={userData.username}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  disabled
                 />
               </div>
               <div>

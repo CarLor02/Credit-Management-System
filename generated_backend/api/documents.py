@@ -326,7 +326,7 @@ def register_document_routes(app):
                                     doc = Document.query.get(doc_id)
                                     if doc:
                                         user = User.query.get(doc.upload_by)
-                                        user_name = user.full_name if user else 'Unknown'
+                                        user_name = user.username if user else 'Unknown'
                                         ActivityLogger.log_document_uploaded(
                                             doc.id, doc.name, project_name_for_log, doc.upload_by, user_name
                                         )
@@ -362,7 +362,7 @@ def register_document_routes(app):
                                     doc = Document.query.get(doc_id)
                                     if doc:
                                         user = User.query.get(doc.upload_by)
-                                        user_name = user.full_name if user else 'Unknown'
+                                        user_name = user.username if user else 'Unknown'
                                         ActivityLogger.log_document_uploaded(
                                             doc.id, doc.name, project_name_for_log, doc.upload_by, user_name
                                         )

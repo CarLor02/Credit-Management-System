@@ -215,9 +215,9 @@ Authorization: Bearer <token>
   "data": {
     "id": 1,
     "username": "admin",
-    "full_name": "管理员",
     "role": "admin",
     "email": "admin@example.com",
+    "phone": "13800138000",
     "avatar_url": null,
     "is_active": true,
     "last_login": "2025-07-09T10:30:00",
@@ -242,8 +242,8 @@ Content-Type: application/json
 **请求参数**:
 ```json
 {
-  "full_name": "string",    // 姓名，可选
   "email": "string",        // 邮箱，可选，必须唯一
+  "phone": "string",        // 手机号，可选
   "avatar_url": "string"    // 头像URL，可选
 }
 ```
@@ -255,9 +255,9 @@ Content-Type: application/json
   "data": {
     "id": 1,
     "username": "admin",
-    "full_name": "新姓名",
     "role": "admin",
     "email": "new@example.com",
+    "phone": "13800138001",
     "avatar_url": "https://example.com/avatar.jpg",
     "is_active": true,
     "last_login": "2025-07-09T10:30:00",
@@ -345,9 +345,9 @@ Authorization: Bearer <token>
     {
       "id": 1,
       "username": "admin",
-      "full_name": "管理员",
       "role": "admin",
       "email": "admin@example.com",
+      "phone": "13800138000",
       "is_active": true,
       "last_login": "2025-07-09T10:30:00",
       "created_at": "2025-01-01T00:00:00",
@@ -355,10 +355,10 @@ Authorization: Bearer <token>
     },
     {
       "id": 2,
-      "username": "analyst1",
-      "full_name": "分析师1",
-      "role": "analyst",
-      "email": "analyst1@example.com",
+      "username": "user1",
+      "role": "user",
+      "email": "user1@example.com",
+      "phone": "13800138001",
       "is_active": true,
       "last_login": "2025-07-08T15:20:00",
       "created_at": "2025-01-02T00:00:00",
@@ -1459,7 +1459,7 @@ interface User {
   id: number;                    // 用户ID，主键
   username: string;              // 用户名，唯一
   email: string;                 // 邮箱，唯一
-  full_name: string;             // 姓名
+  phone?: string;                // 手机号，可选
   role: 'admin' | 'user';  // 用户角色
   avatar_url?: string;           // 头像URL，可选
   is_active: boolean;            // 是否激活
