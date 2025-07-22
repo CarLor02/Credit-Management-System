@@ -81,8 +81,7 @@ python3 test_system.py
 
 ### 默认用户
 - 管理员: admin@example.com / admin123
-- 项目经理: manager1@example.com / manager123
-- 数据分析师: analyst1@example.com / analyst123
+- 普通用户: user1@example.com / user123
 
 ### 故障排除
 

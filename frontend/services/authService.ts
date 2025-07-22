@@ -8,7 +8,7 @@ import { MOCK_CONFIG, mockDelay, mockLog } from '../config/mock';
 import { parseApiError, getErrorMessage } from '../utils/errorMessages';
 
 // 用户角色类型
-export type UserRole = 'admin' | 'manager' | 'analyst' | 'user';
+export type UserRole = 'admin' | 'user';
 
 // 用户信息接口
 export interface User {

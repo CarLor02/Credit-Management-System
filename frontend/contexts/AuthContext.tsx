@@ -236,17 +236,15 @@ export function useAuth(): AuthContextType {
 /**
  * 权限检查Hook
  */
-export function usePermission(requiredRole: 'admin' | 'manager' | 'analyst' | 'user') {
+export function usePermission(requiredRole: 'admin' | 'user') {
   const { user } = useAuth();
 
   const roleHierarchy = {
     'user': 1,
-    'analyst': 2,
-    'manager': 3,
-    'admin': 4
+    'admin': 2
   };
 
   const hasPermission = user && roleHierarchy[user.role] >= roleHierarchy[requiredRole];
-  
+
   return hasPermission;
 }

@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import Config
 from database import db
-from db_models import User, Project, Document, ProjectType, ProjectStatus, Priority, RiskLevel, DocumentStatus
+from db_models import User, Project, Document, ProjectType, ProjectStatus, Priority, RiskLevel, DocumentStatus, UserRole
 from werkzeug.security import generate_password_hash
 from datetime import datetime
 
@@ -40,7 +40,7 @@ def create_database():
             email='admin@example.com',
             password_hash=generate_password_hash('admin123'),
             full_name='系统管理员',
-            role='ADMIN',
+            role=UserRole.ADMIN,
             is_active=True,
             last_login=datetime.now(),
             created_at=datetime.now(),

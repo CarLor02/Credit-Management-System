@@ -11,7 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  requiredRole?: 'admin' | 'manager' | 'analyst' | 'user';
+  requiredRole?: 'admin' | 'user';
   fallbackPath?: string;
 }
 
@@ -40,9 +40,7 @@ export default function ProtectedRoute({
     if (requiredRole && user) {
       const roleHierarchy = {
         'user': 1,
-        'analyst': 2,
-        'manager': 3,
-        'admin': 4
+        'admin': 2
       };
 
       const userLevel = roleHierarchy[user.role];
@@ -77,9 +75,7 @@ export default function ProtectedRoute({
   if (requiredRole && user) {
     const roleHierarchy = {
       'user': 1,
-      'analyst': 2,
-      'manager': 3,
-      'admin': 4
+      'admin': 2
     };
 
     const userLevel = roleHierarchy[user.role];
@@ -100,28 +96,6 @@ export default function ProtectedRoute({
 export function AdminRoute({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute requiredRole="admin">
-      {children}
-    </ProtectedRoute>
-  );
-}
-
-/**
- * 经理路由保护组件
- */
-export function ManagerRoute({ children }: { children: ReactNode }) {
-  return (
-    <ProtectedRoute requiredRole="manager">
-      {children}
-    </ProtectedRoute>
-  );
-}
-
-/**
- * 分析师路由保护组件
- */
-export function AnalystRoute({ children }: { children: ReactNode }) {
-  return (
-    <ProtectedRoute requiredRole="analyst">
       {children}
     </ProtectedRoute>
   );

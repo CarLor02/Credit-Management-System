@@ -15,8 +15,6 @@ from database import db
 class UserRole(enum.Enum):
     """用户角色枚举"""
     ADMIN = 'admin'
-    MANAGER = 'manager'
-    ANALYST = 'analyst'
     USER = 'user'
 
 class ProjectType(enum.Enum):

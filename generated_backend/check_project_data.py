@@ -54,7 +54,7 @@ def check_project_data():
                     print(f"\n为项目 '{first_project.name}' 设置测试数据...")
                     
                     first_project.dataset_id = f"test-dataset-{first_project.id}"
-                    first_project.knowledge_base_name = f"测试用户_{first_project.name}"
+                    first_project.knowledge_base_name = f"1_{first_project.name}"
                     
                     db.session.commit()
                     print("✅ 测试数据设置完成")

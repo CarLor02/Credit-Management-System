@@ -387,10 +387,8 @@ Authorization: Bearer <token>
 
 | 角色 | 权限描述 |
 |------|----------|
-| admin | 系统管理员，拥有所有权限 |
-| manager | 项目经理，可管理项目和用户 |
-| analyst | 分析师，可创建和分析项目 |
-| user | 普通用户，只能查看分配给自己的项目 |
+| admin | 系统管理员，可以看到、新建、上传和删除所有角色的项目和文件 |
+| user | 普通用户，只能看到、新建、上传和删除自己的项目和文件 |
 
 ### 2.9 权限验证装饰器
 
@@ -1462,7 +1460,7 @@ interface User {
   username: string;              // 用户名，唯一
   email: string;                 // 邮箱，唯一
   full_name: string;             // 姓名
-  role: 'admin' | 'manager' | 'analyst' | 'user';  // 用户角色
+  role: 'admin' | 'user';  // 用户角色
   avatar_url?: string;           // 头像URL，可选
   is_active: boolean;            // 是否激活
   last_login?: string;           // 最后登录时间，ISO格式
@@ -1472,10 +1470,8 @@ interface User {
 ```
 
 **角色权限说明**:
-- `admin`: 系统管理员，拥有所有权限
-- `manager`: 项目经理，可管理项目和用户
-- `analyst`: 分析师，可创建和分析项目
-- `user`: 普通用户，只能查看分配给自己的项目
+- `admin`: 系统管理员，可以看到、新建、上传和删除所有角色的项目和文件
+- `user`: 普通用户，只能看到、新建、上传和删除自己的项目和文件
 
 ### 7.2 项目模型 (Project)
 
@@ -2492,9 +2488,7 @@ export const usePermission = (requiredRole: UserRole) => {
 
     const roleHierarchy = {
       'user': 1,
-      'analyst': 2,
-      'manager': 3,
-      'admin': 4
+      'admin': 2
     };
 
     return roleHierarchy[user.role] >= roleHierarchy[requiredRole];
