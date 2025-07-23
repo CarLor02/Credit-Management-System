@@ -29,7 +29,7 @@ class Config:
 
     # JWT配置
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'jwt-secret-key'
-    JWT_ACCESS_TOKEN_EXPIRES = int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 3600))  # 1小时
+    JWT_ACCESS_TOKEN_EXPIRES = int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 86400))  # 1天 (24小时 * 60分钟 * 60秒)
 
     # RAG API配置
     RAG_API_BASE_URL = os.environ.get('RAG_API_BASE_URL', 'http://172.16.76.183')

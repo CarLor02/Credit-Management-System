@@ -115,9 +115,9 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
   };
 
   return (
-    <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+    <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
       <h2 className="text-lg font-semibold text-gray-800 mb-4">项目选择</h2>
-      
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
           <div className="flex items-center">

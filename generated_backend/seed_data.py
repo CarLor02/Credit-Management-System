@@ -110,7 +110,7 @@ def create_system_settings():
         },
         {
             'key': 'session_timeout',
-            'value': '3600',  # 1小时
+            'value': '86400',  # 1天
             'description': '会话超时时间（秒）',
             'category': 'security',
             'is_public': False

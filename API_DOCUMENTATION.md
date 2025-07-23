@@ -84,7 +84,7 @@
 
 ### 2.1 JWT认证机制
 
-系统使用JWT (JSON Web Token) 进行用户认证，token有效期为1小时。
+系统使用JWT (JSON Web Token) 进行用户认证，token有效期为1天（24小时）。
 
 #### 认证流程
 1. 用户提供用户名和密码进行登录

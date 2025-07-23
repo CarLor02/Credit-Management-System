@@ -374,45 +374,63 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   const filteredDocuments = Array.isArray(documents) ? documents : [];
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-      <div className="p-6">
-        {/* 未选择项目提示 */}
-        {!selectedProject ? (
-          <div className="text-center py-12">
-            <i className="ri-folder-line text-4xl text-gray-400 mb-4"></i>
-            <h3 className="text-lg font-medium text-gray-800 mb-2">请选择项目</h3>
-            <p className="text-gray-600">在左侧选择项目后即可查看对应的文档列表</p>
-          </div>
-        ) : (
-          <>
-            {/* 加载状态 */}
-            {loading && (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-2 text-gray-600">加载中...</span>
-              </div>
-            )}
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 h-full flex flex-col">
+      {/* 标题栏 */}
+      <div className="p-6 border-b border-gray-100 flex-shrink-0">
+        <h2 className="text-lg font-semibold text-gray-800">文档列表</h2>
+        {selectedProject && filteredDocuments.length > 0 && (
+          <p className="text-sm text-gray-600 mt-1">共 {filteredDocuments.length} 个文档</p>
+        )}
+      </div>
 
-            {/* 错误状态 */}
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-                <div className="flex items-center">
-                  <i className="ri-error-warning-line text-red-600 mr-2"></i>
-                  <span className="text-red-800">{error}</span>
-                  <button
-                    onClick={() => loadDocuments()}
-                    className="ml-auto text-red-600 hover:text-red-800 underline"
-                  >
-                    重试
-                  </button>
+      {/* 内容区域 - 滑窗 */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-6">
+          {/* 未选择项目提示 */}
+          {!selectedProject ? (
+            <div className="text-center py-12">
+              <i className="ri-folder-line text-4xl text-gray-400 mb-4"></i>
+              <h3 className="text-lg font-medium text-gray-800 mb-2">请选择项目</h3>
+              <p className="text-gray-600">在左侧选择项目后即可查看对应的文档列表</p>
+            </div>
+          ) : (
+            <>
+              {/* 加载状态 */}
+              {loading && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-600">加载中...</span>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 文档列表 */}
-            {!loading && !error && (
-              <div className="space-y-4 animate-fadeIn">
-                {filteredDocuments.map((doc) => (
+              {/* 错误状态 */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center">
+                    <i className="ri-error-warning-line text-red-600 mr-2"></i>
+                    <span className="text-red-800">{error}</span>
+                    <button
+                      onClick={() => loadDocuments()}
+                      className="ml-auto text-red-600 hover:text-red-800 underline"
+                    >
+                      重试
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 文档列表 */}
+              {!loading && !error && (
+                <>
+                  {filteredDocuments.length === 0 ? (
+                    <div className="text-center py-12">
+                      <i className="ri-file-list-line text-4xl text-gray-400 mb-4"></i>
+                      <h3 className="text-lg font-medium text-gray-800 mb-2">暂无文档</h3>
+                      <p className="text-gray-600">该项目下还没有上传任何文档</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 animate-fadeIn">
+                      {filteredDocuments.map((doc) => (
             <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-all duration-200 ease-in-out transform hover:scale-[1.01] hover:shadow-md">
               <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
                 <i className={`${getFileIcon(doc.type)} text-lg`}></i>
@@ -490,22 +508,15 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                 </div>
               </div>
             </div>
-          ))}
-          </div>
-            )}
-
-            {/* 空状态 */}
-            {!loading && !error && filteredDocuments.length === 0 && (
-              <div className="text-center py-12">
-                <i className="ri-file-list-3-line text-4xl text-gray-400 mb-4"></i>
-                <h3 className="text-lg font-medium text-gray-800 mb-2">暂无文档</h3>
-                <p className="text-gray-600">开始上传您的第一个文档</p>
-              </div>
-            )}
-          </>
-        )}
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
       </div>
-
       {/* 文档预览模态框 */}
       {previewDocument && (
         <DocumentPreview

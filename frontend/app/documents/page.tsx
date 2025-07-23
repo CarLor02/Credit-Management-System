@@ -13,7 +13,9 @@ export default function DocumentsPage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedProjectData, setSelectedProjectData] = useState<any>(null);
+  const [documentListHeight, setDocumentListHeight] = useState(400);
   const projectSelectorRef = useRef<ProjectSelectorRef>(null);
+  const leftPanelRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
 
   // 从URL参数获取项目ID并自动选择
@@ -24,6 +26,32 @@ export default function DocumentsPage() {
       // 项目数据会在ProjectSelector加载完成后通过onProjectChange回调设置
     }
   }, [searchParams]);
+
+  // 动态计算文档列表高度，使其底边与左侧面板对齐
+  useEffect(() => {
+    const calculateHeight = () => {
+      if (leftPanelRef.current) {
+        const leftPanelHeight = leftPanelRef.current.offsetHeight;
+        // 减去搜索栏的高度和间距 (约120px)
+        const calculatedHeight = leftPanelHeight - 120;
+        setDocumentListHeight(Math.max(400, Math.min(600, calculatedHeight)));
+      }
+    };
+
+    // 初始计算
+    calculateHeight();
+
+    // 监听窗口大小变化
+    window.addEventListener('resize', calculateHeight);
+
+    // 延迟计算，确保DOM完全渲染
+    const timer = setTimeout(calculateHeight, 100);
+
+    return () => {
+      window.removeEventListener('resize', calculateHeight);
+      clearTimeout(timer);
+    };
+  }, [selectedProject, selectedProjectData]);
 
   // 刷新文档列表的函数
   const refreshDocuments = () => {
@@ -54,8 +82,9 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* 左侧面板 */}
+          <div className="space-y-6" ref={leftPanelRef}>
             <ProjectSelector
               ref={projectSelectorRef}
               selectedProject={selectedProject}
@@ -70,8 +99,10 @@ export default function DocumentsPage() {
               onSuccess={refreshDocuments}
             />
           </div>
-          
+
+          {/* 右侧面板 */}
           <div className="lg:col-span-2">
+            {/* 搜索栏 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
               <div className="p-6 border-b border-gray-100">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
@@ -89,14 +120,17 @@ export default function DocumentsPage() {
                 </div>
               </div>
             </div>
-            
-            <DocumentList
-              activeTab={''} // 传空字符串，后端不做状态筛选
-              searchQuery={searchQuery}
-              selectedProject={selectedProject}
-              refreshTrigger={refreshTrigger}
-              onDocumentChange={handleDocumentChange}
-            />
+
+            {/* 文档列表 - 动态高度滑窗 */}
+            <div style={{ height: `${documentListHeight}px` }}>
+              <DocumentList
+                activeTab={''} // 传空字符串，后端不做状态筛选
+                searchQuery={searchQuery}
+                selectedProject={selectedProject}
+                refreshTrigger={refreshTrigger}
+                onDocumentChange={handleDocumentChange}
+              />
+            </div>
           </div>
         </div>
       </main>
