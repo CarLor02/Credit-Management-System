@@ -51,20 +51,21 @@ export default function Header() {
             </Link>
             
             <nav className="flex space-x-8">
-              <Link 
-                href="/dashboard" 
+              {/* 暂时隐藏数据总览 */}
+              {/* <Link
+                href="/dashboard"
                 className={`transition-colors ${isActiveNav('/dashboard') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
               >
                 数据总览
-              </Link>
-              <Link 
-                href="/projects" 
+              </Link> */}
+              <Link
+                href="/projects"
                 className={`transition-colors ${isActiveNav('/projects') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
               >
                 项目管理
               </Link>
-              <Link 
-                href="/documents" 
+              <Link
+                href="/documents"
                 className={`transition-colors ${isActiveNav('/documents') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
               >
                 文档中心

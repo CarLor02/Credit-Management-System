@@ -106,6 +106,7 @@ def register_document_routes(app):
                     'id': doc.id,
                     'name': doc.name,
                     'project': doc.project.name if doc.project else '',
+                    'project_id': doc.project_id,  # 添加项目ID
                     'type': doc.get_frontend_file_type(),
                     'size': doc.format_file_size(),
                     'status': doc.status.value.lower(),
@@ -141,6 +142,7 @@ def register_document_routes(app):
                 'id': document.id,
                 'name': document.name,
                 'project': document.project.name if document.project else '',
+                'project_id': document.project_id,  # 添加项目ID
                 'type': document.get_frontend_file_type(),
                 'size': document.format_file_size(),
                 'status': document.status.value.lower(),
@@ -175,16 +177,28 @@ def register_document_routes(app):
                 return jsonify({'success': False, 'error': '不支持的文件类型'}), 400
 
             # 获取其他参数
-            project_name = request.form.get('project')
+            project_id = request.form.get('project_id')
+            project_name = request.form.get('project')  # 保留用于兼容性
             document_name = request.form.get('name', file.filename)
 
-            if not project_name:
+            # 优先使用project_id，如果没有则使用project_name（向后兼容）
+            if project_id:
+                try:
+                    project_id = int(project_id)
+                    project = Project.query.get(project_id)
+                    current_app.logger.info(f"使用project_id查找项目: {project_id}, 找到项目: {project.name if project else 'None'}")
+                    if not project:
+                        return jsonify({'success': False, 'error': '项目不存在'}), 404
+                except ValueError:
+                    return jsonify({'success': False, 'error': '项目ID格式错误'}), 400
+            elif project_name:
+                # 向后兼容：使用项目名称查找
+                project = Project.query.filter_by(name=project_name).first()
+                current_app.logger.info(f"使用project_name查找项目: {project_name}, 找到项目ID: {project.id if project else 'None'}")
+                if not project:
+                    return jsonify({'success': False, 'error': '项目不存在'}), 404
+            else:
                 return jsonify({'success': False, 'error': '缺少项目信息'}), 400
-
-            # 查找项目
-            project = Project.query.filter_by(name=project_name).first()
-            if not project:
-                return jsonify({'success': False, 'error': '项目不存在'}), 404
 
             # 检查用户是否有权限向此项目上传文档
             if current_user.role != UserRole.ADMIN:
@@ -245,6 +259,7 @@ def register_document_routes(app):
                     'id': document.id,
                     'name': document.name,
                     'project': project.name,
+                    'project_id': project.id,  # 添加项目ID
                     'type': document.get_frontend_file_type(),
                     'size': document.format_file_size(),
                     'status': 'uploading',

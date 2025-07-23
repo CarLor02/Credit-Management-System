@@ -9,7 +9,7 @@
 ### 1. 知识库服务 (services/knowledge_base_service.py)
 - `KnowledgeBaseService` 类负责与RAGFlow API交互
 - `create_knowledge_base_for_project()` 方法创建知识库
-- 知识库命名规则：`用户id_项目名称`
+- 知识库命名规则：`用户id_项目名称_uuid`
 - 使用配置文件中的 RAG_API_BASE_URL 和 RAG_API_KEY
 
 ### 2. 文档处理器修改 (services/document_processor.py)

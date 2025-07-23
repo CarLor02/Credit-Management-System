@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import DocumentUpload from './DocumentUpload';
 import DocumentList from './DocumentList';
@@ -11,7 +12,18 @@ export default function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedProject, setSelectedProject] = useState('');
+  const [selectedProjectData, setSelectedProjectData] = useState<any>(null);
   const projectSelectorRef = useRef<ProjectSelectorRef>(null);
+  const searchParams = useSearchParams();
+
+  // 从URL参数获取项目ID并自动选择
+  useEffect(() => {
+    const projectId = searchParams.get('project');
+    if (projectId) {
+      setSelectedProject(projectId);
+      // 项目数据会在ProjectSelector加载完成后通过onProjectChange回调设置
+    }
+  }, [searchParams]);
 
   // 刷新文档列表的函数
   const refreshDocuments = () => {
@@ -44,14 +56,18 @@ export default function DocumentsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div>
-            <ProjectSelector 
+            <ProjectSelector
               ref={projectSelectorRef}
               selectedProject={selectedProject}
-              onProjectChange={setSelectedProject}
+              onProjectChange={(projectId, projectData) => {
+                setSelectedProject(projectId);
+                setSelectedProjectData(projectData || null);
+              }}
             />
-            <DocumentUpload 
+            <DocumentUpload
               selectedProject={selectedProject}
-              onSuccess={refreshDocuments} 
+              selectedProjectData={selectedProjectData}
+              onSuccess={refreshDocuments}
             />
           </div>
           

@@ -50,11 +50,13 @@ def check_project_data():
                 
                 # 为第一个项目设置测试数据
                 if projects:
+                    import uuid
                     first_project = projects[0]
                     print(f"\n为项目 '{first_project.name}' 设置测试数据...")
-                    
+
+                    kb_uuid = str(uuid.uuid4())
                     first_project.dataset_id = f"test-dataset-{first_project.id}"
-                    first_project.knowledge_base_name = f"1_{first_project.name}"
+                    first_project.knowledge_base_name = f"1_{first_project.name}_{kb_uuid}"
                     
                     db.session.commit()
                     print("✅ 测试数据设置完成")

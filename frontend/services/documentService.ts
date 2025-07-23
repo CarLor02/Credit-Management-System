@@ -13,6 +13,7 @@ import { Document, mockDocuments } from '@/data/mockData';
 export interface UploadDocumentData {
   name: string;
   project: string;
+  project_id: number;  // 添加项目ID字段
   type: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   file: File;
 }
@@ -49,17 +50,10 @@ class DocumentService {
           );
         }
         if (params.project_id) {
-          // 需要根据project_id过滤，首先需要获取项目名称
-          const { mockProjects } = await import('@/data/mockData');
-          const targetProject = mockProjects.find(p => p.id == params.project_id);
-          if (targetProject) {
-            filteredDocuments = filteredDocuments.filter(d => 
-              d.project === targetProject.name
-            );
-          } else {
-            // 如果找不到项目，返回空数组
-            filteredDocuments = [];
-          }
+          // 根据project_id过滤文档
+          filteredDocuments = filteredDocuments.filter(d =>
+            d.project_id == params.project_id
+          );
         }
         if (params.status) {
           filteredDocuments = filteredDocuments.filter(d => d.status === params.status);
@@ -126,6 +120,7 @@ class DocumentService {
         id: Math.max(...mockDocuments.map(d => d.id)) + 1,
         name: data.name,
         project: data.project,
+        project_id: data.project_id,  // 添加项目ID
         type: data.type,
         size: `${(data.file.size / 1024 / 1024).toFixed(1)} MB`,
         status: 'processing',
@@ -157,6 +152,7 @@ class DocumentService {
       formData.append('file', data.file);
       formData.append('name', data.name);
       formData.append('project', data.project);
+      formData.append('project_id', data.project_id.toString());  // 添加项目ID
       formData.append('type', data.type);
 
       // 获取认证token

@@ -8,33 +8,14 @@ import { Project } from '@/data/mockData';
 
 interface DocumentUploadProps {
   selectedProject: string;
+  selectedProjectData?: Project;  // 直接传递项目数据
   onSuccess?: () => void;
 }
 
-export default function DocumentUpload({ selectedProject, onSuccess }: DocumentUploadProps) {
+export default function DocumentUpload({ selectedProject, selectedProjectData, onSuccess }: DocumentUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  // 加载项目列表
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const response = await projectService.getProjects();
-        if (response.success && response.data && Array.isArray(response.data)) {
-          setProjects(response.data);
-        } else {
-          setProjects([]); // 确保projects始终是数组
-        }
-      } catch (err) {
-        setProjects([]); // 确保projects始终是数组
-        console.error('Load projects error:', err);
-      }
-    };
-
-    loadProjects();
-  }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -72,12 +53,9 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
     setError(null);
 
     try {
-      // 获取选中的项目信息
-      const selectedProjectData = Array.isArray(projects)
-        ? projects.find(p => p.id.toString() === selectedProject)
-        : undefined;
+      // 检查是否有选中的项目
       if (!selectedProjectData) {
-        throw new Error('未找到选中的项目');
+        throw new Error('请先选择项目');
       }
 
       // 上传每个文件
@@ -100,6 +78,7 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
         const response = await documentService.uploadDocument({
           name: file.name,
           project: selectedProjectData.name,
+          project_id: selectedProjectData.id,  // 添加项目ID
           type: fileType,
           file: file
         });
@@ -193,39 +172,7 @@ export default function DocumentUpload({ selectedProject, onSuccess }: DocumentU
         </div>
       </div>
 
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">知识库构建</h3>
-        
-        <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <i className="ri-database-2-line text-blue-600"></i>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-800">自动构建</h4>
-                <p className="text-sm text-gray-600">文档上传后自动解析并构建知识库</p>
-              </div>
-            </div>
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="auto-build"
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                defaultChecked
-              />
-              <label htmlFor="auto-build" className="ml-2 text-sm text-gray-700">
-                启用
-              </label>
-            </div>
-          </div>
 
-          <button className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center whitespace-nowrap">
-            <i className="ri-refresh-line mr-2"></i>
-            手动重建知识库
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -60,6 +60,7 @@ export interface Document {
   id: number;
   name: string;
   project: string;
+  project_id: number;  // 添加项目ID字段
   type: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   size: string;
   status: 'uploading' | 'processing' | 'uploading_to_kb' | 'parsing_kb' | 'completed' | 'failed' | 'kb_parse_failed';
@@ -154,6 +155,7 @@ export const mockDocuments: Document[] = [
     id: 1,
     name: '财务报表2023.pdf',
     project: '腾讯科技有限公司',
+    project_id: 1,
     type: 'pdf',
     size: '2.3 MB',
     status: 'completed',
@@ -164,6 +166,7 @@ export const mockDocuments: Document[] = [
     id: 2,
     name: '营业执照.jpg',
     project: '阿里巴巴集团',
+    project_id: 2,
     type: 'image',
     size: '856 KB',
     status: 'processing',
@@ -174,6 +177,7 @@ export const mockDocuments: Document[] = [
     id: 3,
     name: '银行流水明细.xlsx',
     project: '张三',
+    project_id: 3,
     type: 'excel',
     size: '1.2 MB',
     status: 'completed',
@@ -184,6 +188,7 @@ export const mockDocuments: Document[] = [
     id: 4,
     name: '信用报告.pdf',
     project: '字节跳动科技',
+    project_id: 4,
     type: 'pdf',
     size: '3.1 MB',
     status: 'failed',
@@ -194,6 +199,7 @@ export const mockDocuments: Document[] = [
     id: 5,
     name: '身份证明.pdf',
     project: '李四',
+    project_id: 5,
     type: 'pdf',
     size: '1.8 MB',
     status: 'processing',
@@ -204,6 +210,7 @@ export const mockDocuments: Document[] = [
     id: 6,
     name: '公司章程.docx',
     project: '美团点评',
+    project_id: 6,
     type: 'word',
     size: '945 KB',
     status: 'completed',

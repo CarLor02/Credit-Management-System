@@ -322,8 +322,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   };
 
   const handleAddDocument = () => {
-    // 使用 Next.js 路由跳转到文档页面
-    router.push('/documents');
+    // 使用 Next.js 路由跳转到文档页面，并传递项目ID参数
+    router.push(`/documents?project=${project?.id}`);
   };
 
   // 加载中状态
