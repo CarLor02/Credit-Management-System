@@ -20,6 +20,7 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
 
   // 预览相关状态
   const [previewDocument, setPreviewDocument] = useState<{ id: number; name: string } | null>(null);
+  const [retryingDocuments, setRetryingDocuments] = useState<Set<number>>(new Set());
 
   // 智能更新函数 - 只更新真正改变的数据
   const updateDocuments = useCallback((newDocuments: Document[]) => {
@@ -175,22 +176,6 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
     return () => clearInterval(intervalId);
   }, [documents, loadDocuments]);
 
-  // 重试知识库解析
-  const handleRetryKnowledgeBaseParsing = async (documentId: number) => {
-    try {
-      const response = await documentService.retryKnowledgeBaseParsing(documentId);
-      if (response.success) {
-        // 重试成功，立即刷新文档状态
-        loadDocuments(false);
-      } else {
-        alert(response.error || '重试失败');
-      }
-    } catch (err) {
-      alert('重试失败，请稍后重试');
-      console.error('Retry knowledge base parsing error:', err);
-    }
-  };
-
   // 删除文档
   const handleDeleteDocument = async (id: number) => {
     // 确认删除
@@ -291,6 +276,42 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
     setPreviewDocument(null);
   };
 
+  // 重试文档处理
+  const handleRetryDocument = async (documentId: number, documentName: string) => {
+    if (retryingDocuments.has(documentId)) {
+      return; // 防止重复点击
+    }
+
+    if (!confirm(`确定要重试处理文档"${documentName}"吗？\n\n此操作将重新开始文档处理流程。`)) {
+      return;
+    }
+
+    try {
+      // 添加到重试中的文档集合
+      setRetryingDocuments(prev => new Set(prev).add(documentId));
+
+      const response = await documentService.retryDocumentProcessing(documentId);
+
+      if (response.success) {
+        alert(response.message || '文档重试处理任务已启动');
+        // 刷新文档列表
+        loadDocuments(false);
+      } else {
+        alert(response.error || '重试失败，请稍后重试');
+      }
+    } catch (error) {
+      console.error('重试文档处理失败:', error);
+      alert('重试失败，请稍后重试');
+    } finally {
+      // 从重试中的文档集合中移除
+      setRetryingDocuments(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(documentId);
+        return newSet;
+      });
+    }
+  };
+
   const getFileIcon = (type: string) => {
     switch (type) {
       case 'pdf':
@@ -321,9 +342,8 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
       case 'parsing_kb':
         return 'bg-indigo-100 text-indigo-800';
       case 'failed':
-        return 'bg-red-100 text-red-800';
       case 'kb_parse_failed':
-        return 'bg-orange-100 text-orange-800';
+        return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -342,9 +362,8 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
       case 'parsing_kb':
         return '知识库解析中';
       case 'failed':
-        return '失败';
       case 'kb_parse_failed':
-        return '知识库解析失败';
+        return '失败';
       default:
         return '未知';
     }
@@ -422,17 +441,6 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                     </span>
                   </div>
                 )}
-                
-                {doc.status === 'kb_parse_failed' && (
-                  <div className="mt-2 flex items-center space-x-2">
-                    <button
-                      onClick={() => handleRetryKnowledgeBaseParsing(doc.id)}
-                      className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 transition-colors"
-                    >
-                      重试解析
-                    </button>
-                  </div>
-                )}
               </div>
               
               <div className="flex items-center space-x-3">
@@ -440,6 +448,22 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                   {getStatusText(doc.status)}
                 </span>
                 <div className="flex items-center space-x-2">
+                  {/* 重试按钮 - 只在失败状态时显示 */}
+                  {(doc.status === 'failed' || doc.status === 'kb_parse_failed') && (
+                    <button
+                      onClick={() => handleRetryDocument(doc.id, doc.name)}
+                      disabled={retryingDocuments.has(doc.id)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-orange-100 transition-all duration-200 btn-hover-scale disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="重试处理"
+                    >
+                      {retryingDocuments.has(doc.id) ? (
+                        <i className="ri-loader-4-line text-orange-600 animate-spin"></i>
+                      ) : (
+                        <i className="ri-refresh-line text-orange-600"></i>
+                      )}
+                    </button>
+                  )}
+
                   <button
                     onClick={() => handleDownloadDocument(doc.id, doc.name, doc.type)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
@@ -447,6 +471,7 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                   >
                     <i className="ri-download-line text-gray-600"></i>
                   </button>
+
                   <button
                     onClick={() => handlePreviewDocument(doc.id, doc.name)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-100 transition-all duration-200 btn-hover-scale"

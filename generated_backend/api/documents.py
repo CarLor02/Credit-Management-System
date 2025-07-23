@@ -12,6 +12,8 @@ from database import db
 from db_models import Document, Project, DocumentStatus, User, UserRole
 from utils import validate_request, log_action
 from api.auth import token_required
+from services.knowledge_base_service import KnowledgeBaseService
+from services.document_processor import DocumentProcessor
 
 def allowed_file(filename):
     """检查文件类型是否允许"""
@@ -719,76 +721,79 @@ def register_document_routes(app):
             return jsonify({'success': False, 'error': '删除文档失败'}), 500
 
     @app.route('/api/documents/<int:document_id>/retry', methods=['POST'])
+    @token_required
     def retry_document_processing(document_id):
         """重试文档处理"""
         try:
-            document = Document.query.get_or_404(document_id)
-            
-            # 只有知识库解析失败的文档才能重试
-            if document.status != DocumentStatus.KB_PARSE_FAILED:
-                return jsonify({'success': False, 'error': '只有知识库解析失败的文档才能重试'}), 400
-            
-            # 重置状态为上传知识库中
-            document.status = DocumentStatus.UPLOADING_TO_KB
+            current_user = request.current_user
+
+            # 获取文档信息
+            document = Document.query.get(document_id)
+            if not document:
+                return jsonify({'success': False, 'error': '文档不存在'}), 404
+
+            # 检查权限：只有文档上传者、项目创建者、分配者或管理员可以重试
+            project = Project.query.get(document.project_id)
+            if not project:
+                return jsonify({'success': False, 'error': '关联项目不存在'}), 404
+
+            if (current_user.role != UserRole.ADMIN and
+                document.upload_by != current_user.id and
+                project.created_by != current_user.id and
+                project.assigned_to != current_user.id):
+                return jsonify({'success': False, 'error': '权限不足'}), 403
+
+            # 检查文档状态：只有失败状态的文档可以重试
+            if document.status not in [DocumentStatus.FAILED, DocumentStatus.KB_PARSE_FAILED]:
+                return jsonify({
+                    'success': False,
+                    'error': f'文档状态为"{document.status.value}"，无法重试。只有失败状态的文档可以重试。'
+                }), 400
+
+            # 重置文档状态和相关字段
+            document.status = DocumentStatus.PROCESSING
+            document.processed_file_path = None
+            document.processing_progress = 0
             document.error_message = None
-            document.progress = 60
-            db.session.commit()
-            
-            # 记录重试日志
-            log_action(
-                user_id=1,  # TODO: 从JWT token获取用户ID
-                action='document_retry',
-                resource_type='document',
-                resource_id=document.id,
-                details=f'重试知识库解析: {document.name}'
-            )
-            
-            # 重新触发知识库上传和解析流程
-            from services.knowledge_base_service import knowledge_base_service
-            import threading
-            
-            def retry_kb_processing():
-                """重试知识库处理函数"""
+            document.rag_document_id = None
+
+            # 删除processed文件夹中的对应文件（如果存在）
+            if document.processed_file_path and os.path.exists(document.processed_file_path):
                 try:
-                    with app.app_context():
-                        current_app.logger.info(f"重试知识库处理: {document.id}")
-                        
-                        # 重新上传文档到知识库
-                        success = knowledge_base_service.upload_document_to_knowledge_base(
-                            project_id=document.project_id,
-                            document_id=document.id
-                        )
-                        
-                        if success:
-                            current_app.logger.info(f"重试知识库处理成功: {document.id}")
-                        else:
-                            current_app.logger.error(f"重试知识库处理失败: {document.id}")
-                            
+                    os.remove(document.processed_file_path)
+                    current_app.logger.info(f"删除旧的processed文件: {document.processed_file_path}")
                 except Exception as e:
-                    current_app.logger.error(f"重试知识库处理异常: {e}")
-                    try:
-                        # 更新状态为失败
-                        doc = Document.query.get(document.id)
-                        if doc:
-                            doc.status = DocumentStatus.KB_PARSE_FAILED
-                            doc.error_message = f"重试异常: {str(e)}"
-                            db.session.commit()
-                    except:
-                        pass
-            
-            # 在后台线程中重试
-            thread = threading.Thread(target=retry_kb_processing)
-            thread.daemon = True
-            thread.start()
-            
+                    current_app.logger.warning(f"删除旧的processed文件失败: {e}")
+
+            # 提交数据库更改
+            db.session.commit()
+
+            # 启动文档重新处理（异步）
+            from services.document_processor import DocumentProcessor
+            processor = DocumentProcessor()
+
+            # 获取当前应用实例，用于传递给异步线程
+            app = current_app._get_current_object()
+            processor.process_document_async(document.id, app)
+
+            # 记录操作日志
+            log_action(
+                user_id=current_user.id,
+                action='retry_document_processing',
+                resource_type='document',
+                resource_id=document_id,
+                details=f'重试处理文档"{document.name}"'
+            )
+
             return jsonify({
                 'success': True,
-                'message': '重试知识库解析已启动'
+                'message': f'文档"{document.name}"重试处理任务已启动'
             })
-            
+
         except Exception as e:
-            current_app.logger.error(f"重试文档处理失败: {e}")
-            return jsonify({'success': False, 'error': '重试文档处理失败'}), 500
+            current_app.logger.error(f"重试文档处理API错误: {e}")
+            db.session.rollback()
+            return jsonify({'success': False, 'error': '服务器内部错误'}), 500
 
 def _check_and_create_knowledge_base(doc_id, project_name):
     """
@@ -882,3 +887,98 @@ def _upload_document_to_knowledge_base(document, knowledge_base):
     except Exception as e:
         current_app.logger.error(f"上传文档到知识库失败: {e}")
         db.session.rollback()
+
+    @app.route('/api/projects/<int:project_id>/rebuild-knowledge-base', methods=['POST'])
+    @token_required
+    def rebuild_knowledge_base(project_id):
+        """重新构建项目的知识库"""
+        try:
+            current_user = request.current_user
+
+            # 检查项目是否存在
+            project = Project.query.get(project_id)
+            if not project:
+                return jsonify({
+                    'success': False,
+                    'error': '项目不存在'
+                }), 404
+
+            # 检查权限 - 只有项目所有者或管理员可以重新构建知识库
+            if project.user_id != current_user.id and current_user.role != UserRole.ADMIN:
+                return jsonify({
+                    'success': False,
+                    'error': '权限不足'
+                }), 403
+
+            # 获取项目的所有文档
+            documents = Document.query.filter_by(project_id=project_id).all()
+            if not documents:
+                return jsonify({
+                    'success': False,
+                    'error': '项目中没有文档'
+                }), 400
+
+            # 初始化服务
+            knowledge_base_service = KnowledgeBaseService()
+            document_processor = DocumentProcessor()
+
+            # 记录操作日志
+            log_action(current_user.id, 'rebuild_knowledge_base', f'重新构建项目知识库: {project.name}')
+
+            # 步骤1: 删除现有知识库
+            current_app.logger.info(f"开始重新构建项目知识库: {project.name}")
+            if project.dataset_id:
+                current_app.logger.info(f"删除现有知识库: {project.dataset_id}")
+                knowledge_base_service.delete_knowledge_base(project_id)
+
+            # 步骤2: 重置所有文档状态为处理中
+            current_app.logger.info(f"重置文档状态为处理中")
+            for document in documents:
+                document.status = DocumentStatus.PROCESSING
+                document.processed_file_path = None
+                document.knowledge_base_status = 'pending'
+                document.parsing_progress = 0
+
+                # 删除已处理的MD文件
+                if document.processed_file_path and os.path.exists(document.processed_file_path):
+                    try:
+                        os.remove(document.processed_file_path)
+                        current_app.logger.info(f"删除已处理文件: {document.processed_file_path}")
+                    except Exception as e:
+                        current_app.logger.warning(f"删除已处理文件失败: {e}")
+
+            db.session.commit()
+
+            # 步骤3: 重新创建知识库
+            current_app.logger.info(f"重新创建知识库")
+            dataset_id = knowledge_base_service.create_knowledge_base_for_project(
+                project_id=project_id,
+                user_id=current_user.id
+            )
+
+            if not dataset_id:
+                return jsonify({
+                    'success': False,
+                    'error': '创建知识库失败'
+                }), 500
+
+            # 步骤4: 异步重新处理所有文档
+            current_app.logger.info(f"开始异步重新处理 {len(documents)} 个文档")
+            for document in documents:
+                # 异步处理文档
+                document_processor.process_document_async(document.id)
+
+            return jsonify({
+                'success': True,
+                'message': f'知识库重新构建已启动，正在处理 {len(documents)} 个文档',
+                'dataset_id': dataset_id,
+                'document_count': len(documents)
+            })
+
+        except Exception as e:
+            current_app.logger.error(f"重新构建知识库失败: {e}")
+            db.session.rollback()
+            return jsonify({
+                'success': False,
+                'error': f'重新构建知识库失败: {str(e)}'
+            }), 500

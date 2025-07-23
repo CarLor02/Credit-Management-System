@@ -211,7 +211,7 @@ class KnowledgeBaseService:
                 
             else:
                 # 解析任务触发失败
-                document.status = DocumentStatus.KB_PARSE_FAILED
+                document.status = DocumentStatus.FAILED
                 document.progress = 80
                 document.error_message = "触发知识库解析失败"
                 logger.warning(f"触发文档解析任务失败: {md_filename}")
@@ -453,7 +453,7 @@ class KnowledgeBaseService:
                 try:
                     document = session.query(Document).get(doc_db_id)
                     if document:
-                        document.status = DocumentStatus.KB_PARSE_FAILED
+                        document.status = DocumentStatus.FAILED
                         document.progress = 80
                         document.error_message = error_message
                         session.commit()

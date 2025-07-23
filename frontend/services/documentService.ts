@@ -179,23 +179,6 @@ class DocumentService {
   }
 
   /**
-   * 重试知识库解析
-   */
-  async retryKnowledgeBaseParsing(documentId: number): Promise<ApiResponse<void>> {
-    try {
-      return await apiClient.request<void>(`/documents/${documentId}/retry-parsing`, {
-        method: 'POST'
-      });
-    } catch (error) {
-      console.error('重试知识库解析失败:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : '重试知识库解析失败'
-      };
-    }
-  }
-
-  /**
    * 预览文档
    */
   async previewDocument(documentId: number): Promise<ApiResponse<any>> {
@@ -243,6 +226,23 @@ class DocumentService {
       return {
         success: false,
         error: error instanceof Error ? error.message : '下载处理后文档失败'
+      };
+    }
+  }
+
+  /**
+   * 重试文档处理
+   */
+  async retryDocumentProcessing(documentId: number): Promise<ApiResponse<void>> {
+    try {
+      return await apiClient.request<void>(`/documents/${documentId}/retry`, {
+        method: 'POST'
+      });
+    } catch (error) {
+      console.error('重试文档处理失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '重试文档处理失败'
       };
     }
   }
