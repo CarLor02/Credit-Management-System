@@ -7,9 +7,10 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import CreateProjectModal from '../CreateProjectModal';
 import DocumentPreview from '@/components/DocumentPreview';
+import ReportPreview from '@/components/ReportPreview';
 import { projectService } from '@/services/projectService';
 import { documentService } from '@/services/documentService';
-import { projectDetailService, FinancialAnalysis, BusinessStatus, TimelineEvent } from '@/services/projectDetailService';
+import { BusinessStatus, TimelineEvent } from '@/services/projectDetailService';
 import { apiClient } from '@/services/api';
 import { Project } from '@/services/projectService';
 
@@ -21,23 +22,21 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   const [activeTab, setActiveTab] = useState('overview');
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
+
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 项目文档和团队成员状态
+  // 项目文档状态
   const [documents, setDocuments] = useState<any[]>([]);
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
-  const [membersLoading, setMembersLoading] = useState(true);
   const [documentPolling, setDocumentPolling] = useState<NodeJS.Timeout | null>(null);
 
   // 预览相关状态
   const [previewDocument, setPreviewDocument] = useState<{ id: number; name: string } | null>(null);
 
   // 项目详情数据状态
-  const [financialData, setFinancialData] = useState<FinancialAnalysis[]>([]);
+  const [financialData, setFinancialData] = useState<any>(null);
   const [businessStatus, setBusinessStatus] = useState<BusinessStatus | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [financialLoading, setFinancialLoading] = useState(false);
@@ -162,31 +161,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     };
   }, [documentPolling]);
 
-  // 加载团队成员（暂时使用模拟数据，因为后端接口尚未实现）
-  useEffect(() => {
-    const fetchTeamMembers = async () => {
-      try {
-        setMembersLoading(true);
-        // TODO: 实现真实的团队成员API调用
-        // const response = await projectService.getProjectMembers(parseInt(projectId));
 
-        // 暂时使用模拟数据
-        await new Promise(resolve => setTimeout(resolve, 500)); // 模拟网络延迟
-        setTeamMembers([
-          { name: '张三', role: '项目经理', avatar: 'ZS', status: '在线' },
-          { name: '李四', role: '风险分析师', avatar: 'LS', status: '忙碌' },
-          { name: '王五', role: '财务专家', avatar: 'WW', status: '离线' },
-          { name: '赵六', role: '合规顾问', avatar: 'ZL', status: '在线' }
-        ]);
-      } catch (err) {
-        console.error('Load team members error:', err);
-      } finally {
-        setMembersLoading(false);
-      }
-    };
-
-    fetchTeamMembers();
-  }, [projectId]);
 
   // 加载财务分析数据
   const loadFinancialData = async () => {
@@ -281,12 +256,45 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     }
   };
 
+  // 检查项目是否已有报告
+  const checkExistingReport = async () => {
+    if (!project?.id) return;
+
+    try {
+      const response = await apiClient.get<{
+        success: boolean;
+        content: string;
+        file_path: string;
+        company_name: string;
+        error?: string;
+      }>(`/projects/${project.id}/report`);
+
+      if (response.success && response.data?.success && response.data?.content) {
+        // 如果已有报告且内容不为空，设置按钮为可用状态
+        setReportGenerated(true);
+        console.log('发现已存在的报告，启用预览按钮');
+      } else {
+        // 如果没有报告或内容为空，保持默认状态（按钮禁用）
+        setReportGenerated(false);
+        console.log('项目暂无报告，保持按钮禁用状态');
+      }
+    } catch (error: any) {
+      // 静默处理错误，不显示错误信息
+      setReportGenerated(false);
+      console.log('检查报告时出现错误，保持按钮禁用状态:', error?.message || error);
+
+      // 不要显示错误提示，因为这是正常的检查流程
+      // 项目没有报告是正常情况，不应该报错
+    }
+  };
+
   // 当项目数据加载完成后，加载详情数据
   useEffect(() => {
     if (project) {
       loadFinancialData();
       loadBusinessStatus();
       loadTimelineData();
+      checkExistingReport(); // 检查是否已有报告
     }
   }, [project]);
 
@@ -294,12 +302,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   const getEditData = () => {
     if (!project) return null;
     
-    const categoryMap: { [key: string]: string } = {
-      '科技服务': 'technology',
-      '互联网': 'technology',
-      '电子产品': 'manufacturing',
-      '其他': 'other'
-    };
+
 
     return {
       id: project.id,
@@ -313,6 +316,9 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
   // 生成征信报告状态
   const [reportGenerating, setReportGenerating] = useState(false);
+  const [reportGenerated, setReportGenerated] = useState(false);
+  const [workflowRunId, setWorkflowRunId] = useState<string | null>(null);
+  const [showReportPreview, setShowReportPreview] = useState(false);
 
   const handleDownloadReport = async () => {
     if (!project) {
@@ -329,6 +335,9 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     try {
       setReportGenerating(true);
 
+      // 立即打开预览弹窗，让用户看到流式输出
+      setShowReportPreview(true);
+
       // 调用后端API生成报告
       const response = await apiClient.post<{
         success: boolean;
@@ -338,45 +347,47 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         file_path?: string;
         parsing_complete?: boolean;
         error?: string;
+        metadata?: any;
+        events?: string[];
       }>('/generate_report', {
         dataset_id: project.dataset_id, // 使用dataset_id作为fallback
         company_name: project.name,
-        knowledge_name: project.knowledge_base_name // knowledge_base_name
+        knowledge_name: project.knowledge_base_name, // knowledge_base_name
+        project_id: project.id // 添加项目ID
       });
 
-      if (response.success && response.data?.success) {
-        // 报告生成成功，创建下载链接
-        const content = response.data.content || '';
+      console.log('API Response:', response); // 调试日志
 
-        if (!content) {
-          alert('报告内容为空，请稍后重试');
-          return;
+      if (response.success && response.data?.success) {
+        // 报告生成成功
+        const workflowId = response.data.workflow_run_id;
+        const hasContent = response.data.content && response.data.content.length > 0;
+
+        console.log('Report generated successfully, workflow ID:', workflowId); // 调试日志
+        console.log('Has content:', hasContent); // 调试日志
+
+        // 立即设置workflow ID以启动轮询
+        if (workflowId) {
+          setWorkflowRunId(workflowId);
+          console.log('立即设置workflow_run_id以启动轮询:', workflowId); // 调试日志
         }
 
-        try {
-          const blob = new Blob([content], { type: 'text/markdown' });
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
+        // 无论是否有workflow ID，只要有内容就认为成功
+        if (workflowId || hasContent) {
+          setReportGenerated(true);
 
-          // 清理文件名中的特殊字符
-          const sanitizedProjectName = project.name.replace(/[<>:"/\\|?*]/g, '_');
-          const fileName = `${sanitizedProjectName}_征信分析报告_${new Date().toISOString().split('T')[0]}.md`;
-          link.download = fileName;
+          console.log('报告生成完成，包含Dify流式事件:', response.data?.events?.length || 0); // 调试日志
 
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-
-          alert('征信报告生成并下载成功！');
-        } catch (downloadError) {
-          console.error('Download error:', downloadError);
-          alert('下载文件时出错，请稍后重试');
+          // 预览弹窗已经打开，显示最终结果
+          // 报告内容和Dify事件会通过ReportPreview组件自动加载和显示
+        } else {
+          alert('报告生成成功，但未获取到内容');
         }
       } else {
         const errorMsg = response.data?.error || response.error || '生成报告失败，请稍后重试';
         alert(errorMsg);
+        // 生成失败时关闭预览弹窗
+        setShowReportPreview(false);
       }
     } catch (error) {
       console.error('Generate report error:', error);
@@ -399,6 +410,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       }
 
       alert(errorMessage);
+      // 生成失败时关闭预览弹窗
+      setShowReportPreview(false);
     } finally {
       setReportGenerating(false);
     }
@@ -628,11 +641,16 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     }
   };
 
-  // 重试知识库解析
-  const handleRetryKnowledgeBaseParsing = async (documentId: number) => {
+  // 重试文档处理
+  const handleRetryDocument = async (documentId: number, documentName: string) => {
+    if (!confirm(`确定要重试处理文档"${documentName}"吗？\n\n此操作将重新开始文档处理流程。`)) {
+      return;
+    }
+
     try {
-      const response = await documentService.retryKnowledgeBaseParsing(documentId);
+      const response = await documentService.retryDocumentProcessing(documentId);
       if (response.success) {
+        alert(response.message || '文档重试处理任务已启动');
         // 重试成功，立即刷新文档状态
         const updatedResponse = await documentService.getDocuments({
           project_id: project?.id || 0
@@ -645,7 +663,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       }
     } catch (err) {
       alert('重试失败，请稍后重试');
-      console.error('Retry knowledge base parsing error:', err);
+      console.error('Retry document processing error:', err);
     }
   };
 
@@ -758,10 +776,22 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                   </>
                 ) : (
                   <>
-                    <i className="ri-download-line mr-2"></i>
+                    <i className="ri-file-text-line mr-2"></i>
                     生成征信报告
                   </>
                 )}
+              </button>
+              <button
+                onClick={() => setShowReportPreview(true)}
+                disabled={!reportGenerated}
+                className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
+                  !reportGenerated
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                <i className="ri-eye-line mr-2"></i>
+                预览报告及下载
               </button>
             </div>
           </div>
@@ -851,27 +881,27 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm text-gray-600">注册资本</p>
-                          <p className="font-medium text-gray-900">{project.companyInfo?.registeredCapital}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">成立日期</p>
-                          <p className="font-medium text-gray-900">{project.companyInfo?.establishDate}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">所属行业</p>
-                          <p className="font-medium text-gray-900">{project.companyInfo?.industry}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">员工规模</p>
-                          <p className="font-medium text-gray-900">{project.companyInfo?.employees}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">法定代表人</p>
-                          <p className="font-medium text-gray-900">{project.companyInfo?.legalPerson}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">经营范围</p>
-                          <p className="font-medium text-gray-900">{project.companyInfo?.businessScope}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                       </div>
                     </div>
@@ -881,27 +911,27 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm text-gray-600">年龄</p>
-                          <p className="font-medium text-gray-900">{project.personalInfo?.age}岁</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">学历</p>
-                          <p className="font-medium text-gray-900">{project.personalInfo?.education}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">职业</p>
-                          <p className="font-medium text-gray-900">{project.personalInfo?.profession}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">工作年限</p>
-                          <p className="font-medium text-gray-900">{project.personalInfo?.workYears}年</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">月收入</p>
-                          <p className="font-medium text-gray-900">{project.personalInfo?.monthlyIncome}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">婚姻状况</p>
-                          <p className="font-medium text-gray-900">{project.personalInfo?.maritalStatus}</p>
+                          <p className="font-medium text-gray-900">暂无数据</p>
                         </div>
                       </div>
                     </div>
@@ -1173,7 +1203,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                       <div className="space-y-3">
                         <div className="flex justify-between">
                           <span className="text-sm text-gray-600">月收入</span>
-                          <span className="font-medium">{project.personalInfo?.monthlyIncome}</span>
+                          <span className="font-medium">暂无数据</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-sm text-gray-600">月支出</span>
@@ -1278,13 +1308,13 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                             </div>
                           )}
                           
-                          {doc.status === 'kb_parse_failed' && (
+                          {(doc.status === 'failed' || doc.status === 'kb_parse_failed') && (
                             <div className="mt-2 flex items-center space-x-2">
                               <button
-                                onClick={() => handleRetryKnowledgeBaseParsing(doc.id)}
+                                onClick={() => handleRetryDocument(doc.id, doc.name)}
                                 className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 transition-colors"
                               >
-                                重试解析
+                                重试处理
                               </button>
                             </div>
                           )}
@@ -1347,43 +1377,35 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                         <div
                           className={`w-3 h-3 rounded-full mt-2 mr-4 flex-shrink-0 ${
                             item.status === 'completed' ? 'bg-green-500' :
-                            item.status === 'in_progress' ? 'bg-blue-500' : 'bg-gray-300'
+                            item.status === 'processing' ? 'bg-blue-500' : 'bg-gray-300'
                           }`}
                         ></div>
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-gray-900">{item.event_title}</h4>
+                            <h4 className="font-medium text-gray-900">{item.title || '未命名事件'}</h4>
                             <span className="text-sm text-gray-500">
-                              {new Date(item.event_date).toLocaleDateString('zh-CN')}
+                              {item.date ? new Date(item.date).toLocaleDateString('zh-CN') : '未知日期'}
                             </span>
                           </div>
-                          {item.event_description && (
-                            <p className="text-sm text-gray-600 mt-1">{item.event_description}</p>
+                          {item.description && (
+                            <p className="text-sm text-gray-600 mt-1">{item.description}</p>
                           )}
                           <div className="flex items-center justify-between mt-2">
                             <div
                               className={`inline-flex px-2 py-1 rounded-full text-xs ${
                                 item.status === 'completed'
                                   ? 'bg-green-100 text-green-800'
-                                  : item.status === 'in_progress'
+                                  : item.status === 'processing'
                                   ? 'bg-blue-100 text-blue-800'
                                   : 'bg-gray-100 text-gray-600'
                               }`}
                             >
                               {item.status === 'completed' ? '已完成' :
-                               item.status === 'in_progress' ? '进行中' : '待处理'}
+                               item.status === 'processing' ? '进行中' : '待处理'}
                             </div>
-                            {item.progress > 0 && (
-                              <div className="flex items-center text-xs text-gray-500">
-                                <span>进度: {item.progress}%</span>
-                              </div>
-                            )}
+
                           </div>
-                          {item.related_user_name && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              负责人: {item.related_user_name}
-                            </div>
-                          )}
+
                         </div>
                       </div>
                     ))}
@@ -1523,6 +1545,23 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           onClose={handleClosePreview}
         />
       )}
+
+      {/* 报告预览模态框 */}
+      <ReportPreview
+        isOpen={showReportPreview}
+        onClose={() => setShowReportPreview(false)}
+        workflowRunId={workflowRunId}
+        companyName={project?.name || ''}
+        projectId={project?.id}
+        isGenerating={reportGenerating}
+        onReportDeleted={() => {
+          // 报告删除后的回调
+          setReportGenerated(false);
+          setWorkflowRunId(null);
+          // 刷新页面以更新项目数据
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }

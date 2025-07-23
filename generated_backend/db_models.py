@@ -184,6 +184,9 @@ class Project(db.Model):
     dataset_id = db.Column(db.String(100))  # RAG知识库的dataset_id
     knowledge_base_name = db.Column(db.String(200))  # 知识库名称
 
+    # 报告相关字段
+    report_path = db.Column(db.String(500))  # 征信报告文件路径
+
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     assigned_to = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -347,6 +350,19 @@ class AnalysisReport(db.Model):
     report_metadata = db.Column(JSON)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+class WorkflowEvent(db.Model):
+    """工作流事件模型 - 用于存储Dify流式输出事件"""
+    __tablename__ = 'workflow_events'
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_run_id = db.Column(db.String(100), nullable=False, index=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    company_name = db.Column(db.String(255), nullable=False)
+    event_type = db.Column(db.String(50), nullable=False)  # workflow_started, node_started, etc.
+    event_data = db.Column(JSON)  # 完整的事件数据
+    sequence_number = db.Column(db.Integer, nullable=False)  # 事件序号
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     def to_dict(self):
         """转换为字典"""

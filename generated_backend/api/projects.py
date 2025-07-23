@@ -5,9 +5,10 @@
 from flask import request, jsonify, current_app
 from sqlalchemy import or_, and_
 from datetime import datetime
+import os
 
 from database import db
-from db_models import Project, User, ProjectMember, Document, SystemLog, UserRole
+from db_models import Project, User, ProjectMember, Document, SystemLog, UserRole, WorkflowEvent
 from db_models import ProjectType, ProjectStatus, Priority, RiskLevel, ProjectMemberRole
 from utils import validate_request, log_action
 from api.auth import token_required
@@ -339,6 +340,26 @@ def register_project_routes(app):
             # 删除项目相关的所有文档文件
             from services.document_processor import document_processor
             document_processor.delete_project_documents(project)
+
+            # 删除项目的报告文件（如果存在）
+            try:
+                if project.report_path and os.path.exists(project.report_path):
+                    os.remove(project.report_path)
+                    current_app.logger.info(f"已删除项目报告文件: {project.report_path}")
+            except Exception as report_error:
+                current_app.logger.warning(f"删除项目报告文件失败: {report_error}")
+                # 继续删除操作，不因为报告文件删除失败而中断
+
+            # 删除项目相关的工作流事件记录
+            try:
+                deleted_events_count = WorkflowEvent.query.filter_by(
+                    project_id=project_id,
+                    company_name=project.name
+                ).delete()
+                current_app.logger.info(f"已删除 {deleted_events_count} 个工作流事件记录")
+            except Exception as events_error:
+                current_app.logger.warning(f"删除工作流事件记录失败: {events_error}")
+                # 继续删除操作，不因为事件删除失败而中断
 
             # 删除数据库记录（依赖级联删除）
             db.session.delete(project)

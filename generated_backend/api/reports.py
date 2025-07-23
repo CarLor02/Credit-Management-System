@@ -4,19 +4,29 @@
 
 import os
 import time
+import json
 import requests
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from flask import request, jsonify, current_app
+
+# 导入数据库模型
+from db_models import Project, AnalysisReport, WorkflowEvent, ReportType, ReportStatus
+from database import db
 
 # 导入配置（如果需要的话）
 # from config import Config
 
+# 全局变量，用于存储每个工作流的事件和内容
+workflow_events = {}  # 格式: {workflow_run_id: {'events': [], 'content': '', 'metadata': {}}}
+
 def register_report_routes(app):
     """注册报告相关路由"""
-    
+
     @app.route('/api/generate_report', methods=['POST'])
     def generate_report():
         """
-        生成报告的独立API接口
+        生成报告的独立API接口 - 异步流式处理
         """
         try:
             data = request.get_json()
@@ -27,6 +37,7 @@ def register_report_routes(app):
             dataset_id = data.get('dataset_id')
             company_name = data.get('company_name')
             knowledge_name = data.get('knowledge_name')
+            project_id = data.get('project_id')  # 添加项目ID参数
 
             # 验证必要参数
             if not company_name:
@@ -42,8 +53,8 @@ def register_report_routes(app):
 
             current_app.logger.info(f"开始生成报告 - 公司: {company_name}, 知识库: {knowledge_name}")
 
-            # 检查解析状态
-            if dataset_id:
+            # 检查解析状态（仅在非测试环境下）
+            if dataset_id and not dataset_id.startswith('test_'):
                 parsing_complete = check_parsing_status(dataset_id)
                 if not parsing_complete:
                     return jsonify({
@@ -52,26 +63,271 @@ def register_report_routes(app):
                         "parsing_complete": False
                     }), 400
 
-            # 调用报告生成API
-            report_content, workflow_run_id = call_report_generation_api(company_name, knowledge_name)
-            
-            # 保存报告到本地文件
-            file_path = save_report_to_file(company_name, report_content)
-            
-            current_app.logger.info(f"报告生成成功，已保存到: {file_path}")
+            # 对于测试数据，返回模拟响应
+            if dataset_id and dataset_id.startswith('test_'):
+                # 模拟工作流ID和内容
+                mock_workflow_id = f"workflow_{int(time.time())}"
+                mock_content = f"""# {company_name} 征信分析报告
 
-            return jsonify({
-                "success": True,
-                "message": "报告生成成功",
-                "workflow_run_id": workflow_run_id,
-                "content": report_content,
-                "file_path": file_path,
-                "parsing_complete": True
-            })
+## 公司基本信息
+- 公司名称：{company_name}
+- 知识库：{knowledge_name}
+- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}
+
+## 征信评估
+这是一个测试报告，用于验证系统功能。
+
+### 主要发现
+1. 测试数据处理正常
+2. API接口工作正常
+3. 报告生成流程完整
+
+### 建议
+继续完善系统功能，确保生产环境的稳定性。
+"""
+
+                # 不使用假的模拟事件，保持空列表
+                mock_events = []
+
+                # 存储到全局变量
+                workflow_events[mock_workflow_id] = {
+                    'events': mock_events,
+                    'content': mock_content,
+                    'metadata': {'test': True, 'company': company_name},
+                    'timestamp': time.time(),
+                    'company_name': company_name
+                }
+
+                # 保存报告到本地文件
+                file_path = save_report_to_file(company_name, mock_content, project_id)
+                current_app.logger.info(f"测试报告已保存到: {file_path}")
+
+                # 保存报告路径到数据库
+                if project_id:
+                    try:
+                        project = Project.query.get(project_id)
+                        if project:
+                            project.report_path = file_path
+                            db.session.commit()
+                            current_app.logger.info(f"报告路径已保存到数据库: {file_path}")
+                    except Exception as db_error:
+                        current_app.logger.error(f"保存报告路径到数据库失败: {db_error}")
+
+                return jsonify({
+                    "success": True,
+                    "message": "测试报告生成成功",
+                    "workflow_run_id": mock_workflow_id,
+                    "content": mock_content,
+                    "metadata": {'test': True},
+                    "events": mock_events,
+                    "file_path": file_path,
+                    "parsing_complete": True
+                })
+
+            # 真实的流式调用报告生成API
+            try:
+                # 调用流式报告生成API
+                report_content, workflow_run_id, events = call_report_generation_api_streaming(company_name, knowledge_name, project_id)
+
+                # 保存报告到本地文件
+                file_path = save_report_to_file(company_name, report_content, project_id)
+
+                # 保存报告路径到数据库
+                if project_id:
+                    try:
+                        project = Project.query.get(project_id)
+                        if project:
+                            project.report_path = file_path
+                            db.session.commit()
+                            current_app.logger.info(f"报告路径已保存到数据库: {file_path}")
+                    except Exception as db_error:
+                        current_app.logger.error(f"保存报告路径到数据库失败: {db_error}")
+
+                current_app.logger.info(f"报告生成成功，已保存到: {file_path}")
+
+                return jsonify({
+                    "success": True,
+                    "message": "报告生成成功",
+                    "workflow_run_id": workflow_run_id,
+                    "content": report_content,
+                    "events": events,  # 包含流式事件
+                    "file_path": file_path,
+                    "parsing_complete": True
+                })
+            except Exception as api_error:
+                current_app.logger.error(f"调用外部API失败: {str(api_error)}")
+                raise Exception(f"调用外部API失败: {str(api_error)}")
 
         except Exception as e:
             current_app.logger.error(f"生成报告失败: {str(e)}")
             return jsonify({"success": False, "error": f"生成报告失败: {str(e)}"}), 500
+
+    @app.route('/api/check_workflow_events/<workflow_run_id>', methods=['GET'])
+    def check_workflow_events(workflow_run_id):
+        """
+        获取指定工作流的事件和内容
+        """
+        if not workflow_run_id:
+            return jsonify({"error": "缺少必要参数: workflow_run_id"}), 400
+
+        try:
+            # 从数据库查询事件
+            events = WorkflowEvent.query.filter_by(
+                workflow_run_id=workflow_run_id
+            ).order_by(WorkflowEvent.sequence_number).all()
+
+            if not events:
+                return jsonify({
+                    "exists": False,
+                    "message": "未找到对应的工作流事件"
+                })
+
+            # 提取事件类型列表
+            event_types = [event.event_type for event in events]
+
+            # 获取第一个事件的基本信息
+            first_event = events[0]
+
+            # 返回事件和内容
+            return jsonify({
+                "exists": True,
+                "events": event_types,
+                "content": "",  # 内容在报告完成后从文件读取
+                "metadata": {},
+                "timestamp": first_event.created_at.timestamp(),
+                "company_name": first_event.company_name
+            })
+
+        except Exception as e:
+            current_app.logger.error(f"查询工作流事件失败: {e}")
+            return jsonify({"error": f"查询失败: {str(e)}"}), 500
+
+    @app.route('/api/projects/<int:project_id>/report', methods=['GET'])
+    def get_project_report(project_id):
+        """
+        获取项目的报告内容
+        """
+        try:
+            project = Project.query.get(project_id)
+            if not project:
+                return jsonify({
+                    "success": False,
+                    "error": "项目不存在"
+                }), 404
+
+            # 如果报告路径为空或None，返回成功但无内容的响应
+            if not project.report_path or project.report_path.strip() == "":
+                return jsonify({
+                    "success": False,
+                    "error": "该项目尚未生成报告",
+                    "has_report": False,
+                    "company_name": project.name
+                }), 200  # 改为200状态码，表示请求成功但无报告
+
+            # 检查文件是否存在
+            if not os.path.exists(project.report_path):
+                # 文件不存在，清空数据库中的路径
+                project.report_path = None
+                db.session.commit()
+                current_app.logger.warning(f"报告文件不存在，已清空数据库路径: {project.report_path}")
+
+                return jsonify({
+                    "success": False,
+                    "error": "报告文件不存在",
+                    "has_report": False,
+                    "company_name": project.name
+                }), 200  # 改为200状态码
+
+            # 读取报告内容
+            try:
+                with open(project.report_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                # 检查内容是否为空
+                if not content or content.strip() == "":
+                    return jsonify({
+                        "success": False,
+                        "error": "报告内容为空",
+                        "has_report": False,
+                        "company_name": project.name
+                    }), 200
+
+                return jsonify({
+                    "success": True,
+                    "content": content,
+                    "file_path": project.report_path,
+                    "company_name": project.name,
+                    "has_report": True
+                })
+            except Exception as read_error:
+                current_app.logger.error(f"读取报告文件失败: {read_error}")
+                return jsonify({
+                    "success": False,
+                    "error": "读取报告文件失败",
+                    "has_report": False,
+                    "company_name": project.name
+                }), 200  # 改为200状态码
+
+        except Exception as e:
+            current_app.logger.error(f"获取项目报告失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"获取项目报告失败: {str(e)}",
+                "has_report": False
+            }), 500
+
+    @app.route('/api/projects/<int:project_id>/report', methods=['DELETE'])
+    def delete_project_report(project_id):
+        """
+        删除项目的报告文件和相关数据
+        """
+        try:
+            project = Project.query.get(project_id)
+            if not project:
+                return jsonify({
+                    "success": False,
+                    "error": "项目不存在"
+                }), 404
+
+            current_app.logger.info(f"开始删除项目 {project_id} 的报告")
+
+            # 删除报告文件
+            if project.report_path and os.path.exists(project.report_path):
+                try:
+                    os.remove(project.report_path)
+                    current_app.logger.info(f"已删除报告文件: {project.report_path}")
+                except Exception as file_error:
+                    current_app.logger.error(f"删除报告文件失败: {file_error}")
+                    # 继续执行，不因为文件删除失败而中断
+
+            # 清空数据库中的报告路径
+            project.report_path = None
+            db.session.commit()
+            current_app.logger.info(f"已清空项目 {project_id} 的报告路径")
+
+            # 删除数据库中对应的工作流事件
+            try:
+                deleted_count = WorkflowEvent.query.filter_by(
+                    project_id=project_id,
+                    company_name=project.name
+                ).delete()
+                db.session.commit()
+                current_app.logger.info(f"已删除 {deleted_count} 个工作流事件记录")
+            except Exception as db_error:
+                current_app.logger.error(f"删除工作流事件失败: {db_error}")
+                # 继续执行，不因为数据库删除失败而中断
+
+            return jsonify({
+                "success": True,
+                "message": "报告删除成功"
+            })
+
+        except Exception as e:
+            current_app.logger.error(f"删除项目报告失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"删除项目报告失败: {str(e)}"
+            }), 500
 
 
 def check_parsing_status(dataset_id):
@@ -100,8 +356,73 @@ def check_parsing_status(dataset_id):
         return False
 
 
+def call_report_generation_api_streaming(company_name, knowledge_name, project_id=None):
+    """调用报告生成API - 流式模式"""
+    try:
+        # 真实API调用
+        report_api_url = current_app.config.get('REPORT_API_URL', 'http://172.16.76.203/v1/workflows/run')
+        api_key = current_app.config.get('REPORT_API_KEY', 'app-zLDrndvfJ81HaTWD3gXXVJaq')
+
+        current_app.logger.info(f"调用报告生成API (流式): {report_api_url}")
+        current_app.logger.info(f"使用公司名称: {company_name}, 知识库名称: {knowledge_name}")
+
+        # 构建请求数据 - 使用streaming模式
+        request_data = {
+            "inputs": {
+                "company": company_name,
+                "knowledge_name": knowledge_name
+            },
+            "response_mode": "streaming",  # 改为流式模式
+            "user": "root"
+        }
+
+        current_app.logger.info(f"请求数据: {request_data}")
+
+        response = requests.post(
+            report_api_url,
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json=request_data,
+            stream=True,  # 启用流式响应
+            timeout=1200  # 10分钟超时
+        )
+
+        response.raise_for_status()
+
+        # 使用解析方法处理流式响应
+        workflow_run_id, full_content, metadata, events = parse_dify_streaming_response(response, company_name, project_id)
+
+        current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}")
+        current_app.logger.info(f"提取到的事件数量: {len(events)}")
+        current_app.logger.info(f"内容长度: {len(full_content)}")
+
+        # 存储流式数据到全局变量，供前端查询
+        if workflow_run_id:
+            workflow_events[workflow_run_id] = {
+                'events': events,
+                'content': full_content,
+                'metadata': metadata,
+                'timestamp': time.time(),
+                'company_name': company_name
+            }
+
+        return full_content, workflow_run_id, events
+
+    except requests.exceptions.Timeout:
+        raise Exception("报告生成请求超时")
+    except requests.exceptions.ConnectionError:
+        raise Exception("无法连接到报告生成服务")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"报告生成请求失败: {str(e)}")
+    except Exception as e:
+        current_app.logger.error(f"调用流式报告生成API失败: {str(e)}")
+        raise Exception(f"调用流式报告生成API失败: {str(e)}")
+
+
 def call_report_generation_api(company_name, knowledge_name):
-    """调用报告生成API"""
+    """调用报告生成API - 阻塞模式（保持向后兼容）"""
     try:
         # 真实API调用
         report_api_url = current_app.config.get('REPORT_API_URL', 'http://172.16.76.203/v1/workflows/run')
@@ -162,26 +483,160 @@ def call_report_generation_api(company_name, knowledge_name):
 
 
 
-def save_report_to_file(company_name, content):
+def parse_dify_streaming_response(response, company_name="", project_id=None):
+    """
+    解析 Dify 流式响应，实时存储事件到数据库
+
+    Args:
+        response: requests 的流式响应对象
+        company_name: 公司名称
+        project_id: 项目ID
+
+    Returns:
+        tuple: (workflow_run_id, full_content, metadata, events)
+    """
+    workflow_run_id = None
+    full_content = ""
+    metadata = {}
+    events = []
+    sequence_number = 0
+
+    print("开始解析流式响应...")
+
+    for line in response.iter_lines(decode_unicode=True):
+        if not line:
+            continue
+
+        # 解析 SSE 格式数据
+        line_str = line.decode('utf-8') if isinstance(line, bytes) else line
+        if line_str.startswith('data: '):
+            data_str = line_str[6:]  # 移除 'data: ' 前缀
+
+            # 检查是否是结束标记
+            if data_str.strip() == '[DONE]':
+                print("收到结束标记 [DONE]")
+                break
+
+            try:
+                # 解析 JSON 数据
+                data = json.loads(data_str)
+                print(f"解析的 JSON 数据: {json.dumps(data, ensure_ascii=False)[:500]}...")
+
+                # 提取 workflow_run_id
+                if 'workflow_run_id' in data and workflow_run_id is None:
+                    workflow_run_id = data['workflow_run_id']
+                    print(f"提取到 workflow_run_id: {workflow_run_id}")
+
+                    # 清理该workflow_run_id的旧事件（如果有的话）
+                    if project_id:
+                        try:
+                            WorkflowEvent.query.filter_by(workflow_run_id=workflow_run_id).delete()
+                            db.session.commit()
+                            print(f"清理旧事件: {workflow_run_id}")
+                        except Exception as e:
+                            print(f"清理旧事件失败: {e}")
+                            db.session.rollback()
+
+                # 提取生成的内容
+                content = None
+
+                # 直接检查顶层字段
+                for field in ['answer', 'content', 'text', 'message']:
+                    if field in data:
+                        content = data[field]
+                        print(f"从顶层字段 '{field}' 提取内容")
+                        break
+
+                # 检查 data.outputs 结构
+                if not content and 'data' in data and isinstance(data['data'], dict):
+                    if 'outputs' in data['data'] and isinstance(data['data']['outputs'], dict):
+                        outputs = data['data']['outputs']
+                        for field in ['answer', 'content', 'text', 'message']:
+                            if field in outputs:
+                                text_value = outputs[field]
+                                if isinstance(text_value, str):
+                                    try:
+                                        # 尝试解析可能的 JSON 字符串
+                                        json_content = json.loads(text_value)
+                                        if 'text' in json_content:
+                                            content = json_content['text']
+                                            print(f"从 data.outputs.{field} 的 JSON 中提取 'text' 字段")
+                                        else:
+                                            content = json.dumps(json_content, ensure_ascii=False)
+                                            print(f"从 data.outputs.{field} 的 JSON 中提取整个对象")
+                                    except json.JSONDecodeError:
+                                        content = text_value
+                                        print(f"从 data.outputs.{field} 提取原始字符串")
+                                else:
+                                    content = str(text_value)
+                                    print(f"从 data.outputs.{field} 提取并转换为字符串")
+                                break
+
+                # 如果找到内容，添加到结果中
+                if content:
+                    full_content += content
+                    print(f"提取到内容: {content[:50]}..." if len(content) > 50 else f"提取到内容: {content}")
+
+                # 提取事件信息
+                if 'event' in data:
+                    events.append(data['event'])
+                    sequence_number += 1
+                    print(f"提取到事件: {data['event']}")
+
+                    # 实时存储事件到数据库
+                    if workflow_run_id and project_id:
+                        try:
+                            workflow_event = WorkflowEvent(
+                                workflow_run_id=workflow_run_id,
+                                project_id=project_id,
+                                company_name=company_name,
+                                event_type=data['event'],
+                                event_data=data,
+                                sequence_number=sequence_number
+                            )
+                            db.session.add(workflow_event)
+                            db.session.commit()
+                            print(f"事件已存储到数据库: {data['event']} (序号: {sequence_number})")
+                        except Exception as e:
+                            print(f"存储事件到数据库失败: {e}")
+                            db.session.rollback()
+
+                # 提取元数据
+                if 'metadata' in data:
+                    metadata.update(data['metadata'])
+                    print(f"提取到元数据: {json.dumps(data['metadata'], ensure_ascii=False)[:100]}...")
+
+            except json.JSONDecodeError as e:
+                print(f"JSON 解析错误: {e}, 原始数据: {data_str}")
+                continue
+
+    return workflow_run_id, full_content, metadata, events
+
+
+def save_report_to_file(company_name, content, project_id=None):
     """保存报告内容到本地文件"""
     try:
-        output_dir = "output"
+        # 如果有项目ID，按项目组织文件结构
+        if project_id:
+            output_dir = os.path.join("output", str(project_id), "reports")
+        else:
+            output_dir = "output"
+
         # 确保输出目录存在
         os.makedirs(output_dir, exist_ok=True)
-        
-        # 创建文件名：公司名称-时间戳.md
+
+        # 创建文件名：征信分析报告-时间戳.md
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        safe_company_name = company_name.replace("/", "-").replace("\\", "-").replace(":", "-")
-        filename = f"{safe_company_name}-{timestamp}.md"
+        filename = f"征信分析报告-{timestamp}.md"
         file_path = os.path.join(output_dir, filename)
-        
+
         # 写入文件
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-            
+
         current_app.logger.info(f"报告已保存到文件: {file_path}")
         return file_path
-        
+
     except Exception as e:
         current_app.logger.error(f"保存报告文件失败: {e}")
         raise Exception(f"保存报告文件失败: {str(e)}")

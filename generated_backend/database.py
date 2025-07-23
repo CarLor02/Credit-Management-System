@@ -33,7 +33,7 @@ def create_tables(app):
     """创建所有数据库表"""
     with app.app_context():
         # 导入所有模型以确保它们被注册
-        from db_models import User, Project, Document, ProjectMember, AnalysisReport, SystemLog, SystemSetting
+        from db_models import User, Project, Document, ProjectMember, AnalysisReport, WorkflowEvent, SystemLog, SystemSetting
         
         # 创建所有表
         db.create_all()
@@ -69,6 +69,11 @@ def create_indexes():
         # 分析报告表索引
         db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_analysis_reports_project_id ON analysis_reports(project_id)"))
         db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_analysis_reports_status ON analysis_reports(status)"))
+
+        # 工作流事件表索引
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_workflow_events_workflow_run_id ON workflow_events(workflow_run_id)"))
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_workflow_events_project_id ON workflow_events(project_id)"))
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_workflow_events_created_at ON workflow_events(created_at)"))
 
         # 知识库表索引
         db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_knowledge_bases_project_id ON knowledge_bases(project_id)"))
