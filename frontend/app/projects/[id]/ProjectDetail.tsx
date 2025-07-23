@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import CreateProjectModal from '../CreateProjectModal';
+import DocumentPreview from '@/components/DocumentPreview';
 import { projectService } from '@/services/projectService';
 import { documentService } from '@/services/documentService';
 import { projectDetailService, FinancialAnalysis, BusinessStatus, TimelineEvent } from '@/services/projectDetailService';
@@ -31,6 +32,9 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(true);
   const [documentPolling, setDocumentPolling] = useState<NodeJS.Timeout | null>(null);
+
+  // 预览相关状态
+  const [previewDocument, setPreviewDocument] = useState<{ id: number; name: string } | null>(null);
 
   // 项目详情数据状态
   const [financialData, setFinancialData] = useState<FinancialAnalysis[]>([]);
@@ -311,7 +315,16 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   const [reportGenerating, setReportGenerating] = useState(false);
 
   const handleDownloadReport = async () => {
-    if (!project) return;
+    if (!project) {
+      alert('项目信息不完整，无法生成报告');
+      return;
+    }
+
+    // 检查必要的项目信息
+    if (!project.dataset_id && !project.knowledge_base_name) {
+      alert('项目尚未创建知识库，请先上传文档并等待处理完成');
+      return;
+    }
 
     try {
       setReportGenerating(true);
@@ -334,24 +347,58 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       if (response.success && response.data?.success) {
         // 报告生成成功，创建下载链接
         const content = response.data.content || '';
-        const blob = new Blob([content], { type: 'text/markdown' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${project.name}_征信分析报告_${new Date().toISOString().split('T')[0]}.md`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
 
-        alert('征信报告生成并下载成功！');
+        if (!content) {
+          alert('报告内容为空，请稍后重试');
+          return;
+        }
+
+        try {
+          const blob = new Blob([content], { type: 'text/markdown' });
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+
+          // 清理文件名中的特殊字符
+          const sanitizedProjectName = project.name.replace(/[<>:"/\\|?*]/g, '_');
+          const fileName = `${sanitizedProjectName}_征信分析报告_${new Date().toISOString().split('T')[0]}.md`;
+          link.download = fileName;
+
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          alert('征信报告生成并下载成功！');
+        } catch (downloadError) {
+          console.error('Download error:', downloadError);
+          alert('下载文件时出错，请稍后重试');
+        }
       } else {
         const errorMsg = response.data?.error || response.error || '生成报告失败，请稍后重试';
         alert(errorMsg);
       }
     } catch (error) {
       console.error('Generate report error:', error);
-      alert('生成报告失败，请检查网络连接');
+
+      // 根据错误类型提供更具体的错误信息
+      let errorMessage = '生成报告失败，请稍后重试';
+
+      if (error instanceof Error) {
+        if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = '网络连接失败，请检查网络连接后重试';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = '请求超时，请稍后重试';
+        } else if (error.message.includes('401') || error.message.includes('unauthorized')) {
+          errorMessage = '认证失败，请重新登录后重试';
+        } else if (error.message.includes('403') || error.message.includes('forbidden')) {
+          errorMessage = '权限不足，无法生成报告';
+        } else if (error.message.includes('500')) {
+          errorMessage = '服务器内部错误，请联系管理员';
+        }
+      }
+
+      alert(errorMessage);
     } finally {
       setReportGenerating(false);
     }
@@ -636,6 +683,16 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       alert('删除文档失败，请稍后重试');
       console.error('Delete document error:', err);
     }
+  };
+
+  // 预览文档
+  const handlePreviewDocument = (id: number, name: string) => {
+    setPreviewDocument({ id, name });
+  };
+
+  // 关闭预览
+  const handleClosePreview = () => {
+    setPreviewDocument(null);
   };
 
   return (
@@ -1246,10 +1303,12 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                               <i className="ri-download-line text-gray-600"></i>
                             </button>
                             <button
-                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
+                              onClick={() => handlePreviewDocument(doc.id, doc.name)}
+                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-100 transition-all duration-200 btn-hover-scale"
                               title="预览文档"
+                              disabled={doc.status !== 'completed'}
                             >
-                              <i className="ri-eye-line text-gray-600"></i>
+                              <i className={`ri-eye-line ${doc.status === 'completed' ? 'text-blue-600' : 'text-gray-400'}`}></i>
                             </button>
                             <button
                               onClick={() => handleDeleteDocument(doc.id)}
@@ -1453,6 +1512,16 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 文档预览模态框 */}
+      {previewDocument && (
+        <DocumentPreview
+          documentId={previewDocument.id}
+          documentName={previewDocument.name}
+          isOpen={!!previewDocument}
+          onClose={handleClosePreview}
+        />
       )}
     </div>
   );

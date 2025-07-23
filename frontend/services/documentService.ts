@@ -194,6 +194,58 @@ class DocumentService {
       };
     }
   }
+
+  /**
+   * 预览文档
+   */
+  async previewDocument(documentId: number): Promise<ApiResponse<any>> {
+    try {
+      return await apiClient.request<any>(`/documents/${documentId}/preview`, {
+        method: 'GET'
+      });
+    } catch (error) {
+      console.error('预览文档失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '预览文档失败'
+      };
+    }
+  }
+
+  /**
+   * 下载处理后的文档（Markdown格式）
+   */
+  async downloadProcessedDocument(documentId: number): Promise<ApiResponse<Blob>> {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('请先登录');
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api'}/documents/${documentId}/processed-file`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('下载处理后文档失败');
+      }
+
+      const blob = await response.blob();
+      return {
+        success: true,
+        data: blob
+      };
+    } catch (error) {
+      console.error('下载处理后文档失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '下载处理后文档失败'
+      };
+    }
+  }
 }
 
 // 创建并导出服务实例
