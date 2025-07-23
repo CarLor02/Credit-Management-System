@@ -3,8 +3,7 @@
 import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { projectService, Project } from '@/services/projectService';
-// TODO: 将来需要添加知识库服务
-// import { knowledgeBaseService } from '@/services/knowledgeBaseService';
+import { knowledgeBaseService } from '@/services/knowledgeBaseService';
 
 interface ProjectSelectorProps {
   selectedProject: string;
@@ -81,13 +80,22 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
     if (confirm(`确定要重新构建项目"${selectedProjectData.name}"的知识库吗？\n\n此操作将删除现有知识库并重新处理所有文档，可能需要一些时间。`)) {
       setIsRebuilding(true);
       try {
-        // TODO: 调用重新构建知识库的API
-        // await knowledgeBaseService.rebuildKnowledgeBase(selectedProject);
+        // 调用重新构建知识库的API
+        const response = await knowledgeBaseService.rebuildKnowledgeBase(selectedProject);
 
-        // 模拟API调用
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        if (response.success) {
+          alert(response.message || '知识库重建任务已启动，请稍后查看处理结果');
 
-        alert('知识库重建任务已启动，请稍后查看处理结果');
+          // 可选：刷新项目列表或触发文档列表刷新
+          if (typeof window !== 'undefined') {
+            // 发送自定义事件通知文档列表刷新
+            window.dispatchEvent(new CustomEvent('knowledgeBaseRebuilt', {
+              detail: { projectId: selectedProject }
+            }));
+          }
+        } else {
+          alert(response.error || '重建知识库失败，请稍后重试');
+        }
       } catch (error) {
         console.error('重建知识库失败:', error);
         alert('重建知识库失败，请稍后重试');

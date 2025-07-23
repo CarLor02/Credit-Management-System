@@ -365,3 +365,59 @@ def register_project_routes(app):
                 error_message = '数据完整性错误，无法删除项目'
 
             return jsonify({'success': False, 'error': error_message}), 500
+
+    @app.route('/api/projects/<project_id>/rebuild-knowledge-base', methods=['POST'])
+    @token_required
+    def rebuild_knowledge_base(project_id):
+        """重建项目的知识库"""
+        try:
+            current_user = request.current_user
+
+            # 检查项目是否存在 - 支持通过ID或UUID查询
+            project = None
+            if project_id.isdigit():
+                # 如果是数字ID，直接查询
+                project = Project.query.get(int(project_id))
+            else:
+                # 如果是UUID字符串，通过folder_uuid查询
+                project = Project.query.filter_by(folder_uuid=str(project_id)).first()
+
+            if not project:
+                return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+            # 检查权限：只有项目创建者、分配者或管理员可以重建知识库
+            if (current_user.role != UserRole.ADMIN and
+                project.created_by != current_user.id and
+                project.assigned_to != current_user.id):
+                return jsonify({'success': False, 'error': '权限不足'}), 403
+
+            # 调用知识库服务重建知识库
+            from services.knowledge_base_service import knowledge_base_service
+
+            success = knowledge_base_service.rebuild_knowledge_base_for_project(
+                project_id, current_user.id
+            )
+
+            if success:
+                # 记录操作日志
+                log_action(
+                    user_id=current_user.id,
+                    action='rebuild_knowledge_base',
+                    resource_type='project',
+                    resource_id=project.id,
+                    details=f'重建项目"{project.name}"的知识库'
+                )
+
+                return jsonify({
+                    'success': True,
+                    'message': f'项目"{project.name}"的知识库重建任务已启动，请稍后查看处理结果'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': '重建知识库失败，请稍后重试'
+                }), 500
+
+        except Exception as e:
+            current_app.logger.error(f"重建知识库API错误: {e}")
+            return jsonify({'success': False, 'error': '服务器内部错误'}), 500

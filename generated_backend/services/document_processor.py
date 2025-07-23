@@ -39,15 +39,45 @@ class DocumentProcessor:
         project_root = os.path.dirname(os.path.dirname(current_dir))
         return os.path.join(project_root, 'OCR')
     
-    def process_document_async(self, document_id: int):
+    def process_document_async(self, document_id: int, app=None):
         """异步处理文档"""
         def process_in_background():
             try:
-                with current_app.app_context():
+                # 如果没有传递app实例，尝试获取当前应用实例
+                if app is None:
+                    application = current_app._get_current_object()
+                else:
+                    application = app
+
+                with application.app_context():
                     self.process_document(document_id)
             except Exception as e:
-                current_app.logger.error(f"后台处理文档失败: {e}")
-        
+                # 使用标准logging而不是current_app.logger
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"后台处理文档失败 (ID: {document_id}): {e}")
+                print(f"后台处理文档失败 (ID: {document_id}): {e}")  # 备用日志输出
+
+                # 尝试更新文档状态为失败（如果可能的话）
+                try:
+                    if app is None:
+                        application = current_app._get_current_object()
+                    else:
+                        application = app
+
+                    with application.app_context():
+                        from db_models import Document, DocumentStatus
+                        from database import db
+
+                        doc = Document.query.get(document_id)
+                        if doc:
+                            doc.status = DocumentStatus.FAILED
+                            doc.error_message = str(e)
+                            db.session.commit()
+                            logger.info(f"已将文档 {document_id} 状态设置为失败")
+                except Exception as update_error:
+                    logger.error(f"更新文档状态失败: {update_error}")
+
         thread = threading.Thread(target=process_in_background)
         thread.daemon = True
         thread.start()

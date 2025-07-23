@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 from flask import current_app
 
 from database import db
-from db_models import Project, User
+from db_models import Project, User, Document, DocumentStatus
 
 logger = logging.getLogger(__name__)
 
@@ -676,5 +676,97 @@ class KnowledgeBaseService:
         except Exception as e:
             logger.error(f"删除文档异常: {e}")
             return False
+
+    def rebuild_knowledge_base_for_project(self, project_id: int, user_id: int) -> bool:
+        """
+        重建项目的知识库
+
+        Args:
+            project_id: 项目ID
+            user_id: 用户ID
+
+        Returns:
+            是否成功启动重建任务
+        """
+        try:
+            # 获取项目信息 - 支持通过ID或UUID查询
+            project = None
+            if isinstance(project_id, int) or (isinstance(project_id, str) and project_id.isdigit()):
+                # 如果是数字ID，直接查询
+                project = Project.query.get(int(project_id))
+            else:
+                # 如果是UUID字符串，通过folder_uuid查询
+                project = Project.query.filter_by(folder_uuid=str(project_id)).first()
+
+            if not project:
+                logger.error(f"项目不存在: {project_id}")
+                return False
+
+            # 获取用户信息
+            user = User.query.get(user_id)
+            if not user:
+                logger.error(f"用户不存在: {user_id}")
+                return False
+
+            logger.info(f"开始重建项目 {project.name} 的知识库")
+
+            # 1. 删除现有知识库（如果存在）
+            if project.id:
+                logger.info(f"删除现有知识库: {project.dataset_id}")
+                self.delete_knowledge_base(project.id)
+
+            # 2. 重置项目的知识库信息
+            project.dataset_id = None
+            project.knowledge_base_name = None
+
+            # 3. 获取项目的所有文档
+            documents = Document.query.filter_by(project_id=project.id).all()
+
+            # 4. 重置所有文档状态为处理中，并删除processed文件
+            for doc in documents:
+                # 重置文档状态
+                doc.status = DocumentStatus.PROCESSING
+                doc.processed_file_path = None
+                doc.processing_progress = 0
+                doc.error_message = None
+
+                # 删除processed文件夹中的对应文件
+                if doc.processed_file_path and os.path.exists(doc.processed_file_path):
+                    try:
+                        os.remove(doc.processed_file_path)
+                        logger.info(f"删除processed文件: {doc.processed_file_path}")
+                    except Exception as e:
+                        logger.warning(f"删除processed文件失败: {e}")
+
+            # 5. 提交数据库更改
+            db.session.commit()
+
+            # 6. 创建新的知识库
+            dataset_id = self.create_knowledge_base_for_project(project.id, user_id)
+            if not dataset_id:
+                logger.error("创建新知识库失败")
+                return False
+
+            # 7. 启动文档重新处理（异步）
+            from services.document_processor import DocumentProcessor
+
+            processor = DocumentProcessor()
+
+            # 获取当前应用实例，用于传递给异步线程
+            app = current_app._get_current_object()
+
+            for doc in documents:
+                logger.info(f"启动文档重新处理: {doc.name} (ID: {doc.id})")
+                # 使用改进的异步处理方法，传递应用实例
+                processor.process_document_async(doc.id, app)
+
+            logger.info(f"知识库重建任务启动成功，项目: {project.name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"重建知识库失败: {e}")
+            db.session.rollback()
+            return False
+
 # 全局服务实例
 knowledge_base_service = KnowledgeBaseService()

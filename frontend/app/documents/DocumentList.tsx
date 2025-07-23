@@ -119,6 +119,24 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
     }
   }, [activeTab, searchQuery, selectedProject, updateDocuments]);
 
+  // 监听知识库重建事件
+  useEffect(() => {
+    const handleKnowledgeBaseRebuilt = (event: CustomEvent) => {
+      const { projectId } = event.detail;
+      // 如果重建的是当前选中的项目，刷新文档列表
+      if (projectId === selectedProject) {
+        console.log('知识库重建完成，刷新文档列表');
+        loadDocuments(true);
+      }
+    };
+
+    window.addEventListener('knowledgeBaseRebuilt', handleKnowledgeBaseRebuilt as EventListener);
+
+    return () => {
+      window.removeEventListener('knowledgeBaseRebuilt', handleKnowledgeBaseRebuilt as EventListener);
+    };
+  }, [selectedProject, loadDocuments]);
+
   // 初始加载和搜索/筛选变化时重新加载
   useEffect(() => {
     loadDocuments();
