@@ -56,7 +56,7 @@ def check_project_data():
 
                     kb_uuid = str(uuid.uuid4())
                     first_project.dataset_id = f"test-dataset-{first_project.id}"
-                    first_project.knowledge_base_name = f"1_{first_project.name}_{kb_uuid}"
+                    first_project.knowledge_base_name = f"admin_{first_project.name}_{kb_uuid}"
                     
                     db.session.commit()
                     print("✅ 测试数据设置完成")

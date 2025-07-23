@@ -10,7 +10,7 @@ import { projectService } from '@/services/projectService';
 import { documentService } from '@/services/documentService';
 import { projectDetailService, FinancialAnalysis, BusinessStatus, TimelineEvent } from '@/services/projectDetailService';
 import { apiClient } from '@/services/api';
-import { Project } from '@/data/mockData';
+import { Project } from '@/services/projectService';
 
 interface ProjectDetailProps {
   projectId: string;
@@ -190,11 +190,19 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
     try {
       setFinancialLoading(true);
-      const response = await projectDetailService.getProjectFinancial(project.id);
 
-      if (response.success && response.data) {
-        setFinancialData(response.data);
-      }
+      // TODO: 暂时使用默认数据，后续实现真实API调用
+      // const response = await projectDetailService.getFinancialAnalysis(project.id);
+
+      // 使用默认财务数据
+      const defaultFinancialData = {
+        revenue: { current: 0, previous: 0, growth: 0 },
+        profit: { current: 0, previous: 0, growth: 0 },
+        assets: { current: 0, previous: 0, growth: 0 },
+        liabilities: { current: 0, previous: 0, growth: 0 }
+      };
+
+      setFinancialData(defaultFinancialData);
     } catch (err) {
       console.error('Load financial data error:', err);
     } finally {
@@ -208,11 +216,21 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
     try {
       setBusinessLoading(true);
-      const response = await projectDetailService.getProjectBusinessStatus(project.id);
 
-      if (response.success && response.data) {
-        setBusinessStatus(response.data);
-      }
+      // TODO: 暂时使用默认数据，后续实现真实API调用
+      // const response = await projectDetailService.getBusinessStatus(project.id);
+
+      // 使用默认经营状况数据
+      const defaultBusinessStatus = {
+        operatingStatus: 'normal' as const,
+        creditRating: 'A',
+        riskLevel: 'low' as const,
+        complianceScore: 85,
+        marketPosition: '行业领先',
+        businessScope: ['金融服务', '投资管理', '风险控制']
+      };
+
+      setBusinessStatus(defaultBusinessStatus);
     } catch (err) {
       console.error('Load business status error:', err);
     } finally {
@@ -226,13 +244,31 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
     try {
       setTimelineLoading(true);
-      const response = await projectDetailService.getProjectTimeline(project.id, { limit: 20 });
 
-      if (response.success && response.data && response.data.data) {
-        setTimelineEvents(response.data.data || []);
-      } else {
-        setTimelineEvents([]);
-      }
+      // TODO: 暂时使用默认数据，后续实现真实API调用
+      // const response = await projectDetailService.getTimeline(project.id);
+
+      // 使用默认时间轴数据
+      const defaultTimelineEvents = [
+        {
+          id: 1,
+          date: new Date().toISOString().split('T')[0],
+          type: 'milestone' as const,
+          title: '项目创建',
+          description: '项目已成功创建并开始收集资料',
+          status: 'completed' as const
+        },
+        {
+          id: 2,
+          date: new Date().toISOString().split('T')[0],
+          type: 'document' as const,
+          title: '文档上传',
+          description: '开始上传相关文档资料',
+          status: 'processing' as const
+        }
+      ];
+
+      setTimelineEvents(defaultTimelineEvents);
     } catch (err) {
       console.error('Load timeline data error:', err);
       setTimelineEvents([]);
@@ -886,50 +922,49 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                     <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-center h-32">
                       <p className="text-gray-500">加载财务数据中...</p>
                     </div>
-                  ) : financialData.length > 0 ? (
+                  ) : financialData ? (
                     <div className="bg-gray-50 rounded-lg p-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm text-gray-600">资产总额</p>
                           <p className="text-xl font-bold text-blue-600">
-                            {financialData[0].total_assets ? `${(financialData[0].total_assets / 10000).toFixed(1)}亿元` : '暂无数据'}
+                            {financialData.assets?.current ? `${(financialData.assets.current / 10000).toFixed(1)}万元` : '暂无数据'}
                           </p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">营业收入</p>
                           <p className="text-xl font-bold text-green-600">
-                            {financialData[0].annual_revenue ? `${(financialData[0].annual_revenue / 10000).toFixed(1)}亿元` : '暂无数据'}
+                            {financialData.revenue?.current ? `${(financialData.revenue.current / 10000).toFixed(1)}万元` : '暂无数据'}
                           </p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">净利润</p>
                           <p className="text-xl font-bold text-purple-600">
-                            {financialData[0].net_profit ? `${financialData[0].net_profit}万元` : '暂无数据'}
+                            {financialData.profit?.current ? `${financialData.profit.current}万元` : '暂无数据'}
                           </p>
                         </div>
                         <div>
-                          <p className="text-sm text-gray-600">负债率</p>
+                          <p className="text-sm text-gray-600">负债总额</p>
                           <p className="text-xl font-bold text-yellow-600">
-                            {financialData[0].debt_ratio ? `${financialData[0].debt_ratio}%` : '暂无数据'}
+                            {financialData.liabilities?.current ? `${(financialData.liabilities.current / 10000).toFixed(1)}万元` : '暂无数据'}
                           </p>
                         </div>
                         <div>
-                          <p className="text-sm text-gray-600">净利率</p>
+                          <p className="text-sm text-gray-600">收入增长率</p>
                           <p className="text-xl font-bold text-indigo-600">
-                            {financialData[0].net_profit_margin ? `${financialData[0].net_profit_margin}%` : '暂无数据'}
+                            {financialData.revenue?.growth ? `${financialData.revenue.growth}%` : '暂无数据'}
                           </p>
                         </div>
                         <div>
-                          <p className="text-sm text-gray-600">ROE</p>
+                          <p className="text-sm text-gray-600">利润增长率</p>
                           <p className="text-xl font-bold text-pink-600">
-                            {financialData[0].roe ? `${financialData[0].roe}%` : '暂无数据'}
+                            {financialData.profit?.growth ? `${financialData.profit.growth}%` : '暂无数据'}
                           </p>
                         </div>
                       </div>
                       <div className="mt-4 pt-4 border-t border-gray-200">
                         <p className="text-xs text-gray-500">
-                          数据年度: {financialData[0].analysis_year}
-                          {financialData[0].analysis_quarter && `Q${financialData[0].analysis_quarter}`}
+                          财务数据概览（暂时使用默认数据）
                         </p>
                       </div>
                     </div>
@@ -941,33 +976,32 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                 </div>
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900">财务比率分析</h3>
-                  {financialData.length > 0 ? (
+                  {financialData ? (
                     <div className="bg-gray-50 rounded-lg p-4">
                       <div className="space-y-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">流动比率</span>
-                          <span className="font-medium">{financialData[0].current_ratio || '暂无数据'}</span>
+                          <span className="text-sm text-gray-600">资产增长率</span>
+                          <span className="font-medium">{financialData.assets?.growth ? `${financialData.assets.growth}%` : '暂无数据'}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">速动比率</span>
-                          <span className="font-medium">{financialData[0].quick_ratio || '暂无数据'}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">总资产周转率</span>
-                          <span className="font-medium">{financialData[0].total_asset_turnover || '暂无数据'}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">营收增长率</span>
-                          <span className={`font-medium ${financialData[0].revenue_growth_rate && financialData[0].revenue_growth_rate > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {financialData[0].revenue_growth_rate ? `${financialData[0].revenue_growth_rate}%` : '暂无数据'}
+                          <span className="text-sm text-gray-600">收入增长率</span>
+                          <span className={`font-medium ${financialData.revenue?.growth && financialData.revenue.growth > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {financialData.revenue?.growth ? `${financialData.revenue.growth}%` : '暂无数据'}
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-600">利润增长率</span>
-                          <span className={`font-medium ${financialData[0].profit_growth_rate && financialData[0].profit_growth_rate > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {financialData[0].profit_growth_rate ? `${financialData[0].profit_growth_rate}%` : '暂无数据'}
+                          <span className={`font-medium ${financialData.profit?.growth && financialData.profit.growth > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {financialData.profit?.growth ? `${financialData.profit.growth}%` : '暂无数据'}
                           </span>
                         </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600">负债增长率</span>
+                          <span className={`font-medium ${financialData.liabilities?.growth && financialData.liabilities.growth > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {financialData.liabilities?.growth ? `${financialData.liabilities.growth}%` : '暂无数据'}
+                          </span>
+                        </div>
+
                       </div>
                     </div>
                   ) : (
@@ -990,120 +1024,54 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="border border-gray-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-gray-900 mb-3">经营资质</h4>
-                        <div className="space-y-2">
-                          <div className={`flex items-center ${businessStatus.business_license_status === 'normal' ? 'text-green-600' : businessStatus.business_license_status === 'expiring' ? 'text-yellow-600' : 'text-red-600'}`}>
-                            <i className={`${businessStatus.business_license_status === 'normal' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-line'} mr-2`}></i>
-                            <span className="text-sm">
-                              营业执照{businessStatus.business_license_status === 'normal' ? '正常' : businessStatus.business_license_status === 'expiring' ? '即将到期' : '已过期'}
-                            </span>
-                          </div>
-                          <div className={`flex items-center ${businessStatus.tax_registration_status === 'normal' ? 'text-green-600' : 'text-red-600'}`}>
-                            <i className={`${businessStatus.tax_registration_status === 'normal' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-line'} mr-2`}></i>
-                            <span className="text-sm">
-                              税务登记{businessStatus.tax_registration_status === 'normal' ? '正常' : '异常'}
-                            </span>
-                          </div>
-                          <div className={`flex items-center ${businessStatus.organization_code_status === 'normal' ? 'text-green-600' : businessStatus.organization_code_status === 'expiring' ? 'text-yellow-600' : 'text-red-600'}`}>
-                            <i className={`${businessStatus.organization_code_status === 'normal' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-line'} mr-2`}></i>
-                            <span className="text-sm">
-                              组织机构代码{businessStatus.organization_code_status === 'normal' ? '正常' : businessStatus.organization_code_status === 'expiring' ? '即将到期' : '已过期'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="border border-gray-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-gray-900 mb-3">合规状态</h4>
-                        <div className="space-y-2">
-                          <div className={`flex items-center ${businessStatus.legal_violations === 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            <i className={`${businessStatus.legal_violations === 0 ? 'ri-checkbox-circle-fill' : 'ri-error-warning-line'} mr-2`}></i>
-                            <span className="text-sm">
-                              {businessStatus.legal_violations === 0 ? '无违法记录' : `违法记录 ${businessStatus.legal_violations} 条`}
-                            </span>
-                          </div>
-                          <div className={`flex items-center ${businessStatus.tax_compliance_status === 'compliant' ? 'text-green-600' : businessStatus.tax_compliance_status === 'warning' ? 'text-yellow-600' : 'text-red-600'}`}>
-                            <i className={`${businessStatus.tax_compliance_status === 'compliant' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-line'} mr-2`}></i>
-                            <span className="text-sm">
-                              税务合规{businessStatus.tax_compliance_status === 'compliant' ? '正常' : businessStatus.tax_compliance_status === 'warning' ? '预警' : '违规'}
-                            </span>
-                          </div>
-                          <div className={`flex items-center ${businessStatus.environmental_compliance === 'compliant' ? 'text-green-600' : businessStatus.environmental_compliance === 'warning' ? 'text-yellow-600' : 'text-red-600'}`}>
-                            <i className={`${businessStatus.environmental_compliance === 'compliant' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-line'} mr-2`}></i>
-                            <span className="text-sm">
-                              环保合规{businessStatus.environmental_compliance === 'compliant' ? '达标' : businessStatus.environmental_compliance === 'warning' ? '预警' : '违规'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="border border-gray-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-gray-900 mb-3">风险评估</h4>
+                        <h4 className="font-semibold text-gray-900 mb-3">经营状态</h4>
                         <div className="space-y-3">
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">市场风险</span>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${businessStatus.market_risk_level === 'low' ? 'bg-green-100 text-green-800' : businessStatus.market_risk_level === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
-                              {businessStatus.market_risk_level === 'low' ? '低风险' : businessStatus.market_risk_level === 'medium' ? '中风险' : '高风险'}
+                            <span className="text-sm text-gray-600">运营状态</span>
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${businessStatus.operatingStatus === 'normal' ? 'bg-green-100 text-green-800' : businessStatus.operatingStatus === 'warning' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                              {businessStatus.operatingStatus === 'normal' ? '正常' : businessStatus.operatingStatus === 'warning' ? '预警' : '风险'}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">财务风险</span>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${businessStatus.financial_risk_level === 'low' ? 'bg-green-100 text-green-800' : businessStatus.financial_risk_level === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
-                              {businessStatus.financial_risk_level === 'low' ? '低风险' : businessStatus.financial_risk_level === 'medium' ? '中风险' : '高风险'}
-                            </span>
+                            <span className="text-sm text-gray-600">信用评级</span>
+                            <span className="font-medium text-blue-600">{businessStatus.creditRating}</span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">运营风险</span>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${businessStatus.operational_risk_level === 'low' ? 'bg-green-100 text-green-800' : businessStatus.operational_risk_level === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
-                              {businessStatus.operational_risk_level === 'low' ? '低风险' : businessStatus.operational_risk_level === 'medium' ? '中风险' : '高风险'}
+                            <span className="text-sm text-gray-600">风险等级</span>
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${businessStatus.riskLevel === 'low' ? 'bg-green-100 text-green-800' : businessStatus.riskLevel === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                              {businessStatus.riskLevel === 'low' ? '低风险' : businessStatus.riskLevel === 'medium' ? '中风险' : '高风险'}
                             </span>
                           </div>
                         </div>
                       </div>
-
                       <div className="border border-gray-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-gray-900 mb-3">经营评分</h4>
+                        <h4 className="font-semibold text-gray-900 mb-3">合规评估</h4>
                         <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">综合评分</span>
-                            <span className="text-lg font-bold text-blue-600">{businessStatus.overall_score}/100</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">资质评分</span>
-                            <span className="font-medium">{businessStatus.qualification_score}/100</span>
-                          </div>
                           <div className="flex justify-between items-center">
                             <span className="text-sm text-gray-600">合规评分</span>
-                            <span className="font-medium">{businessStatus.compliance_score}/100</span>
+                            <span className="text-lg font-bold text-blue-600">{businessStatus.complianceScore}/100</span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">风险评分</span>
-                            <span className="font-medium">{businessStatus.risk_score}/100</span>
+                            <span className="text-sm text-gray-600">市场地位</span>
+                            <span className="font-medium text-green-600">{businessStatus.marketPosition}</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {(businessStatus.risk_factors || businessStatus.improvement_suggestions) && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {businessStatus.risk_factors && (
-                          <div className="border border-gray-200 rounded-lg p-4">
-                            <h4 className="font-semibold text-gray-900 mb-3">风险因素</h4>
-                            <p className="text-sm text-gray-600">{businessStatus.risk_factors}</p>
-                          </div>
-                        )}
-                        {businessStatus.improvement_suggestions && (
-                          <div className="border border-gray-200 rounded-lg p-4">
-                            <h4 className="font-semibold text-gray-900 mb-3">改进建议</h4>
-                            <p className="text-sm text-gray-600">{businessStatus.improvement_suggestions}</p>
-                          </div>
-                        )}
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">业务范围</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {businessStatus.businessScope.map((scope, index) => (
+                          <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                            {scope}
+                          </span>
+                        ))}
                       </div>
-                    )}
+                    </div>
 
                     <div className="text-xs text-gray-500 text-center">
-                      评估日期: {businessStatus.evaluation_date}
+                      经营状况概览（暂时使用默认数据）
                     </div>
                   </div>
                 ) : (

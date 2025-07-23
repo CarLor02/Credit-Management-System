@@ -54,9 +54,9 @@ class KnowledgeBaseService:
                 logger.error(f"用户不存在: {user_id}")
                 return None
             
-            # 构造知识库名称：用户id_项目名称_uuid
+            # 构造知识库名称：用户名_项目名称_uuid
             kb_uuid = str(uuid.uuid4())
-            kb_name = f"{user.id}_{project.name}_{kb_uuid}"
+            kb_name = f"{user.username}_{project.name}_{kb_uuid}"
             
             # 调用RAG API创建知识库
             dataset_id = self._create_dataset_via_api(kb_name)

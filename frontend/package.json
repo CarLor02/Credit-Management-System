@@ -4,14 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "cross-env NODE_ENV=development next dev -H 0.0.0.0 -p 3000",
-    "dev:mock": "cross-env NODE_ENV=development NEXT_PUBLIC_USE_MOCK=true next dev -H 0.0.0.0 -p 3000",
-    "dev:real": "cross-env NODE_ENV=development NEXT_PUBLIC_USE_MOCK=false next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
-    "lint": "next lint",
-    "mock:toggle": "node scripts/toggle-mock.js",
-    "mock:on": "node scripts/toggle-mock.js on",
-    "mock:off": "node scripts/toggle-mock.js off",
-    "mock:status": "node scripts/toggle-mock.js status"
+    "lint": "next lint"
   },
   "dependencies": {
     "@uiw/react-markdown-preview": "^5.1.4",

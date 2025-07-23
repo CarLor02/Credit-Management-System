@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '../contexts/AuthContext';
-import MockIndicator from './MockIndicator';
 
 export default function Header() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -37,13 +36,11 @@ export default function Header() {
   };
 
   return (
-    <>
-      <MockIndicator />
-      <header className="bg-white shadow-sm border-b border-gray-200">
+    <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-8">
-            <Link href="/dashboard" className="flex items-center space-x-2">
+            <Link href="/projects" className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                 <i className="ri-building-line text-white text-lg"></i>
               </div>
@@ -51,13 +48,6 @@ export default function Header() {
             </Link>
             
             <nav className="flex space-x-8">
-              {/* 暂时隐藏数据总览 */}
-              {/* <Link
-                href="/dashboard"
-                className={`transition-colors ${isActiveNav('/dashboard') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
-              >
-                数据总览
-              </Link> */}
               <Link
                 href="/projects"
                 className={`transition-colors ${isActiveNav('/projects') ? 'text-blue-600 font-medium' : 'text-gray-600 hover:text-blue-600'}`}
@@ -130,6 +120,5 @@ export default function Header() {
         </div>
       </div>
     </header>
-    </>
   );
 }

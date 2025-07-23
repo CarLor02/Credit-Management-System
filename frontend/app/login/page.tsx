@@ -21,10 +21,10 @@ export default function LoginPage() {
   const { login, register, isAuthenticated } = useAuth();
   const router = useRouter();
 
-  // 如果已经登录，重定向到仪表板
+  // 如果已经登录，重定向到项目管理页面
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/dashboard');
+      router.push('/projects');
     }
   }, [isAuthenticated, router]);
 
@@ -43,7 +43,7 @@ export default function LoginPage() {
 
         const result = await login(formData.username, formData.password);
         if (result.success) {
-          router.push('/dashboard');
+          router.push('/projects');
         } else {
           setError(result.error || '登录失败');
         }
@@ -72,7 +72,7 @@ export default function LoginPage() {
         });
 
         if (result.success) {
-          router.push('/dashboard');
+          router.push('/projects');
         } else {
           setError(result.error || '注册失败');
         }

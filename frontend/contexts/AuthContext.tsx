@@ -6,7 +6,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { authService, User, TokenManager } from '../services/authService';
+import { authService, User } from '../services/authService';
 import { parseApiError } from '../utils/errorMessages';
 
 // 认证上下文类型
@@ -37,7 +37,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   // 计算认证状态
-  const isAuthenticated = !!user && TokenManager.isTokenValid();
+  const isAuthenticated = !!user && authService.isLoggedIn();
 
   /**
    * 初始化用户状态
@@ -46,28 +46,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const initializeAuth = async () => {
       try {
         // 检查本地存储的用户信息
-        const storedUser = TokenManager.getUser();
-        const token = TokenManager.getToken();
+        const storedUser = authService.getCurrentUser();
 
-        if (storedUser && token && !TokenManager.isTokenExpired(token)) {
-          // 验证token是否仍然有效
-          const response = await authService.getCurrentUser();
-          if (response.success && response.data) {
-            setUser(response.data);
-            TokenManager.setUser(response.data);
-          } else {
-            // Token无效，清除本地存储
-            TokenManager.removeToken();
-            setUser(null);
-          }
+        if (storedUser && authService.isLoggedIn()) {
+          setUser(storedUser);
         } else {
           // 没有有效的认证信息
-          TokenManager.removeToken();
           setUser(null);
         }
       } catch (error) {
         console.error('初始化认证状态失败:', error);
-        TokenManager.removeToken();
         setUser(null);
       } finally {
         setIsLoading(false);
@@ -86,13 +74,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await authService.login({ username, password });
       
       if (response.success && response.data) {
-        const { token, user: userData } = response.data;
-        
-        // 保存认证信息
-        TokenManager.setToken(token);
-        TokenManager.setUser(userData);
+        const { user: userData } = response.data;
         setUser(userData);
-        
         return { success: true };
       } else {
         return {
@@ -120,13 +103,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await authService.register(userData);
       
       if (response.success && response.data) {
-        const { token, user: newUser } = response.data;
-        
-        // 保存认证信息
-        TokenManager.setToken(token);
-        TokenManager.setUser(newUser);
+        const { user: newUser } = response.data;
         setUser(newUser);
-        
         return { success: true };
       } else {
         return {
@@ -155,7 +133,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('登出失败:', error);
     } finally {
       // 无论是否成功，都清除本地状态
-      TokenManager.removeToken();
       setUser(null);
     }
   };
@@ -169,7 +146,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       if (response.success && response.data) {
         setUser(response.data);
-        TokenManager.setUser(response.data);
         return { success: true };
       } else {
         return { 
@@ -191,10 +167,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
    */
   const refreshUser = async () => {
     try {
-      const response = await authService.getCurrentUser();
-      if (response.success && response.data) {
-        setUser(response.data);
-        TokenManager.setUser(response.data);
+      const userData = authService.getCurrentUser();
+      if (userData) {
+        setUser(userData);
       }
     } catch (error) {
       console.error('刷新用户信息失败:', error);

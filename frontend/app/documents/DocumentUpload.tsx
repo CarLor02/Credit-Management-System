@@ -3,8 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { documentService } from '@/services/documentService';
-import { projectService } from '@/services/projectService';
-import { Project } from '@/data/mockData';
+import { projectService, Project } from '@/services/projectService';
 
 interface DocumentUploadProps {
   selectedProject: string;

@@ -1,11 +1,30 @@
 /**
  * 项目服务
- * 处理项目相关的API调用和Mock数据
+ * 处理项目相关的API调用
  */
 
 import { apiClient, ApiResponse } from './api';
-import { MOCK_CONFIG, mockLog, mockDelay } from '@/config/mock';
-import { Project, mockProjects } from '@/data/mockData';
+
+// 项目接口定义
+export interface Project {
+  id: number;
+  name: string;
+  type: 'enterprise' | 'individual';
+  status: 'collecting' | 'processing' | 'completed';
+  score: number;
+  riskLevel: 'low' | 'medium' | 'high';
+  lastUpdate: string;
+  documents: number;
+  progress: number;
+  description?: string;
+  created_by?: number;
+  assigned_to?: number;
+  created_at?: string;
+  updated_at?: string;
+  // 知识库相关字段
+  dataset_id?: string;
+  knowledge_base_name?: string;
+}
 
 /**
  * 项目创建数据
@@ -42,160 +61,112 @@ class ProjectService {
    * 获取项目列表
    */
   async getProjects(params?: ProjectQueryParams): Promise<ApiResponse<Project[]>> {
-    if (MOCK_CONFIG.enabled) {
-      mockLog('Getting projects list', params);
-      await mockDelay();
-
-      let filteredProjects = [...mockProjects];
-
-      // 应用过滤条件
+    try {
+      // 构建查询参数
+      const queryParams = new URLSearchParams();
+      
       if (params) {
         if (params.type) {
-          filteredProjects = filteredProjects.filter(p => p.type === params.type);
+          queryParams.append('type', params.type);
         }
         if (params.status) {
-          filteredProjects = filteredProjects.filter(p => p.status === params.status);
+          queryParams.append('status', params.status);
         }
         if (params.search) {
-          const searchLower = params.search.toLowerCase();
-          filteredProjects = filteredProjects.filter(p => 
-            p.name.toLowerCase().includes(searchLower)
-          );
+          queryParams.append('search', params.search);
+        }
+        if (params.page) {
+          queryParams.append('page', params.page.toString());
+        }
+        if (params.limit) {
+          queryParams.append('limit', params.limit.toString());
         }
       }
 
+      const url = queryParams.toString() ? `/projects?${queryParams.toString()}` : '/projects';
+      return await apiClient.request<Project[]>(url, { method: 'GET' });
+    } catch (error) {
+      console.error('获取项目列表失败:', error);
       return {
-        success: true,
-        data: filteredProjects
+        success: false,
+        error: error instanceof Error ? error.message : '获取项目列表失败'
       };
     }
-
-    // 真实API调用
-    const queryString = params ? new URLSearchParams(params as any).toString() : '';
-    const endpoint = `/projects${queryString ? `?${queryString}` : ''}`;
-    return apiClient.get<Project[]>(endpoint);
   }
 
   /**
-   * 根据ID获取项目详情
-   */
-  async getProjectById(id: number): Promise<ApiResponse<Project>> {
-    if (MOCK_CONFIG.enabled) {
-      mockLog(`Getting project by ID: ${id}`);
-      await mockDelay();
-
-      const project = mockProjects.find(p => p.id === id);
-      if (!project) {
-        return {
-          success: false,
-          error: 'Project not found'
-        };
-      }
-
-      return {
-        success: true,
-        data: project
-      };
-    }
-
-    // 真实API调用
-    return apiClient.get<Project>(`/projects/${id}`);
-  }
-
-  /**
-   * 创建新项目
+   * 创建项目
    */
   async createProject(data: CreateProjectData): Promise<ApiResponse<Project>> {
-    if (MOCK_CONFIG.enabled) {
-      mockLog('Creating new project', data);
-      await mockDelay();
-
-      const newProject: Project = {
-        id: Math.max(...mockProjects.map(p => p.id)) + 1,
-        name: data.name,
-        type: data.type,
-        status: 'collecting',
-        score: 0,
-        riskLevel: 'low',
-        lastUpdate: new Date().toISOString().split('T')[0],
-        documents: 0,
-        progress: 0
-      };
-
-      // 模拟添加到数据中
-      mockProjects.push(newProject);
-
+    try {
+      return await apiClient.request<Project>('/projects', {
+        method: 'POST',
+        body: data
+      });
+    } catch (error) {
+      console.error('创建项目失败:', error);
       return {
-        success: true,
-        data: newProject
+        success: false,
+        error: error instanceof Error ? error.message : '创建项目失败'
       };
     }
+  }
 
-    // 真实API调用
-    return apiClient.post<Project>('/projects', data);
+  /**
+   * 获取项目详情
+   */
+  async getProject(id: number): Promise<ApiResponse<Project>> {
+    try {
+      return await apiClient.request<Project>(`/projects/${id}`, { method: 'GET' });
+    } catch (error) {
+      console.error('获取项目详情失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '获取项目详情失败'
+      };
+    }
+  }
+
+  /**
+   * 根据ID获取项目详情（别名方法，保持向后兼容）
+   */
+  async getProjectById(id: number): Promise<ApiResponse<Project>> {
+    return this.getProject(id);
   }
 
   /**
    * 更新项目
    */
   async updateProject(id: number, data: UpdateProjectData): Promise<ApiResponse<Project>> {
-    if (MOCK_CONFIG.enabled) {
-      mockLog(`Updating project ${id}`, data);
-      await mockDelay();
-
-      const projectIndex = mockProjects.findIndex(p => p.id === id);
-      if (projectIndex === -1) {
-        return {
-          success: false,
-          error: 'Project not found'
-        };
-      }
-
-      // 更新项目数据
-      mockProjects[projectIndex] = {
-        ...mockProjects[projectIndex],
-        ...data,
-        lastUpdate: new Date().toISOString().split('T')[0]
-      };
-
+    try {
+      return await apiClient.request<Project>(`/projects/${id}`, {
+        method: 'PUT',
+        body: data
+      });
+    } catch (error) {
+      console.error('更新项目失败:', error);
       return {
-        success: true,
-        data: mockProjects[projectIndex]
+        success: false,
+        error: error instanceof Error ? error.message : '更新项目失败'
       };
     }
-
-    // 真实API调用
-    return apiClient.put<Project>(`/projects/${id}`, data);
   }
 
   /**
    * 删除项目
    */
   async deleteProject(id: number): Promise<ApiResponse<void>> {
-    if (MOCK_CONFIG.enabled) {
-      mockLog(`Deleting project ${id}`);
-      await mockDelay();
-
-      const projectIndex = mockProjects.findIndex(p => p.id === id);
-      if (projectIndex === -1) {
-        return {
-          success: false,
-          error: 'Project not found'
-        };
-      }
-
-      // 从数组中移除项目
-      mockProjects.splice(projectIndex, 1);
-
+    try {
+      return await apiClient.request<void>(`/projects/${id}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error('删除项目失败:', error);
       return {
-        success: true
+        success: false,
+        error: error instanceof Error ? error.message : '删除项目失败'
       };
     }
-
-    // 真实API调用
-    return apiClient.delete<void>(`/projects/${id}`);
   }
 }
 
-// 导出项目服务实例
+// 创建并导出服务实例
 export const projectService = new ProjectService();

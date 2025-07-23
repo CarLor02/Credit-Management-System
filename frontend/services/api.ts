@@ -3,8 +3,10 @@
  * 统一处理API调用和Mock数据切换
  */
 
-import { MOCK_CONFIG, API_BASE_URL, mockLog, mockDelay, shouldSimulateError } from '@/config/mock';
 import { parseApiError, getHttpErrorMessage } from '../utils/errorMessages';
+
+// API基础URL配置
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api';
 
 /**
  * 通用API响应类型
@@ -45,27 +47,8 @@ class ApiClient {
    */
   async request<T>(endpoint: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
     const { method = 'GET', headers = {}, body } = config;
-    
-    try {
-      // 如果启用mock，直接返回mock数据
-      if (MOCK_CONFIG.enabled) {
-        mockLog(`Mock API call: ${method} ${endpoint}`, body);
-        
-        // 模拟网络延迟
-        await mockDelay();
-        
-        // 模拟随机错误
-        if (shouldSimulateError()) {
-          throw new Error('Mock API Error: Simulated network error');
-        }
-        
-        // 这里会被具体的服务类重写
-        return {
-          success: false,
-          error: 'Mock implementation not found'
-        };
-      }
 
+    try {
       // 真实API调用
       const url = `${this.baseUrl}${endpoint}`;
 
@@ -161,19 +144,6 @@ class ApiClient {
    * GET请求 - 下载文件（返回Blob）
    */
   async getBlob(endpoint: string, headers?: Record<string, string>): Promise<ApiResponse<Blob>> {
-    if (MOCK_CONFIG.enabled) {
-      mockLog(`Mock GET Blob: ${endpoint}`);
-      await mockDelay();
-
-      // 创建模拟的Blob
-      const mockContent = 'Mock file content';
-      const blob = new Blob([mockContent], { type: 'text/plain' });
-
-      return {
-        success: true,
-        data: blob
-      };
-    }
 
     try {
       // 真实API调用

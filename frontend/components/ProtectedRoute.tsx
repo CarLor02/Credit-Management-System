@@ -48,7 +48,7 @@ export default function ProtectedRoute({
 
       // 权限不足，重定向到无权限页面或首页
       if (userLevel < requiredLevel) {
-        router.push('/dashboard'); // 或者创建一个无权限页面
+        router.push('/projects'); // 重定向到项目管理页面
         return;
       }
     }

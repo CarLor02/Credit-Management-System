@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { documentService } from '@/services/documentService';
-import { Document } from '@/data/mockData';
+import { documentService, Document } from '@/services/documentService';
 import DocumentPreview from '@/components/DocumentPreview';
 
 interface DocumentListProps {

@@ -5,8 +5,7 @@ import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import ProjectCard from './ProjectCard';
 import CreateProjectModal from './CreateProjectModal';
-import { projectService } from '@/services/projectService';
-import { Project } from '@/data/mockData';
+import { projectService, Project } from '@/services/projectService';
 
 export default function ProjectsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);

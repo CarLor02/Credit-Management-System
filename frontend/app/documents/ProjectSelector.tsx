@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { projectService } from '@/services/projectService';
-import { Project } from '@/data/mockData';
+import { projectService, Project } from '@/services/projectService';
 // TODO: 将来需要添加知识库服务
 // import { knowledgeBaseService } from '@/services/knowledgeBaseService';
 
