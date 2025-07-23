@@ -58,8 +58,10 @@ class ApiClient {
         ...headers,
       };
 
-      // 如果有token且不是认证相关的请求，自动添加Authorization头
-      if (typeof window !== 'undefined' && !endpoint.includes('/auth/')) {
+      // 如果有token且不是登录/注册请求，自动添加Authorization头
+      if (typeof window !== 'undefined' &&
+          !endpoint.includes('/auth/login') &&
+          !endpoint.includes('/auth/register')) {
         const token = localStorage.getItem('auth_token');
         if (token) {
           // 检查token是否过期

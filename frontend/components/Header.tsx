@@ -22,11 +22,7 @@ export default function Header() {
     router.push('/profile');
   };
 
-  const handleUpgradeClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsProfileOpen(false);
-    router.push('/upgrade');
-  };
+
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -64,10 +60,6 @@ export default function Header() {
           </div>
 
           <div className="flex items-center space-x-4">
-            <button className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
-              <i className="ri-notification-line text-gray-600 text-lg"></i>
-            </button>
-            
             <div className="relative">
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -100,12 +92,7 @@ export default function Header() {
                   >
                     个人资料
                   </button>
-                  <button 
-                    onClick={handleUpgradeClick}
-                    className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50"
-                  >
-                    升级会员
-                  </button>
+
                   <hr className="my-2" />
                   <button
                     onClick={handleLogout}
