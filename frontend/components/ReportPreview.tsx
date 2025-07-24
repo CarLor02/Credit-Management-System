@@ -2,43 +2,45 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { apiClient } from '../services/api';
+import websocketService from '../services/websocketService';
+
+interface StreamingEvent {
+  timestamp: string;
+  eventType: string;
+  content: string;
+  color: string;
+  isContent: boolean;
+}
 
 interface ReportPreviewProps {
   isOpen: boolean;
   onClose: () => void;
-  workflowRunId: string | null;
+  projectId: number;
   companyName: string;
-  projectId?: number;
-  isGenerating?: boolean; // 新增：是否正在生成报告
-  onReportDeleted?: () => void; // 新增：报告删除后的回调
-}
-
-interface WorkflowData {
-  exists: boolean;
-  events: string[];
-  content: string;
-  metadata: any;
-  company_name: string;
-  timestamp: number;
+  isGenerating?: boolean;
+  onReportDeleted?: () => void;
 }
 
 const ReportPreview: React.FC<ReportPreviewProps> = ({
   isOpen,
   onClose,
-  workflowRunId,
-  companyName,
   projectId,
+  companyName,
   isGenerating = false,
   onReportDeleted
 }) => {
-  const [workflowData, setWorkflowData] = useState<WorkflowData | null>(null);
+  const [reportContent, setReportContent] = useState<string>('');
+  const [streamingEvents, setStreamingEvents] = useState<StreamingEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [websocketStatus, setWebsocketStatus] = useState<string>('未连接');
+  const [isConnected, setIsConnected] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
+  const eventsRef = useRef<HTMLDivElement>(null);
 
-  // 获取项目报告内容
-  const fetchProjectReport = async () => {
-    if (!projectId) return;
+  // 获取已生成的报告内容
+  const fetchReportContent = async () => {
+    if (!projectId || isGenerating) return;
 
     setLoading(true);
     setError(null);
@@ -52,15 +54,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       }>(`/projects/${projectId}/report`);
 
       if (response.success && response.data) {
-        // 将报告数据转换为工作流数据格式，不显示假的事件信息
-        setWorkflowData({
-          exists: true,
-          events: [], // 不显示假的事件信息
-          content: response.data.content,
-          metadata: { file_path: response.data.file_path },
-          company_name: response.data.company_name,
-          timestamp: Date.now() / 1000
-        });
+        setReportContent(response.data.content);
       } else {
         setError(response.error || '获取报告内容失败');
       }
@@ -72,135 +66,189 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   };
 
-  // 获取工作流事件和内容
-  const fetchWorkflowData = async () => {
-    if (!workflowRunId) {
-      console.log('fetchWorkflowData: workflowRunId为空，跳过请求');
+  // WebSocket连接和流式输出 - 只在弹窗打开时连接
+  useEffect(() => {
+    if (!isOpen) {
       return;
     }
 
-    console.log('fetchWorkflowData: 开始获取工作流数据，workflowRunId:', workflowRunId);
-    setLoading(true);
-    setError(null);
+    console.log('🔌 弹窗打开，开始WebSocket连接，项目ID:', projectId);
 
-    try {
-      const response = await apiClient.get<WorkflowData>(`/api/check_workflow_events/${workflowRunId}`);
-      console.log('fetchWorkflowData: API响应:', response);
+    // 按照要求的格式打印事件：时间 事件：内容，支持颜色和详细信息
+    const addEvent = (eventType: string, content: string = '', eventData?: any) => {
+      const timestamp = new Date().toLocaleTimeString();
 
-      if (response.success && response.data) {
-        console.log('fetchWorkflowData: 成功获取数据，事件数量:', response.data.events?.length || 0);
-        setWorkflowData(response.data);
-      } else {
-        console.log('fetchWorkflowData: API返回失败:', response.error);
-        setError(response.error || '获取工作流数据失败');
+      // 根据事件类型生成详细信息
+      let detailInfo = content;
+      let eventColor = 'text-green-400'; // 默认绿色
+
+      switch (eventType) {
+        case 'node_started':
+          if (eventData?.data?.title) {
+            detailInfo = `节点启动: ${eventData.data.title}`;
+            eventColor = 'text-blue-400';
+          } else {
+            detailInfo = '节点启动';
+            eventColor = 'text-blue-400';
+          }
+          break;
+        case 'parallel_branch_started':
+          detailInfo = '并行分支启动';
+          eventColor = 'text-purple-400';
+          break;
+        case 'node_finished':
+          detailInfo = '节点完成';
+          eventColor = 'text-green-400';
+          break;
+        case 'workflow_started':
+          detailInfo = '工作流开始';
+          eventColor = 'text-cyan-400';
+          break;
+        case 'workflow_complete':
+          detailInfo = '工作流完成';
+          eventColor = 'text-green-500';
+          break;
+        case '内容块':
+          eventColor = 'text-yellow-400';
+          break;
+        case '错误':
+          eventColor = 'text-red-400';
+          break;
+        default:
+          eventColor = 'text-gray-400';
       }
-    } catch (err) {
-      console.error('获取工作流数据失败:', err);
-      setError('获取工作流数据失败，请稍后重试');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // 当弹窗打开时获取数据
-  useEffect(() => {
-    console.log('ReportPreview useEffect触发:', { isOpen, isGenerating, workflowRunId, projectId });
+      const eventEntry = {
+        timestamp,
+        eventType,
+        content: detailInfo,
+        color: eventColor,
+        isContent: eventType === '内容块'
+      };
 
-    if (isOpen) {
-      if (isGenerating) {
-        console.log('ReportPreview: 正在生成模式，workflowRunId:', workflowRunId);
+      console.log('📝 添加事件到界面:', eventEntry);
+      setStreamingEvents(prev => [...prev, eventEntry]);
 
-        // 如果正在生成，初始化空的事件列表
-        setWorkflowData({
-          exists: true,
-          events: [],
-          content: "",
-          metadata: {},
-          company_name: companyName,
-          timestamp: Date.now() / 1000
-        });
-
-        // 如果有workflowRunId，开始轮询获取实时进度
-        if (workflowRunId) {
-          console.log('ReportPreview: 开始轮询，workflowRunId:', workflowRunId);
-          const interval = setInterval(fetchWorkflowData, 2000); // 更频繁的轮询
-          return () => {
-            console.log('ReportPreview: 清理轮询');
-            clearInterval(interval);
-          };
-        } else {
-          console.log('ReportPreview: workflowRunId为空，无法开始轮询');
+      // 自动滚动事件列表
+      setTimeout(() => {
+        if (eventsRef.current) {
+          eventsRef.current.scrollTop = eventsRef.current.scrollHeight;
         }
-      } else if (projectId) {
-        console.log('ReportPreview: 非生成模式，从项目API获取数据');
-        // 如果不是生成中，优先从项目报告API获取数据
-        fetchProjectReport();
-      } else if (workflowRunId) {
-        console.log('ReportPreview: 从工作流API获取数据');
-        // 如果没有项目ID，则从工作流API获取数据
-        fetchWorkflowData();
-      }
-    }
-  }, [isOpen, projectId, workflowRunId, isGenerating]);
+      }, 100);
+    };
 
-  // 自动滚动到底部，当有新的流式输出时
+    // WebSocket已在项目详情页连接，这里只需要设置状态和监听器
+    const projectRoom = `project_${projectId}`;
+    setWebsocketStatus(`监听房间: ${projectRoom}`);
+    setIsConnected(true);
+
+    // 添加测试事件验证功能
+    addEvent('预览窗口打开', '开始监听流式事件');
+
+    // 在生成过程中不更新右侧内容，只在完成后加载
+    const addContent = (content: string) => {
+      // 在生成模式下，不实时更新右侧内容
+      // setReportContent(prev => prev + content);
+
+      // 右侧保持加载状态，内容将在完成后统一加载
+      console.log('📝 收到内容块，但在生成模式下不显示:', content.substring(0, 50) + '...');
+    };
+
+    // 定义事件处理函数，以便后续清理
+    const handleWorkflowEvent = (data: any) => {
+      console.log('🎯 收到workflow_event:', data);
+      const eventType = data.event_type || '工作流事件';
+      addEvent(eventType, '', data);
+    };
+
+    const handleWorkflowContent = (data: any) => {
+      console.log('📄 收到workflow_content:', data);
+      if (data.content_chunk) {
+        addContent(data.content_chunk);
+        // 显示具体内容而不是字符数
+        addEvent('内容块', data.content_chunk);
+      }
+    };
+
+    const handleWorkflowComplete = (data: any) => {
+      console.log('✅ 收到workflow_complete:', data);
+      addEvent('报告生成完成', '');
+      setWebsocketStatus('生成完成');
+
+      // 报告完成后，加载报告文件内容
+      console.log('✅ 报告生成完成，开始加载报告文件');
+      fetchReportContent();
+    };
+
+    const handleWorkflowError = (data: any) => {
+      console.log('❌ 收到workflow_error:', data);
+      addEvent('错误', data.error_message || '未知错误');
+      setError(data.error_message);
+    };
+
+    // 监听WebSocket消息 - 详细展示不同类型的事件
+    websocketService.on('workflow_event', handleWorkflowEvent);
+    websocketService.on('workflow_content', handleWorkflowContent);
+    websocketService.on('workflow_complete', handleWorkflowComplete);
+    websocketService.on('workflow_error', handleWorkflowError);
+
+    // 清理函数 - 移除事件监听器，防止重复注册
+    return () => {
+      console.log('🧹 清理事件监听器（保持WebSocket连接）');
+
+      // 移除具体的事件监听器，防止重复注册
+      websocketService.off('workflow_event', handleWorkflowEvent);
+      websocketService.off('workflow_content', handleWorkflowContent);
+      websocketService.off('workflow_complete', handleWorkflowComplete);
+      websocketService.off('workflow_error', handleWorkflowError);
+
+      setIsConnected(false);
+      setWebsocketStatus('未连接');
+    };
+  }, [isOpen, projectId]);
+
+  // 获取报告内容（非生成模式）
   useEffect(() => {
-    if (streamingContentRef.current) {
-      streamingContentRef.current.scrollTop = streamingContentRef.current.scrollHeight;
+    if (isOpen && !isGenerating) {
+      fetchReportContent();
     }
-  }, [workflowData?.events, isGenerating]);
+  }, [isOpen, isGenerating, projectId]);
 
   // 下载报告
   const handleDownloadReport = () => {
-    if (!workflowData?.content) {
-      alert('报告内容为空，无法下载');
-      return;
-    }
+    if (!reportContent || loading) return;
 
     try {
-      const blob = new Blob([workflowData.content], { type: 'text/markdown' });
+      // 直接使用当前显示的报告内容创建下载，保存为Markdown格式
+      const blob = new Blob([reportContent], { type: 'text/markdown;charset=utf-8' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-
-      // 清理文件名中的特殊字符
-      const sanitizedCompanyName = companyName.replace(/[<>:"/\\|?*]/g, '_');
-      const fileName = `${sanitizedCompanyName}_征信分析报告_${new Date().toISOString().split('T')[0]}.md`;
-      link.download = fileName;
-
+      link.download = `${companyName}_征信报告.md`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('下载失败:', error);
-      alert('下载失败，请稍后重试');
+      console.error('下载报告失败:', error);
+      alert('下载报告失败，请稍后重试');
     }
   };
 
   // 删除报告
   const handleDeleteReport = async () => {
-    if (!projectId) {
-      alert('项目ID不存在，无法删除报告');
+    if (!projectId || loading) return;
+
+    if (!confirm('确定要删除这个报告吗？此操作不可撤销。')) {
       return;
     }
 
-    const confirmed = window.confirm('确定要删除这个报告吗？此操作不可撤销。');
-    if (!confirmed) {
-      return;
-    }
-
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await apiClient.delete(`/api/projects/${projectId}/report`);
-
+      const response = await apiClient.delete(`/projects/${projectId}/report`);
       if (response.success) {
-        alert('报告删除成功');
-        onClose(); // 关闭预览弹窗
-        // 可以触发父组件刷新数据
-        if (onReportDeleted) {
-          onReportDeleted();
-        }
+        onReportDeleted?.();
+        onClose();
       } else {
         alert(response.error || '删除报告失败');
       }
@@ -212,60 +260,19 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   };
 
-  // 渲染Markdown内容
-  const renderMarkdown = (content: string) => {
-    // 改进的Markdown渲染
+  // 格式化报告内容
+  const formatReportContent = (content: string) => {
+    if (!content) return [];
+    
     return content
       .split('\n')
+      .filter(line => line.trim())
       .map((line, index) => {
-        // 处理标题
-        if (line.startsWith('# ')) {
-          return (
-            <h1 key={index} className="text-3xl font-bold mb-6 text-gray-900 border-b-2 border-blue-200 pb-2">
-              {line.substring(2)}
-            </h1>
-          );
-        }
-        if (line.startsWith('## ')) {
-          return (
-            <h2 key={index} className="text-2xl font-semibold mb-4 text-gray-800 mt-6">
-              {line.substring(3)}
-            </h2>
-          );
-        }
-        if (line.startsWith('### ')) {
-          return (
-            <h3 key={index} className="text-xl font-medium mb-3 text-gray-700 mt-4">
-              {line.substring(4)}
-            </h3>
-          );
-        }
-
-        // 处理列表项
-        if (line.trim().match(/^\d+\.\s/)) {
-          return (
-            <li key={index} className="mb-1 text-gray-600 leading-relaxed ml-4">
-              {line.trim().substring(line.trim().indexOf('.') + 1).trim()}
-            </li>
-          );
-        }
-
-        if (line.trim().startsWith('- ')) {
-          return (
-            <li key={index} className="mb-1 text-gray-600 leading-relaxed ml-4 list-disc">
-              {line.trim().substring(2)}
-            </li>
-          );
-        }
-
-        // 处理空行
-        if (line.trim() === '') {
-          return <div key={index} className="mb-3" />;
-        }
-
-        // 处理普通段落
         const processedLine = line
-          .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-800">$1</strong>')
+          .replace(/^### (.*)/g, '<h3 class="text-lg font-semibold text-gray-800 mt-6 mb-3">$1</h3>')
+          .replace(/^## (.*)/g, '<h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">$1</h2>')
+          .replace(/^# (.*)/g, '<h1 class="text-2xl font-bold text-gray-900 mt-10 mb-6">$1</h1>')
+          .replace(/^\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-800">$1</strong>')
           .replace(/\*(.*?)\*/g, '<em class="italic text-gray-700">$1</em>')
           .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono">$1</code>');
 
@@ -279,7 +286,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       });
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    console.log('🚫 ReportPreview: isOpen为false，不渲染弹窗');
+    return null;
+  }
+
+  console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen, 'isGenerating:', isGenerating);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -300,19 +312,24 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             <p className="text-sm text-gray-500 mt-1">公司：{companyName}</p>
           </div>
           <div className="flex items-center space-x-3">
-            <button
-              onClick={handleDownloadReport}
-              disabled={!workflowData?.content}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                workflowData?.content
-                  ? 'bg-green-600 text-white hover:bg-green-700'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              <i className="ri-download-line mr-2"></i>
-              下载报告
-            </button>
-            {projectId && (
+            {/* 下载按钮 */}
+            {!isGenerating && reportContent && (
+              <button
+                onClick={handleDownloadReport}
+                disabled={loading}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  loading
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                <i className="ri-download-line mr-2"></i>
+                下载报告
+              </button>
+            )}
+
+            {/* 删除按钮 */}
+            {!isGenerating && reportContent && (
               <button
                 onClick={handleDeleteReport}
                 disabled={loading}
@@ -340,110 +357,91 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           {/* 左侧：流式输出 */}
           <div className="w-1/3 border-r border-gray-200 bg-black flex flex-col">
             {/* Header */}
-            <div className="bg-gray-900 px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-gray-300">实时输出</h3>
-              {isGenerating && (
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
-                  <span className="text-xs text-green-400">生成中</span>
-                </div>
-              )}
-            </div>
-
-            {/* Content - 固定高度的滚动窗口 */}
-            <div className="flex-1 flex flex-col bg-black">
-              <div
-                ref={streamingContentRef}
-                className="flex-1 overflow-y-auto p-4 font-mono text-sm"
-                style={{minHeight: '400px', maxHeight: '400px'}}
-              >
-                {loading && workflowData?.events?.length === 0 && (
-                  <div className="text-cyan-400 mb-1">
-                    <span className="text-gray-500">[{new Date().toLocaleTimeString()}]</span>
-                    <span className="text-cyan-400 ml-2">初始化中...</span>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="text-red-400 mb-1">
-                    <span className="text-gray-500">[{new Date().toLocaleTimeString()}]</span>
-                    <span className="text-red-400 ml-2">错误:</span>
-                    <span className="text-white ml-2">{error}</span>
-                  </div>
-                )}
-
-                {/* 流式输出 - 每行固定高度 */}
-                {workflowData?.events && workflowData.events.map((event, index) => (
-                  <div key={index} className="mb-1 leading-tight animate-fade-in">
-                    <span className="text-gray-500">[{new Date().toLocaleTimeString()}]</span>
-                    <span className="text-white ml-2">{event}</span>
-                  </div>
-                ))}
-
-                {/* 生成中指示器 - 固定位置 */}
+            <div className="bg-gray-900 px-4 py-3 border-b border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-300">实时输出</h3>
                 {isGenerating && (
-                  <div className="flex items-center mb-1">
-                    <div className="flex space-x-1">
-                      <div className="w-1 h-4 bg-green-400 animate-pulse"></div>
-                      <div className="w-1 h-4 bg-green-400 animate-pulse" style={{animationDelay: '0.1s'}}></div>
-                      <div className="w-1 h-4 bg-green-400 animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                    </div>
-                    <span className="text-green-400 ml-2 animate-pulse">处理中...</span>
-                  </div>
-                )}
-
-                {/* 完成状态 - 固定高度 */}
-                {!isGenerating && workflowData?.events && workflowData.events.length > 0 && (
-                  <div className="border-t border-gray-700 pt-1 mt-1">
-                    <div className="text-green-400 mb-1">
-                      <span className="text-gray-500">[{new Date().toLocaleTimeString()}]</span>
-                      <span className="text-green-400 ml-2">报告生成完成</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* 空状态 - 居中显示 */}
-                {(!workflowData?.events || workflowData.events.length === 0) && !isGenerating && !loading && (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-gray-500 text-center">
-                      <div>等待开始...</div>
-                    </div>
+                  <div className="flex items-center">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
+                    <span className="text-xs text-green-400">生成中</span>
                   </div>
                 )}
               </div>
+              {/* WebSocket状态 */}
+              <div className="flex items-center">
+                <div className={`w-2 h-2 rounded-full mr-2 ${
+                  websocketStatus.includes('已加入房间') ? 'bg-green-400' :
+                  websocketStatus === '已连接' ? 'bg-yellow-400' :
+                  'bg-red-400'
+                }`}></div>
+                <span className="text-xs text-gray-400">WebSocket: {websocketStatus}</span>
+              </div>
+            </div>
+
+            {/* 事件列表 */}
+            <div 
+              ref={eventsRef}
+              className="flex-1 overflow-y-auto p-4 font-mono text-sm text-green-400 space-y-1"
+            >
+              {streamingEvents.length === 0 ? (
+                <div className="text-gray-500 text-center mt-8">
+                  {isGenerating ? '等待流式事件...' : '暂无事件'}
+                </div>
+              ) : (
+                streamingEvents.map((event, index) => (
+                  <div key={index} className="animate-fade-in mb-1">
+                    <span className="text-gray-400">{event.timestamp}</span>
+                    <span className="mx-2">|</span>
+                    <span className={event.color}>{event.eventType}</span>
+                    {event.content && (
+                      <>
+                        <span className="text-gray-400">：</span>
+                        <span className={event.isContent ? 'text-white' : 'text-gray-300'}>
+                          {event.content}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
-          {/* 右侧：报告内容预览 */}
+          {/* 右侧：报告内容 */}
           <div className="flex-1 flex flex-col">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="font-medium text-gray-900">报告内容</h3>
-              <p className="text-sm text-gray-500 mt-1">Markdown格式预览</p>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              {isGenerating ? (
-                // 生成过程中显示等待状态
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
-                    <p className="text-gray-600 text-lg font-medium mb-2">正在生成报告内容</p>
-                    <p className="text-gray-500 text-sm">AI正在分析数据并生成征信报告，请稍候...</p>
+            {/* 内容区域 */}
+            <div 
+              ref={streamingContentRef}
+              className="flex-1 overflow-y-auto p-6 bg-gray-50"
+            >
+              {error ? (
+                <div className="text-center py-12">
+                  <div className="text-red-600 mb-4">
+                    <i className="ri-error-warning-line text-4xl"></i>
                   </div>
+                  <p className="text-red-600 font-medium">{error}</p>
                 </div>
-              ) : workflowData?.content ? (
-                // 生成完成后显示报告内容
-                <div className="prose prose-sm max-w-none">
-                  {renderMarkdown(workflowData.content)}
+              ) : isGenerating ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-gray-600">正在生成报告，请稍候...</p>
+                  <p className="text-gray-500 text-sm mt-2">报告完成后将自动加载内容</p>
+                </div>
+              ) : loading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-gray-600">加载报告内容中...</p>
+                </div>
+              ) : reportContent ? (
+                <div className="max-w-none">
+                  {formatReportContent(reportContent)}
                 </div>
               ) : (
-                // 无内容状态
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <i className="ri-file-text-line text-4xl text-gray-300 mb-4"></i>
-                    <p className="text-gray-500">
-                      {loading ? '正在加载报告内容...' : '暂无报告内容'}
-                    </p>
+                <div className="text-center py-12">
+                  <div className="text-gray-400 mb-4">
+                    <i className="ri-file-text-line text-4xl"></i>
                   </div>
+                  <p className="text-gray-600">暂无报告内容</p>
                 </div>
               )}
             </div>

@@ -7,12 +7,14 @@ import os
 import asyncio
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+from flask_socketio import SocketIO
 from concurrent.futures import ThreadPoolExecutor
 
 from routes import register_routes
 from config import Config
 from utils import setup_logging
 from database import init_db, create_tables
+from websocket_handlers import register_websocket_handlers
 
 def init_database_if_needed(app):
     """检查数据库是否存在，如果不存在则自动初始化"""
@@ -59,6 +61,15 @@ app.config.from_object(Config)
 # 启用CORS支持
 CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
 
+# 创建SocketIO实例
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",  # 临时允许所有来源，用于调试
+    async_mode='threading',
+    logger=True,
+    engineio_logger=True
+)
+
 # 初始化数据库
 db = init_db(app)
 
@@ -71,6 +82,12 @@ setup_logging(app)
 
 # 注册路由
 register_routes(app)
+
+# 注册WebSocket处理器
+register_websocket_handlers(socketio)
+
+# 将socketio实例设置为全局变量，供其他模块使用
+app.socketio = socketio
 
 # 全局错误处理
 @app.errorhandler(404)
@@ -114,9 +131,11 @@ if __name__ == '__main__':
         os.makedirs(upload_folder)
 
     app.logger.info("征信管理系统后端启动")
-    # 开发环境运行
-    app.run(
+    # 开发环境运行，使用SocketIO
+    socketio.run(
+        app,
         host=app.config.get('HOST', '0.0.0.0'),
         port=app.config.get('PORT', 5001),
-        debug=app.config.get('DEBUG', True)
+        debug=app.config.get('DEBUG', True),
+        allow_unsafe_werkzeug=True  # 允许在开发环境使用Werkzeug
     )

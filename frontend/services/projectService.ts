@@ -24,6 +24,9 @@ export interface Project {
   // 知识库相关字段
   dataset_id?: string;
   knowledge_base_name?: string;
+  // 报告相关字段
+  report_status?: 'not_generated' | 'generating' | 'generated';
+  report_path?: string;
 }
 
 /**

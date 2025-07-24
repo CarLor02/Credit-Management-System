@@ -51,6 +51,12 @@ class DocumentStatus(enum.Enum):
     FAILED = 'failed'                          # 失败
     KB_PARSE_FAILED = 'kb_parse_failed'        # 知识库解析失败
 
+class ReportStatus(enum.Enum):
+    """报告状态枚举"""
+    NOT_GENERATED = 'not_generated'            # 未生成
+    GENERATING = 'generating'                  # 正在生成
+    GENERATED = 'generated'                    # 已生成
+
 class ProjectMemberRole(enum.Enum):
     """项目成员角色枚举"""
     OWNER = 'owner'
@@ -64,11 +70,7 @@ class ReportType(enum.Enum):
     RISK_ASSESSMENT = 'risk_assessment'
     SUMMARY = 'summary'
 
-class ReportStatus(enum.Enum):
-    """报告状态枚举"""
-    GENERATING = 'generating'
-    COMPLETED = 'completed'
-    FAILED = 'failed'
+
 
 class BusinessLicenseStatus(enum.Enum):
     """营业执照状态枚举"""
@@ -186,6 +188,7 @@ class Project(db.Model):
 
     # 报告相关字段
     report_path = db.Column(db.String(500))  # 征信报告文件路径
+    report_status = db.Column(db.Enum(ReportStatus), default=ReportStatus.NOT_GENERATED, nullable=False)  # 报告状态
 
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     assigned_to = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -216,6 +219,11 @@ class Project(db.Model):
             'lastUpdate': self.updated_at.strftime('%Y-%m-%d'),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
+            # 报告相关
+            'dataset_id': self.dataset_id,
+            'knowledge_base_name': self.knowledge_base_name,
+            'report_path': self.report_path,
+            'report_status': self.report_status.value.lower(),  # 转换为小写
             # 扩展信息
             'companyInfo': self.company_info,
             'personalInfo': self.personal_info,

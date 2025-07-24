@@ -270,18 +270,13 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       }>(`/projects/${project.id}/report`);
 
       if (response.success && response.data?.success && response.data?.content) {
-        // 如果已有报告且内容不为空，设置按钮为可用状态
-        setReportGenerated(true);
-        console.log('发现已存在的报告，启用预览按钮');
+        console.log('发现已存在的报告，预览按钮可用');
       } else {
-        // 如果没有报告或内容为空，保持默认状态（按钮禁用）
-        setReportGenerated(false);
-        console.log('项目暂无报告，保持按钮禁用状态');
+        console.log('项目暂无报告');
       }
     } catch (error: any) {
       // 静默处理错误，不显示错误信息
-      setReportGenerated(false);
-      console.log('检查报告时出现错误，保持按钮禁用状态:', error?.message || error);
+      console.log('检查报告时出现错误:', error?.message || error);
 
       // 不要显示错误提示，因为这是正常的检查流程
       // 项目没有报告是正常情况，不应该报错
@@ -314,11 +309,34 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     };
   };
 
-  // 生成征信报告状态
-  const [reportGenerating, setReportGenerating] = useState(false);
-  const [reportGenerated, setReportGenerated] = useState(false);
-  const [workflowRunId, setWorkflowRunId] = useState<string | null>(null);
+  // 报告预览状态
   const [showReportPreview, setShowReportPreview] = useState(false);
+
+  // 页面加载时建立WebSocket连接，页面卸载时断开
+  useEffect(() => {
+    if (project?.id) {
+      console.log('🔌 项目详情页加载，建立WebSocket连接，项目ID:', project.id);
+
+      // 导入并连接WebSocket服务
+      import('../../../services/websocketService').then(({ default: websocketService }) => {
+        websocketService.connect();
+        const projectRoom = `project_${project.id}`;
+
+        // 延迟加入房间，确保连接建立
+        setTimeout(() => {
+          console.log('🏠 加入项目房间:', projectRoom);
+          websocketService.joinWorkflow(projectRoom);
+        }, 1000);
+
+        // 页面卸载时断开连接
+        return () => {
+          console.log('🔌 项目详情页卸载，断开WebSocket连接');
+          websocketService.leaveWorkflow(projectRoom);
+          websocketService.disconnect();
+        };
+      });
+    }
+  }, [project?.id]);
 
   const handleDownloadReport = async () => {
     if (!project) {
@@ -333,61 +351,34 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     }
 
     try {
-      setReportGenerating(true);
-
-      // 立即打开预览弹窗，让用户看到流式输出
-      setShowReportPreview(true);
 
       // 调用后端API生成报告
       const response = await apiClient.post<{
         success: boolean;
         message?: string;
-        workflow_run_id?: string;
-        content?: string;
-        file_path?: string;
-        parsing_complete?: boolean;
+        project_id?: number;
+        websocket_room?: string;
+        status?: string;
         error?: string;
-        metadata?: any;
-        events?: string[];
       }>('/generate_report', {
-        dataset_id: project.dataset_id, // 使用dataset_id作为fallback
+        dataset_id: project.dataset_id,
         company_name: project.name,
-        knowledge_name: project.knowledge_base_name, // knowledge_base_name
-        project_id: project.id // 添加项目ID
+        knowledge_name: project.knowledge_base_name,
+        project_id: project.id
       });
 
-      console.log('API Response:', response); // 调试日志
+      console.log('Generate report response:', response);
 
       if (response.success && response.data?.success) {
-        // 报告生成成功
-        const workflowId = response.data.workflow_run_id;
-        const hasContent = response.data.content && response.data.content.length > 0;
+        // 后端已开始异步生成报告，立即打开预览弹窗
+        console.log('🎯 设置showReportPreview为true');
+        setShowReportPreview(true);
+        console.log('报告生成已开始，项目ID:', project.id);
 
-        console.log('Report generated successfully, workflow ID:', workflowId); // 调试日志
-        console.log('Has content:', hasContent); // 调试日志
-
-        // 立即设置workflow ID以启动轮询
-        if (workflowId) {
-          setWorkflowRunId(workflowId);
-          console.log('立即设置workflow_run_id以启动轮询:', workflowId); // 调试日志
-        }
-
-        // 无论是否有workflow ID，只要有内容就认为成功
-        if (workflowId || hasContent) {
-          setReportGenerated(true);
-
-          console.log('报告生成完成，包含Dify流式事件:', response.data?.events?.length || 0); // 调试日志
-
-          // 预览弹窗已经打开，显示最终结果
-          // 报告内容和Dify事件会通过ReportPreview组件自动加载和显示
-        } else {
-          alert('报告生成成功，但未获取到内容');
-        }
+        // 不需要刷新页面，WebSocket会实时更新状态
+        // window.location.reload();
       } else {
-        const errorMsg = response.data?.error || response.error || '生成报告失败，请稍后重试';
-        alert(errorMsg);
-        // 生成失败时关闭预览弹窗
-        setShowReportPreview(false);
+        alert(response.data?.error || response.error || '启动报告生成失败');
       }
     } catch (error) {
       console.error('Generate report error:', error);
@@ -412,8 +403,6 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       alert(errorMessage);
       // 生成失败时关闭预览弹窗
       setShowReportPreview(false);
-    } finally {
-      setReportGenerating(false);
     }
   };
 
@@ -762,17 +751,24 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
               </button>
               <button
                 onClick={handleDownloadReport}
-                disabled={reportGenerating}
+                disabled={project?.report_status === 'generating'}
                 className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
-                  reportGenerating
+                  project?.report_status === 'generating'
                     ? 'bg-gray-400 cursor-not-allowed'
+                    : project?.report_status === 'generated'
+                    ? 'bg-blue-600 hover:bg-blue-700'
                     : 'bg-green-600 hover:bg-green-700'
                 }`}
               >
-                {reportGenerating ? (
+                {project?.report_status === 'generating' ? (
                   <>
                     <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                    生成中...
+                    正在生成...
+                  </>
+                ) : project?.report_status === 'generated' ? (
+                  <>
+                    <i className="ri-refresh-line mr-2"></i>
+                    重新生成报告
                   </>
                 ) : (
                   <>
@@ -783,9 +779,9 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
               </button>
               <button
                 onClick={() => setShowReportPreview(true)}
-                disabled={!reportGenerated}
+                disabled={project?.report_status === 'not_generated'}
                 className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
-                  !reportGenerated
+                  project?.report_status === 'not_generated'
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
@@ -1550,15 +1546,11 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       <ReportPreview
         isOpen={showReportPreview}
         onClose={() => setShowReportPreview(false)}
-        workflowRunId={workflowRunId}
         companyName={project?.name || ''}
-        projectId={project?.id}
-        isGenerating={reportGenerating}
+        projectId={project?.id || 0}
+        isGenerating={project?.report_status === 'generating'}
         onReportDeleted={() => {
-          // 报告删除后的回调
-          setReportGenerated(false);
-          setWorkflowRunId(null);
-          // 刷新页面以更新项目数据
+          // 报告删除后的回调，刷新页面以更新项目数据
           window.location.reload();
         }}
       />

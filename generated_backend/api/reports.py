@@ -9,6 +9,12 @@ import requests
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from flask import request, jsonify, current_app
+from websocket_handlers import (
+    broadcast_workflow_event,
+    broadcast_workflow_content,
+    broadcast_workflow_complete,
+    broadcast_workflow_error
+)
 
 # 导入数据库模型
 from db_models import Project, AnalysisReport, WorkflowEvent, ReportType, ReportStatus
@@ -23,11 +29,14 @@ workflow_events = {}  # 格式: {workflow_run_id: {'events': [], 'content': '', 
 def register_report_routes(app):
     """注册报告相关路由"""
 
-    @app.route('/api/generate_report', methods=['POST'])
-    def generate_report():
+    @app.route('/api/generate_report_stream', methods=['POST'])
+    def generate_report_stream():
         """
-        生成报告的独立API接口 - 异步流式处理
+        生成报告的流式API接口 - 实时返回流式数据
         """
+        from flask import Response
+        import json
+
         try:
             data = request.get_json()
             if not data:
@@ -37,7 +46,7 @@ def register_report_routes(app):
             dataset_id = data.get('dataset_id')
             company_name = data.get('company_name')
             knowledge_name = data.get('knowledge_name')
-            project_id = data.get('project_id')  # 添加项目ID参数
+            project_id = data.get('project_id')
 
             # 验证必要参数
             if not company_name:
@@ -49,19 +58,155 @@ def register_report_routes(app):
             # 如果没有提供knowledge_name，使用company_name作为默认值
             if not knowledge_name:
                 knowledge_name = company_name
-                current_app.logger.info(f"未提供knowledge_name，使用company_name作为默认值: {knowledge_name}")
 
-            current_app.logger.info(f"开始生成报告 - 公司: {company_name}, 知识库: {knowledge_name}")
+            def generate_stream():
+                """生成器函数，实时返回流式数据"""
+                try:
+                    # 发送开始事件
+                    yield f"data: {json.dumps({'event': 'start', 'message': '开始生成报告'}, ensure_ascii=False)}\n\n"
+
+                    # 调用流式报告生成API
+                    report_content, workflow_run_id, events = call_report_generation_api_streaming(company_name, knowledge_name, project_id)
+
+                    # 发送完成事件
+                    yield f"data: {json.dumps({'event': 'complete', 'workflow_run_id': workflow_run_id, 'content': report_content}, ensure_ascii=False)}\n\n"
+
+                    # 发送结束标记
+                    yield "data: [DONE]\n\n"
+
+                except Exception as e:
+                    # 发送错误事件
+                    yield f"data: {json.dumps({'event': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+                    yield "data: [DONE]\n\n"
+
+            return Response(
+                generate_stream(),
+                mimetype='text/plain',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                }
+            )
+
+        except Exception as e:
+            current_app.logger.error(f"流式生成报告失败: {str(e)}")
+            return jsonify({"success": False, "error": f"流式生成报告失败: {str(e)}"}), 500
+
+    @app.route('/api/generate_report', methods=['POST'])
+    def generate_report():
+        """
+        生成报告的API接口 - 立即返回项目ID，异步执行报告生成
+        """
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"success": False, "error": "缺少请求数据"}), 400
+
+            # 获取参数
+            dataset_id = data.get('dataset_id')
+            company_name = data.get('company_name')
+            knowledge_name = data.get('knowledge_name')
+            project_id = data.get('project_id')
+
+            # 验证必要参数
+            if not company_name:
+                return jsonify({"success": False, "error": "缺少必要参数: company_name"}), 400
+
+            if not dataset_id:
+                return jsonify({"success": False, "error": "缺少必要参数: dataset_id"}), 400
+
+            if not project_id:
+                return jsonify({"success": False, "error": "缺少必要参数: project_id"}), 400
+
+            # 检查项目是否存在
+            project = Project.query.get(project_id)
+            if not project:
+                return jsonify({"success": False, "error": "项目不存在"}), 404
+
+            # 检查报告状态，如果正在生成则不允许重复生成
+            if project.report_status == ReportStatus.GENERATING:
+                return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+
+            # 检查报告状态，如果正在生成则不允许重复生成
+            if project.report_status == ReportStatus.GENERATED:
+                return jsonify({"success": False, "error": "报告已生成，若需重新生成，请先删除旧报告"}), 400
+            
+            # 如果没有提供knowledge_name，使用company_name作为默认值
+            if not knowledge_name:
+                knowledge_name = company_name
+
+            current_app.logger.info(f"开始生成报告 - 公司: {company_name}, 知识库: {knowledge_name}, 项目ID: {project_id}")
+
+            # 更新项目报告状态为正在生成
+            project.report_status = ReportStatus.GENERATING
+            db.session.commit()
+
+            # 项目WebSocket房间ID
+            project_room_id = f"project_{project_id}"
+
+            # 获取当前应用实例
+            app = current_app._get_current_object()
+
+            # 异步执行报告生成
+            def async_generate_report():
+                """异步执行报告生成的函数"""
+                # 在异步线程中设置应用上下文
+                with app.app_context():
+                    try:
+                        # 通过WebSocket广播开始事件
+                        socketio = current_app.socketio
+                        broadcast_workflow_event(socketio, project_room_id, 'generation_started', {
+                            'company_name': company_name,
+                            'knowledge_name': knowledge_name,
+                            'project_id': project_id,
+                            'message': '开始生成报告...'
+                        })
+
+                        # 执行实际的报告生成逻辑
+                        _execute_report_generation(dataset_id, company_name, knowledge_name, project_id, project_room_id)
+
+                    except Exception as e:
+                        current_app.logger.error(f"异步报告生成失败: {str(e)}")
+                        # 广播错误事件
+                        try:
+                            socketio = current_app.socketio
+                            broadcast_workflow_error(socketio, project_room_id, f"报告生成失败: {str(e)}")
+                        except Exception as ws_error:
+                            current_app.logger.error(f"WebSocket错误广播失败: {ws_error}")
+
+            # 启动异步任务
+            import threading
+            thread = threading.Thread(target=async_generate_report)
+            thread.daemon = True
+            thread.start()
+
+            # 立即返回，让前端连接WebSocket
+            return jsonify({
+                "success": True,
+                "message": "报告生成已开始",
+                "project_id": project_id,
+                "websocket_room": project_room_id,
+                "status": "generating"
+            })
+
+        except Exception as e:
+            current_app.logger.error(f"生成报告失败: {str(e)}")
+            return jsonify({"success": False, "error": f"生成报告失败: {str(e)}"}), 500
+
+    def _execute_report_generation(dataset_id, company_name, knowledge_name, project_id, project_room_id):
+        """执行实际的报告生成逻辑"""
+        try:
+            socketio = current_app.socketio
 
             # 检查解析状态（仅在非测试环境下）
             if dataset_id and not dataset_id.startswith('test_'):
                 parsing_complete = check_parsing_status(dataset_id)
                 if not parsing_complete:
-                    return jsonify({
-                        "success": False,
-                        "error": "文档解析尚未完成，请等待解析完成后再生成报告",
-                        "parsing_complete": False
-                    }), 400
+                    # 通过WebSocket广播错误
+                    broadcast_workflow_error(socketio, project_room_id, "文档解析尚未完成，请等待解析完成后再生成报告")
+                    return
 
             # 对于测试数据，返回模拟响应
             if dataset_id and dataset_id.startswith('test_'):
@@ -113,21 +258,14 @@ def register_report_routes(app):
                     except Exception as db_error:
                         current_app.logger.error(f"保存报告路径到数据库失败: {db_error}")
 
-                return jsonify({
-                    "success": True,
-                    "message": "测试报告生成成功",
-                    "workflow_run_id": mock_workflow_id,
-                    "content": mock_content,
-                    "metadata": {'test': True},
-                    "events": mock_events,
-                    "file_path": file_path,
-                    "parsing_complete": True
-                })
+                # 通过WebSocket广播测试报告完成
+                broadcast_workflow_complete(socketio, project_room_id, mock_content)
+                return
 
             # 真实的流式调用报告生成API
             try:
-                # 调用流式报告生成API
-                report_content, workflow_run_id, events = call_report_generation_api_streaming(company_name, knowledge_name, project_id)
+                # 调用流式报告生成API，传递项目房间ID用于WebSocket广播
+                report_content, workflow_run_id, events = call_report_generation_api_streaming(company_name, knowledge_name, project_id, project_room_id)
 
                 # 保存报告到本地文件
                 file_path = save_report_to_file(company_name, report_content, project_id)
@@ -145,22 +283,43 @@ def register_report_routes(app):
 
                 current_app.logger.info(f"报告生成成功，已保存到: {file_path}")
 
-                return jsonify({
-                    "success": True,
-                    "message": "报告生成成功",
-                    "workflow_run_id": workflow_run_id,
-                    "content": report_content,
-                    "events": events,  # 包含流式事件
-                    "file_path": file_path,
-                    "parsing_complete": True
-                })
+                # 更新项目报告状态为已生成
+                project = Project.query.get(project_id)
+                if project:
+                    project.report_status = ReportStatus.GENERATED
+                    project.report_path = file_path
+                    db.session.commit()
+
+                # 通过WebSocket广播报告完成
+                broadcast_workflow_complete(socketio, project_room_id, report_content)
             except Exception as api_error:
                 current_app.logger.error(f"调用外部API失败: {str(api_error)}")
+
+                # 通过WebSocket广播错误事件
+                try:
+                    socketio = current_app.socketio
+                    # 这里我们没有workflow_run_id，所以使用一个临时ID
+                    temp_workflow_id = f"error_{int(time.time())}"
+                    broadcast_workflow_error(socketio, temp_workflow_id, f"调用外部API失败: {str(api_error)}")
+                except Exception as ws_error:
+                    current_app.logger.error(f"WebSocket错误广播失败: {ws_error}")
+
                 raise Exception(f"调用外部API失败: {str(api_error)}")
 
         except Exception as e:
             current_app.logger.error(f"生成报告失败: {str(e)}")
-            return jsonify({"success": False, "error": f"生成报告失败: {str(e)}"}), 500
+
+            # 重置项目报告状态为未生成
+            try:
+                project = Project.query.get(project_id)
+                if project:
+                    project.report_status = ReportStatus.NOT_GENERATED
+                    db.session.commit()
+            except Exception as db_error:
+                current_app.logger.error(f"重置报告状态失败: {str(db_error)}")
+
+            # 通过WebSocket广播错误
+            broadcast_workflow_error(socketio, project_room_id, f"生成报告失败: {str(e)}")
 
     @app.route('/api/check_workflow_events/<workflow_run_id>', methods=['GET'])
     def check_workflow_events(workflow_run_id):
@@ -301,6 +460,7 @@ def register_report_routes(app):
                     # 继续执行，不因为文件删除失败而中断
 
             # 清空数据库中的报告路径
+            project.report_status = ReportStatus.NOT_GENERATED
             project.report_path = None
             db.session.commit()
             current_app.logger.info(f"已清空项目 {project_id} 的报告路径")
@@ -356,7 +516,7 @@ def check_parsing_status(dataset_id):
         return False
 
 
-def call_report_generation_api_streaming(company_name, knowledge_name, project_id=None):
+def call_report_generation_api_streaming(company_name, knowledge_name, project_id=None, project_room_id=None):
     """调用报告生成API - 流式模式"""
     try:
         # 真实API调用
@@ -391,8 +551,8 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
 
         response.raise_for_status()
 
-        # 使用解析方法处理流式响应
-        workflow_run_id, full_content, metadata, events = parse_dify_streaming_response(response, company_name, project_id)
+        # 使用解析方法处理流式响应，传递项目房间ID用于WebSocket广播
+        workflow_run_id, full_content, metadata, events = parse_dify_streaming_response(response, company_name, project_id, project_room_id)
 
         current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}")
         current_app.logger.info(f"提取到的事件数量: {len(events)}")
@@ -483,7 +643,7 @@ def call_report_generation_api(company_name, knowledge_name):
 
 
 
-def parse_dify_streaming_response(response, company_name="", project_id=None):
+def parse_dify_streaming_response(response, company_name="", project_id=None, project_room_id=None):
     """
     解析 Dify 流式响应，实时存储事件到数据库
 
@@ -537,6 +697,15 @@ def parse_dify_streaming_response(response, company_name="", project_id=None):
                             print(f"清理旧事件失败: {e}")
                             db.session.rollback()
 
+                    # 通过WebSocket广播工作流开始事件到项目房间
+                    try:
+                        socketio = current_app.socketio
+                        # 只向项目房间广播，避免重复
+                        if project_room_id:
+                            broadcast_workflow_event(socketio, project_room_id, 'workflow_started', data)
+                    except Exception as e:
+                        print(f"WebSocket广播失败: {e}")
+
                 # 提取生成的内容
                 content = None
 
@@ -577,11 +746,21 @@ def parse_dify_streaming_response(response, company_name="", project_id=None):
                     full_content += content
                     print(f"提取到内容: {content[:50]}..." if len(content) > 50 else f"提取到内容: {content}")
 
+                    # 通过WebSocket广播内容到项目房间
+                    try:
+                        socketio = current_app.socketio
+                        # 只向项目房间广播，避免重复
+                        if project_room_id:
+                            broadcast_workflow_content(socketio, project_room_id, content)
+                    except Exception as e:
+                        print(f"WebSocket内容广播失败: {e}")
+
                 # 提取事件信息
                 if 'event' in data:
-                    events.append(data['event'])
+                    event_type = data['event']
+                    events.append(event_type)
                     sequence_number += 1
-                    print(f"提取到事件: {data['event']}")
+                    print(f"提取到事件: {event_type}")
 
                     # 实时存储事件到数据库
                     if workflow_run_id and project_id:
@@ -590,16 +769,28 @@ def parse_dify_streaming_response(response, company_name="", project_id=None):
                                 workflow_run_id=workflow_run_id,
                                 project_id=project_id,
                                 company_name=company_name,
-                                event_type=data['event'],
+                                event_type=event_type,
                                 event_data=data,
                                 sequence_number=sequence_number
                             )
                             db.session.add(workflow_event)
                             db.session.commit()
-                            print(f"事件已存储到数据库: {data['event']} (序号: {sequence_number})")
+                            print(f"事件已存储到数据库: {event_type} (序号: {sequence_number})")
+
+                            # 立即刷新数据库连接，确保其他查询能看到最新数据
+                            db.session.flush()
                         except Exception as e:
                             print(f"存储事件到数据库失败: {e}")
                             db.session.rollback()
+
+                    # 通过WebSocket广播事件到项目房间
+                    try:
+                        socketio = current_app.socketio
+                        # 只向项目房间广播，避免重复
+                        if project_room_id:
+                            broadcast_workflow_event(socketio, project_room_id, event_type, data)
+                    except Exception as e:
+                        print(f"WebSocket事件广播失败: {e}")
 
                 # 提取元数据
                 if 'metadata' in data:
@@ -609,6 +800,15 @@ def parse_dify_streaming_response(response, company_name="", project_id=None):
             except json.JSONDecodeError as e:
                 print(f"JSON 解析错误: {e}, 原始数据: {data_str}")
                 continue
+
+    # 流式解析完成，广播完成事件到项目房间
+    try:
+        socketio = current_app.socketio
+        # 只向项目房间广播，避免重复
+        if project_room_id:
+            broadcast_workflow_complete(socketio, project_room_id, full_content)
+    except Exception as e:
+        print(f"WebSocket完成事件广播失败: {e}")
 
     return workflow_run_id, full_content, metadata, events
 

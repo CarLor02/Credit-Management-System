@@ -39,6 +39,7 @@ generated_backend/migrations/versions/
 generated_backend/uploads/
 generated_backend/processed/
 generated_backend/.env
+generated_backend/output/
 
 # IDE files
 .vscode/
