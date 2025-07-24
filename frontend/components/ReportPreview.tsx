@@ -1,8 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
+
+// 动态导入 Markdown 预览组件，避免 SSR 错误
+const MarkdownPreview = dynamic(() => import('@uiw/react-markdown-preview'), { ssr: false });
 
 interface StreamingEvent {
   timestamp: string;
@@ -260,31 +264,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   };
 
-  // 格式化报告内容
-  const formatReportContent = (content: string) => {
-    if (!content) return [];
-    
-    return content
-      .split('\n')
-      .filter(line => line.trim())
-      .map((line, index) => {
-        const processedLine = line
-          .replace(/^### (.*)/g, '<h3 class="text-lg font-semibold text-gray-800 mt-6 mb-3">$1</h3>')
-          .replace(/^## (.*)/g, '<h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">$1</h2>')
-          .replace(/^# (.*)/g, '<h1 class="text-2xl font-bold text-gray-900 mt-10 mb-6">$1</h1>')
-          .replace(/^\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-800">$1</strong>')
-          .replace(/\*(.*?)\*/g, '<em class="italic text-gray-700">$1</em>')
-          .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono">$1</code>');
-
-        return (
-          <p
-            key={index}
-            className="mb-3 text-gray-600 leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: processedLine }}
-          />
-        );
-      });
-  };
+  // 不再需要自定义格式化函数，使用MarkdownPreview组件
 
   if (!isOpen) {
     console.log('🚫 ReportPreview: isOpen为false，不渲染弹窗');
@@ -354,8 +334,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
         {/* 内容区域 */}
         <div className="flex-1 flex overflow-hidden">
-          {/* 左侧：流式输出 */}
-          <div className="w-1/3 border-r border-gray-200 bg-black flex flex-col">
+          {/* 左侧：流式输出 - 固定25%宽度 */}
+          <div className="w-1/4 min-w-0 border-r border-gray-200 bg-black flex flex-col">
             {/* Header */}
             <div className="bg-gray-900 px-4 py-3 border-b border-gray-700">
               <div className="flex items-center justify-between mb-2">
@@ -407,8 +387,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             </div>
           </div>
 
-          {/* 右侧：报告内容 */}
-          <div className="flex-1 flex flex-col">
+          {/* 右侧：报告内容 - 固定75%宽度 */}
+          <div className="w-3/4 min-w-0 flex flex-col">
             {/* 内容区域 */}
             <div 
               ref={streamingContentRef}
@@ -433,8 +413,28 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                   <p className="text-gray-600">加载报告内容中...</p>
                 </div>
               ) : reportContent ? (
-                <div className="max-w-none">
-                  {formatReportContent(reportContent)}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-4 py-2 border-b border-gray-200">
+                    <div className="flex items-center space-x-2">
+                      <i className="ri-file-text-line text-blue-600"></i>
+                      <span className="text-sm font-medium text-gray-700">征信报告</span>
+                      <span className="text-xs text-gray-500">• Markdown格式</span>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <MarkdownPreview
+                      source={reportContent || '# 报告内容为空\n\n此报告没有可预览的内容。'}
+                      style={{
+                        backgroundColor: 'transparent',
+                        color: '#374151',
+                        lineHeight: '1.7',
+                        fontSize: '14px'
+                      }}
+                      wrapperElement={{
+                        'data-color-mode': 'light'
+                      }}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-12">
