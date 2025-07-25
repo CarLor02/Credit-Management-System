@@ -144,7 +144,7 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
               </div>
               <p className="text-gray-600 mb-2">拖拽文件到此处或点击上传</p>
               <p className="text-sm text-gray-500 mb-4">
-                支持 PDF、DOCX、XLS、XLSX、MD 格式
+                支持 PDF、XLS、XLSX、MD 格式
               </p>
               <input
                 type="file"
