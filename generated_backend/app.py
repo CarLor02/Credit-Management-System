@@ -58,8 +58,8 @@ def init_database_if_needed(app):
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# 启用CORS支持
-CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000","http://115.190.121.59:3000"])
+# 启用CORS支持 - 允许所有来源
+CORS(app, origins="*")
 
 # 创建SocketIO实例
 socketio = SocketIO(
