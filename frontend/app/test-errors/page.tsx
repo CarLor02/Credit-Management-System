@@ -30,7 +30,7 @@ export default function TestErrorsPage() {
         username: 'admin', // 已存在的用户名
         email: 'test@example.com',
         password: 'test123',
-        full_name: '测试用户'
+        phone: '13800138000' // 使用 phone 字段而不是 full_name
       });
       if (!response.success) {
         addResult(`✅ 注册错误: ${response.error}`);

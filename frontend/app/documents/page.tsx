@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import DocumentUpload from './DocumentUpload';
 import DocumentList from './DocumentList';
 import ProjectSelector, { ProjectSelectorRef } from './ProjectSelector';
 
-export default function DocumentsPage() {
+// 内部组件，使用 useSearchParams
+function DocumentsContent() {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -135,5 +136,16 @@ export default function DocumentsPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+// 主导出组件，使用 Suspense 包装
+export default function DocumentsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    </div>}>
+      <DocumentsContent />
+    </Suspense>
   );
 }
