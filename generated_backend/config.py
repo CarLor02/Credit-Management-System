@@ -32,12 +32,12 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 86400))  # 1天 (24小时 * 60分钟 * 60秒)
 
     # RAG API配置
-    RAG_API_BASE_URL = os.environ.get('RAG_API_BASE_URL', 'http://172.16.76.183')
-    RAG_API_KEY = os.environ.get('RAG_API_KEY', 'ragflow-U4OWM2Njc2NDVjNTExZjA5NDUzMDI0Mm')
+    RAG_API_BASE_URL = os.environ.get('RAG_API_BASE_URL', 'http://172.16.18.156:17080')
+    RAG_API_KEY = os.environ.get('RAG_API_KEY', 'ragflow-VmMWVkNGUwNjhmYTExZjBhNTgzNzYwNT')
 
     # 报告生成API配置
-    REPORT_API_URL = os.environ.get('REPORT_API_URL', 'http://172.16.76.203/v1/workflows/run')
-    REPORT_API_KEY = os.environ.get('REPORT_API_KEY', 'app-zLDrndvfJ81HaTWD3gXXVJaq')
+    REPORT_API_URL = os.environ.get('REPORT_API_URL', 'http://172.16.18.157:18080/v1/workflows/run')
+    REPORT_API_KEY = os.environ.get('REPORT_API_KEY', 'app-TPm1UnL2LeXaMnZI4c03frYN')
 
     # Mock API配置
     USE_MOCK_API = os.environ.get('USE_MOCK_API', 'True').lower() == 'true'
