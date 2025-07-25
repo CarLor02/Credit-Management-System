@@ -124,7 +124,7 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
       try {
         await onDelete(project.id);
         setShowDeleteModal(false);
-      } catch (error) {
+      } catch {
         // 错误处理由父组件处理，这里不需要额外操作
       } finally {
         setIsDeleting(false);
@@ -238,7 +238,7 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
               </div>
               <h3 className="text-lg font-medium text-gray-800 text-center mb-2">确认删除项目</h3>
               <p className="text-gray-600 text-center mb-6">
-                您确定要删除项目 "<span className="font-medium">{project.name}</span>" 吗？此操作无法撤销。
+                您确定要删除项目 &ldquo;<span className="font-medium">{project.name}</span>&rdquo; 吗？此操作无法撤销。
               </p>
               <div className="flex space-x-3">
                 <button

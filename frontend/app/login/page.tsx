@@ -77,7 +77,7 @@ export default function LoginPage() {
           setError(result.error || '注册失败');
         }
       }
-    } catch (error) {
+    } catch {
       setError('网络错误，请稍后重试');
     } finally {
       setIsLoading(false);

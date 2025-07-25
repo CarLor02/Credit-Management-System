@@ -59,7 +59,7 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # 启用CORS支持
-CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
+CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000","http://115.190.121.59:3000"])
 
 # 创建SocketIO实例
 socketio = SocketIO(

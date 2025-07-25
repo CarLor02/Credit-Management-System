@@ -42,7 +42,6 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
 
     // 创建ID映射以便快速查找
     const prevDocsMap = new Map(prevDocs.map(doc => [doc.id, doc]));
-    const newDocsMap = new Map(newDocuments.map(doc => [doc.id, doc]));
 
     // 检查是否有实质性变化
     let hasChanges = false;
@@ -99,7 +98,7 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
         let filteredData = response.data;
         if (selectedProject) {
           // 通过项目名或项目ID过滤（后端可能通过不同方式处理）
-          filteredData = response.data.filter(doc => {
+          filteredData = response.data.filter(() => {
             // 假设后端已经过滤了，但为了保险，前端再次检查
             return true; // 信任后端过滤结果
           });

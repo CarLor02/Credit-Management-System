@@ -84,7 +84,7 @@ export default function ProjectsPage() {
   // 搜索/筛选变化时重新加载过滤后的项目
   useEffect(() => {
     loadProjects();
-  }, [activeTab, searchQuery]);
+  }, [activeTab, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 删除项目
   const handleDeleteProject = async (id: number) => {

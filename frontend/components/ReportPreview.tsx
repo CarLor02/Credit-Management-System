@@ -206,14 +206,14 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       setWebsocketStatus('未连接');
     };
-  }, [isOpen, projectId]);
+  }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 获取报告内容（非生成模式）
   useEffect(() => {
     if (isOpen && !isGenerating) {
       fetchReportContent();
     }
-  }, [isOpen, isGenerating, projectId]);
+  }, [isOpen, isGenerating, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 下载报告
   const handleDownloadReport = () => {

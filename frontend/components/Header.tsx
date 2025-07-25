@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -67,9 +68,11 @@ export default function Header() {
               >
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
                   {user?.avatar_url ? (
-                    <img
+                    <Image
                       src={user.avatar_url}
                       alt={user.username}
+                      width={32}
+                      height={32}
                       className="w-8 h-8 rounded-full object-cover"
                     />
                   ) : (

@@ -56,7 +56,7 @@ export default function DocumentPreview({ documentId, documentName, isOpen, onCl
     if (isOpen && documentId) {
       loadPreviewContent();
     }
-  }, [isOpen, documentId]);
+  }, [isOpen, documentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 下载处理后的文件
   const handleDownloadProcessed = async () => {

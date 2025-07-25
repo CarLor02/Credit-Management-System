@@ -1,9 +1,9 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { documentService } from '@/services/documentService';
-import { projectService, Project } from '@/services/projectService';
+import { Project } from '@/services/projectService';
 
 interface DocumentUploadProps {
   selectedProject: string;

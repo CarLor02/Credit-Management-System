@@ -9,7 +9,7 @@ import ProjectSelector, { ProjectSelectorRef } from './ProjectSelector';
 
 // 内部组件，使用 useSearchParams
 function DocumentsContent() {
-  const [activeTab, setActiveTab] = useState('all');
+
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedProject, setSelectedProject] = useState('');

@@ -1,6 +1,5 @@
 
 import ProjectDetail from './ProjectDetail';
-import { projectService } from '@/services/projectService';
 
 // 允许动态参数，不仅限于 generateStaticParams 返回的参数
 export const dynamicParams = true;

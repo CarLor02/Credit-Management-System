@@ -109,7 +109,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     };
 
     fetchDocuments();
-  }, [project?.id]); // 依赖项目ID而不是整个项目对象
+  }, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 启动文档轮询
   const startDocumentPolling = () => {
@@ -159,7 +159,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     return () => {
       stopDocumentPolling();
     };
-  }, [documentPolling]);
+  }, [documentPolling]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
@@ -291,7 +291,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       loadTimelineData();
       checkExistingReport(); // 检查是否已有报告
     }
-  }, [project]);
+  }, [project]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 获取编辑数据
   const getEditData = () => {
