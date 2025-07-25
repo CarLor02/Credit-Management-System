@@ -38,7 +38,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [websocketStatus, setWebsocketStatus] = useState<string>('未连接');
-  const [isConnected, setIsConnected] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
 
@@ -144,7 +143,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     // WebSocket已在项目详情页连接，这里只需要设置状态和监听器
     const projectRoom = `project_${projectId}`;
     setWebsocketStatus(`监听房间: ${projectRoom}`);
-    setIsConnected(true);
 
     // 添加测试事件验证功能
     addEvent('预览窗口打开', '开始监听流式事件');
@@ -206,7 +204,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       websocketService.off('workflow_complete', handleWorkflowComplete);
       websocketService.off('workflow_error', handleWorkflowError);
 
-      setIsConnected(false);
       setWebsocketStatus('未连接');
     };
   }, [isOpen, projectId]);

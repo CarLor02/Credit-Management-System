@@ -53,7 +53,7 @@ class ApiClient {
       const url = `${this.baseUrl}${endpoint}`;
 
       // 自动添加认证头
-      const finalHeaders = {
+      const finalHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
         ...headers,
       };
