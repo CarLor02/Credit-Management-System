@@ -743,9 +743,6 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
 
                 # 如果找到内容，添加到结果中
                 if content:
-                    full_content += content
-                    print(f"提取到内容: {content[:50]}..." if len(content) > 50 else f"提取到内容: {content}")
-
                     # 通过WebSocket广播内容到项目房间
                     try:
                         socketio = current_app.socketio
@@ -758,6 +755,10 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                 # 提取事件信息
                 if 'event' in data:
                     event_type = data['event']
+                    if event_type == "workflow_finished":
+                        full_content = content
+                        print(f"已更新内容: {content[:50]}..." if len(content) > 50 else f"已更新内容: {content}")
+
                     events.append(event_type)
                     sequence_number += 1
                     print(f"提取到事件: {event_type}")
