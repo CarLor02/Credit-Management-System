@@ -215,7 +215,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   }, [isOpen, isGenerating, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 下载报告
+  // 下载报告（Markdown格式）
   const handleDownloadReport = () => {
     if (!reportContent || loading) return;
 
@@ -233,6 +233,60 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     } catch (error) {
       console.error('下载报告失败:', error);
       alert('下载报告失败，请稍后重试');
+    }
+  };
+
+  // 下载PDF报告
+  const handleDownloadPDF = async () => {
+    if (!projectId || loading) return;
+
+    try {
+      setLoading(true);
+
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        alert('请先登录');
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api'}/projects/${projectId}/report/download-pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      // 获取文件名
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${companyName}_征信报告.pdf`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // 下载文件
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error('下载PDF报告失败:', error);
+      alert(error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -291,18 +345,32 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           <div className="flex items-center space-x-3">
             {/* 下载按钮 */}
             {!isGenerating && reportContent && (
-              <button
-                onClick={handleDownloadReport}
-                disabled={loading}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  loading
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                <i className="ri-download-line mr-2"></i>
-                下载报告
-              </button>
+              <>
+                <button
+                  onClick={handleDownloadPDF}
+                  disabled={loading}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    loading
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  <i className="ri-file-pdf-line mr-2"></i>
+                  下载PDF
+                </button>
+                <button
+                  onClick={handleDownloadReport}
+                  disabled={loading}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    loading
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  <i className="ri-download-line mr-2"></i>
+                  下载MD
+                </button>
+              </>
             )}
 
             {/* 删除按钮 */}

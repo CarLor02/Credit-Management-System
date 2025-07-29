@@ -8,7 +8,7 @@ import json
 import requests
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from flask import request, jsonify, current_app
+from flask import request, jsonify, current_app, send_file
 from websocket_handlers import (
     broadcast_workflow_event,
     broadcast_workflow_content,
@@ -18,6 +18,9 @@ from websocket_handlers import (
 
 # 导入数据库模型
 from db_models import Project, AnalysisReport, WorkflowEvent, ReportType, ReportStatus
+
+# 导入PDF转换服务
+from services.pdf_converter import convert_report_to_pdf, is_pdf_conversion_available
 from database import db
 
 # 导入配置（如果需要的话）
@@ -487,6 +490,124 @@ def register_report_routes(app):
             return jsonify({
                 "success": False,
                 "error": f"删除项目报告失败: {str(e)}"
+            }), 500
+
+    @app.route('/api/projects/<int:project_id>/report/download-pdf', methods=['GET'])
+    def download_project_report_pdf(project_id):
+        """
+        下载项目报告的PDF版本
+        """
+        try:
+            # 检查PDF转换功能是否可用
+            if not is_pdf_conversion_available():
+                return jsonify({
+                    "success": False,
+                    "error": "PDF转换功能不可用，请联系管理员"
+                }), 500
+
+            project = Project.query.get(project_id)
+            if not project:
+                return jsonify({
+                    "success": False,
+                    "error": "项目不存在"
+                }), 404
+
+            # 检查报告是否存在
+            if not project.report_path or project.report_path.strip() == "":
+                return jsonify({
+                    "success": False,
+                    "error": "该项目尚未生成报告"
+                }), 404
+
+            # 检查报告文件是否存在
+            if not os.path.exists(project.report_path):
+                return jsonify({
+                    "success": False,
+                    "error": "报告文件不存在"
+                }), 404
+
+            # 读取Markdown报告内容
+            try:
+                with open(project.report_path, 'r', encoding='utf-8') as f:
+                    md_content = f.read()
+
+                if not md_content or md_content.strip() == "":
+                    return jsonify({
+                        "success": False,
+                        "error": "报告内容为空"
+                    }), 404
+
+            except Exception as read_error:
+                current_app.logger.error(f"读取报告文件失败: {read_error}")
+                return jsonify({
+                    "success": False,
+                    "error": "读取报告文件失败"
+                }), 500
+
+            # 转换为PDF
+            current_app.logger.info(f"开始将项目 {project_id} 的报告转换为PDF")
+            success, message, pdf_path = convert_report_to_pdf(md_content, project.name)
+
+            if not success or not pdf_path:
+                current_app.logger.error(f"PDF转换失败: {message}")
+                return jsonify({
+                    "success": False,
+                    "error": f"PDF转换失败: {message}"
+                }), 500
+
+            try:
+                # 生成下载文件名
+                safe_company_name = "".join(c for c in project.name if c.isalnum() or c in (' ', '-', '_')).strip()
+                if not safe_company_name:
+                    safe_company_name = "征信报告"
+
+                download_filename = f"{safe_company_name}_征信报告.pdf"
+
+                current_app.logger.info(f"PDF转换成功，开始下载: {pdf_path}")
+
+                # 发送文件并在发送后清理临时文件
+                def cleanup_after_send():
+                    """发送完成后清理临时文件"""
+                    try:
+                        if os.path.exists(pdf_path):
+                            os.unlink(pdf_path)
+                            current_app.logger.info(f"已清理临时PDF文件: {pdf_path}")
+                    except Exception as cleanup_error:
+                        current_app.logger.warning(f"清理临时PDF文件失败: {cleanup_error}")
+
+                # 使用Flask的send_file发送PDF文件
+                response = send_file(
+                    pdf_path,
+                    as_attachment=True,
+                    download_name=download_filename,
+                    mimetype='application/pdf'
+                )
+
+                # 注册清理函数（在响应发送后执行）
+                @response.call_on_close
+                def cleanup_temp_file():
+                    cleanup_after_send()
+
+                return response
+
+            except Exception as send_error:
+                current_app.logger.error(f"发送PDF文件失败: {send_error}")
+                # 清理临时文件
+                try:
+                    if pdf_path and os.path.exists(pdf_path):
+                        os.unlink(pdf_path)
+                except:
+                    pass
+                return jsonify({
+                    "success": False,
+                    "error": "发送PDF文件失败"
+                }), 500
+
+        except Exception as e:
+            current_app.logger.error(f"下载PDF报告失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"下载PDF报告失败: {str(e)}"
             }), 500
 
 

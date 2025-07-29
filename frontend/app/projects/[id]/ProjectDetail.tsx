@@ -344,6 +344,56 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       return;
     }
 
+    // 如果报告已生成，直接下载PDF
+    if (project.report_status === 'generated') {
+      try {
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+          alert('请先登录');
+          return;
+        }
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api'}/projects/${project.id}/report/download-pdf`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+
+        // 获取文件名
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `${project.name}_征信报告.pdf`;
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1].replace(/['"]/g, '');
+          }
+        }
+
+        // 下载文件
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        return;
+      } catch (error) {
+        console.error('下载PDF报告失败:', error);
+        alert(error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试');
+        return;
+      }
+    }
+
     // 检查必要的项目信息
     if (!project.dataset_id && !project.knowledge_base_name) {
       alert('项目尚未创建知识库，请先上传文档并等待处理完成');
@@ -767,8 +817,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                   </>
                 ) : project?.report_status === 'generated' ? (
                   <>
-                    <i className="ri-refresh-line mr-2"></i>
-                    重新生成报告
+                    <i className="ri-file-pdf-line mr-2"></i>
+                    下载PDF报告
                   </>
                 ) : (
                   <>
@@ -947,10 +997,10 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                         </div>
                         <button
                           onClick={handleDownloadReport}
-                          className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium whitespace-nowrap"
+                          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
                         >
-                          <i className="ri-download-line mr-2"></i>
-                          立即下载
+                          <i className="ri-file-pdf-line mr-2"></i>
+                          下载PDF报告
                         </button>
                       </div>
                     ) : (

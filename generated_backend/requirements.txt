@@ -41,3 +41,8 @@ openai>=1.0.0
 
 # 工具依赖
 tqdm>=4.62.3
+
+# Markdown转PDF依赖
+markdown==3.8.2
+weasyprint==66.0
+pygments==2.19.2
