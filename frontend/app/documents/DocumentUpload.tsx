@@ -63,7 +63,9 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
         const extension = file.name.split('.').pop()?.toLowerCase();
 
         if (extension === 'doc' || extension === 'docx') {
-          throw new Error(`文件 ${file.name}: 暂不支持该格式，请转化成PDF格式上传`);
+          setError(`文件 ${file.name}: 暂不支持该格式，请转化成PDF格式上传`);
+          setIsUploading(false);
+          return;
         }
 
         // 确定文件类型
@@ -87,7 +89,9 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
         });
 
         if (!response.success) {
-          throw new Error(response.error || `上传文件 ${file.name} 失败`);
+          // 处理不同类型的错误响应
+          const errorMessage = response.error || response.message || `上传文件 ${file.name} 失败`;
+          throw new Error(errorMessage);
         }
 
         // 立即触发列表刷新，显示"本地上传中"状态

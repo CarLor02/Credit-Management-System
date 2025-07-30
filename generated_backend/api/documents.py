@@ -174,7 +174,7 @@ def register_document_routes(app):
             # 特别检查doc/docx格式，直接拦截（在认证之前）
             file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
             if file_ext in ['doc', 'docx']:
-                return jsonify({'success': False, 'error': '暂不支持该格式，请转化成PDF格式上传'}), 400
+                return jsonify({'message': '暂不支持该格式，请转化成PDF格式上传'}), 400
 
             # 检查文件类型
             if not allowed_file(file.filename):
