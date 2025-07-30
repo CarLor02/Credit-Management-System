@@ -190,12 +190,33 @@ class PdfProcessor(DocumentProcessor):
     def _get_docling_converter(self):
         """创建并配置Docling转换器"""
         # 创建pipeline配置
+        
+        # 导入加速器选项
+        from docling.datamodel.pipeline_options import AcceleratorOptions, AcceleratorDevice
+        import torch
+        # 检测可用的设备
+        if torch.backends.mps.is_available():
+            device = AcceleratorDevice.MPS
+            logger.info("检测到MPS支持，将使用Apple Silicon GPU加速")
+        elif torch.cuda.is_available():
+            device = AcceleratorDevice.CUDA
+            logger.info("检测到CUDA支持，将使用NVIDIA GPU加速")
+        else:
+            device = AcceleratorDevice.CPU
+            logger.info("使用CPU处理")
+        
         self.pipeline_options = PdfPipelineOptions()
         self.pipeline_options.generate_page_images = True 
         self.pipeline_options.do_ocr = False
         self.pipeline_options.do_table_structure = True
         self.pipeline_options.table_structure_options.do_cell_matching = True
         self.pipeline_options.generate_picture_images = False
+        
+        # 配置加速器选项
+        self.pipeline_options.accelerator_options = AcceleratorOptions(
+            num_threads=8,  # 使用8个线程
+            device=device   # 使用检测到的最佳设备
+        )
 
         doc_converter = DocumentConverter(
             format_options={
