@@ -59,14 +59,18 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
 
       // 上传每个文件
       for (const file of files) {
+        // 检查文件格式，拦截doc/docx格式
+        const extension = file.name.split('.').pop()?.toLowerCase();
+
+        if (extension === 'doc' || extension === 'docx') {
+          throw new Error(`文件 ${file.name}: 暂不支持该格式，请转化成PDF格式上传`);
+        }
+
         // 确定文件类型
         let fileType: 'pdf' | 'excel' | 'word' | 'image' | 'markdown' = 'pdf';
-        const extension = file.name.split('.').pop()?.toLowerCase();
 
         if (extension === 'xlsx' || extension === 'xls') {
           fileType = 'excel';
-        } else if (extension === 'docx' || extension === 'doc') {
-          fileType = 'word';
         } else if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
           fileType = 'image';
         } else if (extension === 'md') {
@@ -149,7 +153,7 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
               <input
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.md"
+                accept=".pdf,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.md"
                 onChange={handleFileSelect}
                 className="hidden"
                 id="file-upload"

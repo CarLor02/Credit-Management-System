@@ -17,7 +17,7 @@ from services.document_processor import DocumentProcessor
 
 def allowed_file(filename):
     """检查文件类型是否允许"""
-    allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS', {'pdf', 'docx', 'xls', 'xlsx', 'txt', 'jpg', 'jpeg', 'png', 'md'})
+    allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS', {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'jpg', 'jpeg', 'png', 'md'})
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
 def get_file_type(filename):
@@ -160,13 +160,10 @@ def register_document_routes(app):
             return jsonify({'success': False, 'error': '获取文档详情失败'}), 500
     
     @app.route('/api/documents/upload', methods=['POST'])
-    @token_required
     def upload_document():
         """上传文档"""
         try:
-            current_user = request.current_user
-
-            # 检查文件
+            # 先进行基本的文件检查，再进行认证
             if 'file' not in request.files:
                 return jsonify({'success': False, 'error': '没有文件被上传'}), 400
 
@@ -174,9 +171,25 @@ def register_document_routes(app):
             if file.filename == '':
                 return jsonify({'success': False, 'error': '没有选择文件'}), 400
 
+            # 特别检查doc/docx格式，直接拦截（在认证之前）
+            file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+            if file_ext in ['doc', 'docx']:
+                return jsonify({'success': False, 'error': '暂不支持该格式，请转化成PDF格式上传'}), 400
+
             # 检查文件类型
             if not allowed_file(file.filename):
                 return jsonify({'success': False, 'error': '不支持的文件类型'}), 400
+
+            # 进行用户认证检查
+            from api.auth import verify_token
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({'success': False, 'error': '需要认证'}), 401
+
+            token = auth_header.split(' ')[1]
+            current_user = verify_token(token)
+            if not current_user:
+                return jsonify({'success': False, 'error': '认证失败'}), 401
 
             # 获取其他参数
             project_id = request.form.get('project_id')
