@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
+import PdfViewer from './PDFViewer';
 
 // 动态导入 Markdown 预览组件，避免 SSR 错误
 const MarkdownPreview = dynamic(() => import('@uiw/react-markdown-preview'), { ssr: false });
@@ -38,6 +39,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [websocketStatus, setWebsocketStatus] = useState<string>('未连接');
+  const [isPdfPreview, setIsPdfPreview] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
 
@@ -215,6 +219,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   }, [isOpen, isGenerating, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 清理PDF URL
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) {
+        window.URL.revokeObjectURL(pdfUrl);
+      }
+    };
+  }, [pdfUrl]);
+
   // 下载报告（Markdown格式）
   const handleDownloadReport = () => {
     if (!reportContent || loading) return;
@@ -315,6 +328,56 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   };
 
+  // 转换PDF预览
+  const handleConvertToPdfPreview = async () => {
+    if (!projectId || pdfLoading) return;
+
+    try {
+      setPdfLoading(true);
+
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        alert('请先登录');
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api'}/projects/${projectId}/report/download-pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      // 获取文件blob
+      const blob = await response.blob();
+
+      // 创建PDF预览URL
+      const url = window.URL.createObjectURL(blob);
+      setPdfUrl(url);
+      setIsPdfPreview(true);
+
+    } catch (error) {
+      console.error('转换PDF预览失败:', error);
+      alert(error instanceof Error ? error.message : '转换PDF预览失败，请稍后重试');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  // 切换回Markdown预览
+  const handleSwitchToMarkdown = () => {
+    setIsPdfPreview(false);
+    if (pdfUrl) {
+      window.URL.revokeObjectURL(pdfUrl);
+      setPdfUrl(null);
+    }
+  };
+
   // 不再需要自定义格式化函数，使用MarkdownPreview组件
 
   if (!isOpen) {
@@ -343,9 +406,33 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             <p className="text-sm text-gray-500 mt-1">公司：{companyName}</p>
           </div>
           <div className="flex items-center space-x-3">
-            {/* 下载按钮 */}
+            {/* 预览切换和下载按钮 */}
             {!isGenerating && reportContent && (
               <>
+                {/* PDF预览切换按钮 */}
+                {!isPdfPreview ? (
+                  <button
+                    onClick={handleConvertToPdfPreview}
+                    disabled={pdfLoading}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pdfLoading
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    <i className="ri-file-pdf-line mr-2"></i>
+                    {pdfLoading ? '转换中...' : '转换PDF预览'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSwitchToMarkdown}
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-600 text-white hover:bg-gray-700"
+                  >
+                    <i className="ri-markdown-line mr-2"></i>
+                    返回MD预览
+                  </button>
+                )}
+
                 <button
                   onClick={handleDownloadPDF}
                   disabled={loading}
@@ -478,29 +565,50 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                   <p className="text-gray-600">加载报告内容中...</p>
                 </div>
               ) : reportContent ? (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-4 py-2 border-b border-gray-200">
-                    <div className="flex items-center space-x-2">
-                      <i className="ri-file-text-line text-blue-600"></i>
-                      <span className="text-sm font-medium text-gray-700">征信报告</span>
-                      <span className="text-xs text-gray-500">• Markdown格式</span>
+                isPdfPreview && pdfUrl ? (
+                  // PDF预览模式
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
+                    <div className="bg-gradient-to-r from-gray-50 to-red-50 px-4 py-2 border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <i className="ri-file-pdf-line text-red-600"></i>
+                        <span className="text-sm font-medium text-gray-700">征信报告</span>
+                        <span className="text-xs text-gray-500">• PDF格式</span>
+                      </div>
+                    </div>
+                    <div className="h-full" style={{ height: 'calc(100% - 50px)' }}>
+                      <PdfViewer
+                        pdfUrl={pdfUrl}
+                        title="征信报告PDF预览"
+                        showControls={true}
+                      />
                     </div>
                   </div>
-                  <div className="p-6">
-                    <MarkdownPreview
-                      source={reportContent || '# 报告内容为空\n\n此报告没有可预览的内容。'}
-                      style={{
-                        backgroundColor: 'transparent',
-                        color: '#374151',
-                        lineHeight: '1.7',
-                        fontSize: '14px'
-                      }}
-                      wrapperElement={{
-                        'data-color-mode': 'light'
-                      }}
-                    />
+                ) : (
+                  // Markdown预览模式
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-4 py-2 border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <i className="ri-file-text-line text-blue-600"></i>
+                        <span className="text-sm font-medium text-gray-700">征信报告</span>
+                        <span className="text-xs text-gray-500">• Markdown格式</span>
+                      </div>
+                    </div>
+                    <div className="p-6">
+                      <MarkdownPreview
+                        source={reportContent || '# 报告内容为空\n\n此报告没有可预览的内容。'}
+                        style={{
+                          backgroundColor: 'transparent',
+                          color: '#374151',
+                          lineHeight: '1.7',
+                          fontSize: '14px'
+                        }}
+                        wrapperElement={{
+                          'data-color-mode': 'light'
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
+                )
               ) : (
                 <div className="text-center py-12">
                   <div className="text-gray-400 mb-4">
