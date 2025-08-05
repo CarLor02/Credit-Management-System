@@ -5,7 +5,44 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# 根据环境加载对应的.env文件
+def load_environment_config():
+    """根据FLASK_ENV环境变量加载对应的配置文件"""
+    flask_env = os.environ.get('FLASK_ENV', 'development')
+
+    # 获取当前文件所在目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    if flask_env == 'production':
+        # 生产环境：加载.env.production
+        env_file = os.path.join(current_dir, '.env.production')
+        if os.path.exists(env_file):
+            load_dotenv(env_file)
+            print(f"✓ 已加载生产环境配置文件: {env_file}")
+        else:
+            print(f"⚠ 生产环境配置文件不存在: {env_file}")
+            # 尝试加载默认的.env文件
+            default_env = os.path.join(current_dir, '.env')
+            if os.path.exists(default_env):
+                load_dotenv(default_env)
+                print(f"✓ 已加载默认配置文件: {default_env}")
+    else:
+        # 开发环境：加载.env或.env.local
+        env_files = [
+            os.path.join(current_dir, '.env.local'),
+            os.path.join(current_dir, '.env')
+        ]
+
+        for env_file in env_files:
+            if os.path.exists(env_file):
+                load_dotenv(env_file)
+                print(f"✓ 已加载开发环境配置文件: {env_file}")
+                break
+        else:
+            print("⚠ 未找到环境配置文件，使用默认配置")
+
+# 加载环境配置
+load_environment_config()
 
 class Config:
     """基础配置"""
