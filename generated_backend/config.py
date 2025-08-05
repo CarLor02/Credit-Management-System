@@ -39,9 +39,6 @@ class Config:
     REPORT_API_URL = os.environ.get('REPORT_API_URL', 'http://172.16.18.157:18080/v1/workflows/run')
     REPORT_API_KEY = os.environ.get('REPORT_API_KEY', 'app-TPm1UnL2LeXaMnZI4c03frYN')
 
-    # Mock API配置
-    USE_MOCK_API = os.environ.get('USE_MOCK_API', 'True').lower() == 'true'
-
     # 文档处理服务API配置
     DOCUMENT_PROCESS_API_URL = os.environ.get('DOCUMENT_PROCESS_API_URL', 'http://localhost:7860/api/process')
 
