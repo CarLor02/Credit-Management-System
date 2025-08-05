@@ -187,9 +187,14 @@ def register_document_routes(app):
                 return jsonify({'success': False, 'error': '需要认证'}), 401
 
             token = auth_header.split(' ')[1]
-            current_user = verify_token(token)
-            if not current_user:
+            user_id = verify_token(token)
+            if not user_id:
                 return jsonify({'success': False, 'error': '认证失败'}), 401
+
+            # 获取用户对象
+            current_user = User.query.get(user_id)
+            if not current_user or not current_user.is_active:
+                return jsonify({'success': False, 'error': '用户不存在或已禁用'}), 401
 
             # 获取其他参数
             project_id = request.form.get('project_id')
