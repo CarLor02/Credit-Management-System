@@ -2,6 +2,10 @@
 
 # 征信管理系统一键部署脚本
 # 功能：拉取git仓库，构建Docker镜像，启动前后端服务
+#
+# 使用方法:
+#   ./deploy.sh           # 正常部署（包含代码拉取）
+#   ./deploy.sh --skip-git # 跳过代码拉取，直接部署
 
 set -e  # 遇到错误立即退出
 
@@ -17,6 +21,27 @@ PROJECT_NAME="credit-management-system"
 FRONTEND_PORT=3000
 BACKEND_PORT=5001
 DEPLOY_DIR="$(pwd)"
+SKIP_GIT=false
+
+# 解析命令行参数
+for arg in "$@"; do
+    case $arg in
+        --skip-git)
+            SKIP_GIT=true
+            shift
+            ;;
+        -h|--help)
+            echo "使用方法:"
+            echo "  $0           # 正常部署（包含代码拉取）"
+            echo "  $0 --skip-git # 跳过代码拉取，直接部署"
+            echo "  $0 --help     # 显示帮助信息"
+            exit 0
+            ;;
+        *)
+            # 未知参数
+            ;;
+    esac
+done
 
 # 打印带颜色的消息
 print_message() {
@@ -83,6 +108,12 @@ cleanup_containers() {
 
 # 拉取或更新代码
 update_code() {
+    if [ "$SKIP_GIT" = true ]; then
+        print_title "跳过代码更新"
+        print_message $YELLOW "已跳过代码拉取，使用当前代码进行部署"
+        return
+    fi
+
     print_title "更新代码"
 
     if [ -d ".git" ]; then
@@ -208,7 +239,11 @@ show_result() {
 
 # 主函数
 main() {
-    print_title "征信管理系统一键部署"
+    if [ "$SKIP_GIT" = true ]; then
+        print_title "征信管理系统一键部署 (跳过Git)"
+    else
+        print_title "征信管理系统一键部署"
+    fi
     
     # 检查必要的命令
     print_message $YELLOW "检查系统环境..."
