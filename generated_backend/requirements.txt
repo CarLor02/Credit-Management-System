@@ -17,6 +17,7 @@ gunicorn==21.2.0
 # 文档处理
 python-docx==1.1.0
 mammoth==1.7.1
+gunicorn==21.2.0
 docx2txt==0.8
 
 # 数据处理
