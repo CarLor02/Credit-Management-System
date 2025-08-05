@@ -226,30 +226,43 @@ def register_document_routes(app):
                     project.assigned_to != current_user.id):
                     return jsonify({'error': '您没有权限向此项目上传文档'}), 403
             
+            # 先获取文件类型（使用原始文件名）
+            original_filename = file.filename
+            file_type = get_file_type(original_filename)
+
             # 生成安全的文件名
-            filename = secure_filename(file.filename)
+            filename = secure_filename(original_filename)
+
+            # 如果secure_filename过滤掉了所有字符（比如中文文件名），使用原始扩展名
+            if not filename or '.' not in filename:
+                # 提取原始扩展名
+                if '.' in original_filename:
+                    ext = original_filename.rsplit('.', 1)[1]
+                    filename = f"document.{ext}"
+                else:
+                    filename = "document"
+
             unique_filename = f"{uuid.uuid4().hex}_{filename}"
-            
+
             # 确保上传目录存在 - 使用项目的folder_uuid创建子目录
             upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
             project_folder = os.path.join(upload_folder, project.folder_uuid)
-            
+
             # 创建项目文件夹（如果不存在）
             if not os.path.exists(project_folder):
                 os.makedirs(project_folder)
-            
+
             # 保存文件到项目特定的文件夹
             file_path = os.path.join(project_folder, unique_filename)
             file.save(file_path)
-            
+
             # 获取文件信息
             file_size = os.path.getsize(file_path)
-            file_type = get_file_type(filename)
             
             # 创建文档记录 - 初始状态为UPLOADING
             document = Document(
                 name=document_name,
-                original_filename=filename,
+                original_filename=original_filename,  # 使用原始文件名
                 file_path=file_path,
                 file_size=file_size,
                 file_type=file_type,

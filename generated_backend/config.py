@@ -42,6 +42,9 @@ class Config:
     # Mock API配置
     USE_MOCK_API = os.environ.get('USE_MOCK_API', 'True').lower() == 'true'
 
+    # 文档处理服务API配置
+    DOCUMENT_PROCESS_API_URL = os.environ.get('DOCUMENT_PROCESS_API_URL', 'http://localhost:7860/api/process')
+
 class DevelopmentConfig(Config):
     """开发环境配置"""
     DEBUG = True
