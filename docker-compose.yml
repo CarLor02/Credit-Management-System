@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: credit-management-backend
+    ports:
+      - "5001:5001"
+    volumes:
+      # 持久化数据库文件
+      - ./generated_backend/instance:/app/generated_backend/instance
+      # 持久化上传文件
+      - ./uploads:/app/uploads
+      # 持久化OCR输出
+      - ./OCR/output:/app/OCR/output
+    environment:
+      - FLASK_ENV=production
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - credit-management-network
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: credit-management-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:5001
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - credit-management-network
+
+networks:
+  credit-management-network:
+    driver: bridge
+
+volumes:
+  # 可选：如果需要命名卷来持久化数据
+  backend_data:
+    driver: local
+  uploads_data:
+    driver: local
