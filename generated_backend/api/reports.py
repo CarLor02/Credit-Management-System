@@ -670,14 +670,31 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
             timeout=1200  # 10分钟超时
         )
 
-        response.raise_for_status()
+        # 检查HTTP状态码
+        if response.status_code != 200:
+            error_msg = f"API请求失败，状态码: {response.status_code}"
+            try:
+                # 尝试读取错误响应
+                error_response = response.text
+                current_app.logger.error(f"API错误响应: {error_response}")
+
+                # 检查是否是token超限错误
+                if "token count exceed" in error_response.lower() or "token" in error_response.lower():
+                    error_msg = "请求的内容过长，超出了API的token限制。请尝试减少输入内容或分批处理。"
+                elif "quota" in error_response.lower():
+                    error_msg = "API配额已用完，请稍后重试或联系管理员。"
+                else:
+                    error_msg = f"API请求失败: {error_response}"
+            except:
+                pass
+            raise Exception(error_msg)
 
         # 使用解析方法处理流式响应，传递项目房间ID用于WebSocket广播
         workflow_run_id, full_content, metadata, events = parse_dify_streaming_response(response, company_name, project_id, project_room_id)
 
         current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}")
         current_app.logger.info(f"提取到的事件数量: {len(events)}")
-        current_app.logger.info(f"内容长度: {len(full_content)}")
+        current_app.logger.info(f"内容长度: {len(full_content) if full_content is not None else 0}")
 
         # 存储流式数据到全局变量，供前端查询
         if workflow_run_id:
@@ -692,14 +709,26 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
         return full_content, workflow_run_id, events
 
     except requests.exceptions.Timeout:
-        raise Exception("报告生成请求超时")
+        raise Exception("报告生成请求超时，请稍后重试")
     except requests.exceptions.ConnectionError:
-        raise Exception("无法连接到报告生成服务")
+        raise Exception("无法连接到报告生成服务，请检查网络连接")
     except requests.exceptions.RequestException as e:
-        raise Exception(f"报告生成请求失败: {str(e)}")
+        error_msg = str(e)
+        # 检查是否是token相关错误
+        if "token count exceed" in error_msg.lower() or "token" in error_msg.lower():
+            error_msg = "请求的内容过长，超出了API的token限制。请尝试减少输入内容或分批处理。"
+        elif "quota" in error_msg.lower():
+            error_msg = "API配额已用完，请稍后重试或联系管理员。"
+        raise Exception(f"报告生成请求失败: {error_msg}")
     except Exception as e:
-        current_app.logger.error(f"调用流式报告生成API失败: {str(e)}")
-        raise Exception(f"调用流式报告生成API失败: {str(e)}")
+        error_msg = str(e)
+        current_app.logger.error(f"调用流式报告生成API失败: {error_msg}")
+        # 检查是否是token相关错误
+        if "token count exceed" in error_msg.lower() or "token" in error_msg.lower():
+            error_msg = "请求的内容过长，超出了API的token限制。请尝试减少输入内容或分批处理。"
+        elif "quota" in error_msg.lower():
+            error_msg = "API配额已用完，请稍后重试或联系管理员。"
+        raise Exception(f"调用流式报告生成API失败: {error_msg}")
 
 
 def call_report_generation_api(company_name, knowledge_name):
@@ -734,7 +763,25 @@ def call_report_generation_api(company_name, knowledge_name):
             timeout=1200  # 10分钟超时
         )
 
-        response.raise_for_status()
+        # 检查HTTP状态码
+        if response.status_code != 200:
+            error_msg = f"API请求失败，状态码: {response.status_code}"
+            try:
+                # 尝试读取错误响应
+                error_response = response.text
+                current_app.logger.error(f"API错误响应: {error_response}")
+
+                # 检查是否是token超限错误
+                if "token count exceed" in error_response.lower() or "token" in error_response.lower():
+                    error_msg = "请求的内容过长，超出了API的token限制。请尝试减少输入内容或分批处理。"
+                elif "quota" in error_response.lower():
+                    error_msg = "API配额已用完，请稍后重试或联系管理员。"
+                else:
+                    error_msg = f"API请求失败: {error_response}"
+            except:
+                pass
+            raise Exception(error_msg)
+
         report_response = response.json()
 
         status = report_response["data"]["status"]
@@ -743,6 +790,13 @@ def call_report_generation_api(company_name, knowledge_name):
         if status != "succeeded":
             error_text = report_response["data"].get("error", "未知错误")
             current_app.logger.error(f"报告API错误响应: {error_text}")
+
+            # 检查是否是token相关错误
+            if "token count exceed" in error_text.lower() or "token" in error_text.lower():
+                error_text = "请求的内容过长，超出了API的token限制。请尝试减少输入内容或分批处理。"
+            elif "quota" in error_text.lower():
+                error_text = "API配额已用完，请稍后重试或联系管理员。"
+
             raise Exception(f'生成报告失败，状态: {status}, 错误: {error_text}')
 
         full_content = report_response["data"]["outputs"]["text"]
@@ -751,14 +805,26 @@ def call_report_generation_api(company_name, knowledge_name):
         return full_content, workflow_run_id
 
     except requests.exceptions.Timeout:
-        raise Exception("报告生成请求超时")
+        raise Exception("报告生成请求超时，请稍后重试")
     except requests.exceptions.ConnectionError:
-        raise Exception("无法连接到报告生成服务")
+        raise Exception("无法连接到报告生成服务，请检查网络连接")
     except requests.exceptions.RequestException as e:
-        raise Exception(f"报告生成请求失败: {str(e)}")
+        error_msg = str(e)
+        # 检查是否是token相关错误
+        if "token count exceed" in error_msg.lower() or "token" in error_msg.lower():
+            error_msg = "请求的内容过长，超出了API的token限制。请尝试减少输入内容或分批处理。"
+        elif "quota" in error_msg.lower():
+            error_msg = "API配额已用完，请稍后重试或联系管理员。"
+        raise Exception(f"报告生成请求失败: {error_msg}")
     except Exception as e:
-        current_app.logger.error(f"调用报告生成API失败: {str(e)}")
-        raise Exception(f"调用报告生成API失败: {str(e)}")
+        error_msg = str(e)
+        current_app.logger.error(f"调用报告生成API失败: {error_msg}")
+        # 检查是否是token相关错误
+        if "token count exceed" in error_msg.lower() or "token" in error_msg.lower():
+            error_msg = "请求的内容过长，超出了API的token限制。请尝试减少输入内容或分批处理。"
+        elif "quota" in error_msg.lower():
+            error_msg = "API配额已用完，请稍后重试或联系管理员。"
+        raise Exception(f"调用报告生成API失败: {error_msg}")
 
 
 
@@ -877,8 +943,9 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                 if 'event' in data:
                     event_type = data['event']
                     if event_type == "workflow_finished":
-                        full_content = content
-                        print(f"已更新内容: {content[:50]}..." if len(content) > 50 else f"已更新内容: {content}")
+                        # 确保content不为None，如果为None则使用空字符串
+                        full_content = content if content is not None else ""
+                        print(f"已更新内容: {content[:50]}..." if content and len(content) > 50 else f"已更新内容: {content}")
 
                     events.append(event_type)
                     sequence_number += 1

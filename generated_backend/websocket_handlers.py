@@ -98,48 +98,54 @@ def broadcast_workflow_event(socketio, workflow_run_id, event_type, event_data=N
 def broadcast_workflow_content(socketio, workflow_run_id, content_chunk):
     """
     向指定工作流房间广播内容块
-    
+
     Args:
         socketio: SocketIO实例
         workflow_run_id: 工作流运行ID
         content_chunk: 内容块
     """
     try:
+        # 确保content_chunk不为None
+        safe_content = content_chunk if content_chunk is not None else ""
+
         message = {
             'workflow_run_id': workflow_run_id,
-            'content_chunk': content_chunk,
+            'content_chunk': safe_content,
             'timestamp': time.time()
         }
-        
+
         # 向房间内的所有客户端广播
         socketio.emit('workflow_content', message, room=workflow_run_id)
-        
-        current_app.logger.info(f"广播工作流内容到房间 {workflow_run_id}: {content_chunk[:50]}...")
-        
+
+        current_app.logger.info(f"广播工作流内容到房间 {workflow_run_id}: {safe_content[:50]}...")
+
     except Exception as e:
         current_app.logger.error(f"广播工作流内容失败: {e}")
 
 def broadcast_workflow_complete(socketio, workflow_run_id, final_content):
     """
     向指定工作流房间广播完成事件
-    
+
     Args:
         socketio: SocketIO实例
         workflow_run_id: 工作流运行ID
         final_content: 最终内容
     """
     try:
+        # 确保final_content不为None
+        safe_content = final_content if final_content is not None else ""
+
         message = {
             'workflow_run_id': workflow_run_id,
-            'final_content': final_content,
+            'final_content': safe_content,
             'timestamp': time.time()
         }
-        
+
         # 向房间内的所有客户端广播
         socketio.emit('workflow_complete', message, room=workflow_run_id)
-        
+
         current_app.logger.info(f"广播工作流完成事件到房间 {workflow_run_id}")
-        
+
     except Exception as e:
         current_app.logger.error(f"广播工作流完成事件失败: {e}")
 
