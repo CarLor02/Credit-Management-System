@@ -153,8 +153,8 @@ start_backend() {
     docker run -d \
         --name ${PROJECT_NAME}-backend \
         -p ${BACKEND_PORT}:5001 \
-        --memory=2g \
-        --memory-swap=2g \
+        --memory=8g \
+        --memory-swap=8g \
         --oom-kill-disable=false \
         -v $(pwd)/generated_backend/instance:/app/generated_backend/instance \
         -v $(pwd)/uploads:/app/uploads \
