@@ -148,17 +148,29 @@ build_frontend() {
 # 启动后端服务
 start_backend() {
     print_title "启动后端服务"
-    
+
     print_message $YELLOW "正在启动后端容器..."
     docker run -d \
         --name ${PROJECT_NAME}-backend \
         -p ${BACKEND_PORT}:5001 \
+        --memory=2g \
+        --memory-swap=2g \
+        --oom-kill-disable=false \
         -v $(pwd)/generated_backend/instance:/app/generated_backend/instance \
         -v $(pwd)/uploads:/app/uploads \
+        -e GUNICORN_WORKERS=2 \
+        -e GUNICORN_WORKER_CLASS=sync \
+        -e GUNICORN_WORKER_CONNECTIONS=1000 \
+        -e GUNICORN_MAX_REQUESTS=1000 \
+        -e GUNICORN_MAX_REQUESTS_JITTER=100 \
+        -e GUNICORN_TIMEOUT=60 \
+        -e GUNICORN_KEEPALIVE=5 \
         ${PROJECT_NAME}-backend:latest
-    
+
     print_message $GREEN "✓ 后端服务已启动"
     print_message $GREEN "  - 后端服务地址: http://localhost:${BACKEND_PORT}"
+    print_message $YELLOW "  - 内存限制: 2GB"
+    print_message $YELLOW "  - Worker数量: 2个"
 }
 
 # 启动前端服务
