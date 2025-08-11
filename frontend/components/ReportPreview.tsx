@@ -1,13 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import dynamic from 'next/dynamic';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
 import PdfViewer from './PDFViewer';
-
-// 动态导入 Markdown 预览组件，避免 SSR 错误
-const MarkdownPreview = dynamic(() => import('@uiw/react-markdown-preview'), { ssr: false });
 
 interface StreamingEvent {
   timestamp: string;
@@ -33,13 +29,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   onReportDeleted
 }) => {
   const [reportContent, setReportContent] = useState<string>('');
+  const [htmlContent, setHtmlContent] = useState<string>('');
   const [streamingEvents, setStreamingEvents] = useState<StreamingEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [websocketStatus, setWebsocketStatus] = useState<string>('未连接');
-  const [isPdfPreview, setIsPdfPreview] = useState(false);
+  const [isPdfPreview, setIsPdfPreview] = useState(false); // false=HTML预览, true=PDF预览
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [htmlLoading, setHtmlLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
@@ -71,6 +69,35 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       setLoading(false);
     }
   };
+
+  // 获取HTML格式的报告内容
+  const fetchHtmlContent = async () => {
+    if (!projectId) return;
+
+    setHtmlLoading(true);
+
+    try {
+      const response = await apiClient.get<{
+        html_content: string;
+        company_name: string;
+        file_path: string;
+      }>(`/projects/${projectId}/report/html`);
+
+      if (response.success && response.data) {
+        setHtmlContent(response.data.html_content);
+      } else {
+        console.error('获取HTML内容失败:', response.error);
+      }
+    } catch (err) {
+      console.error('获取HTML内容失败:', err);
+    } finally {
+      setHtmlLoading(false);
+    }
+  };
+
+
+
+
 
   // WebSocket连接和流式输出 - 只在弹窗打开时连接
   useEffect(() => {
@@ -189,9 +216,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (data.final_content) {
         console.log('✅ 使用完成事件中的最终内容');
         setReportContent(data.final_content);
+        // 同时获取HTML内容
+        fetchHtmlContent();
       } else {
         console.log('✅ 从文件加载最终报告内容');
         fetchReportContent();
+        fetchHtmlContent();
       }
     };
 
@@ -227,6 +257,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   useEffect(() => {
     if (isOpen) {
       fetchReportContent();
+      fetchHtmlContent(); // 同时获取HTML内容
     }
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -239,24 +270,57 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     };
   }, [pdfUrl]);
 
-  // 下载报告（Markdown格式）
-  const handleDownloadReport = () => {
-    if (!reportContent || loading) return;
+  // 下载报告（HTML格式）
+  const handleDownloadReport = async () => {
+    if (!projectId || loading) return;
 
     try {
-      // 直接使用当前显示的报告内容创建下载，保存为Markdown格式
-      const blob = new Blob([reportContent], { type: 'text/markdown;charset=utf-8' });
+      setLoading(true);
+
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        alert('请先登录');
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api'}/projects/${projectId}/report/download-html`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      // 获取文件名
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${companyName}_征信报告.html`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // 下载文件
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${companyName}_征信报告.md`;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+
     } catch (error) {
-      console.error('下载报告失败:', error);
-      alert('下载报告失败，请稍后重试');
+      console.error('下载HTML报告失败:', error);
+      alert(error instanceof Error ? error.message : '下载HTML报告失败，请稍后重试');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -380,8 +444,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   };
 
-  // 切换回Markdown预览
-  const handleSwitchToMarkdown = () => {
+  // 切换到HTML预览
+  const handleSwitchToHtml = () => {
     setIsPdfPreview(false);
     if (pdfUrl) {
       window.URL.revokeObjectURL(pdfUrl);
@@ -420,8 +484,16 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             {/* 预览切换和下载按钮 */}
             {reportContent && (
               <>
-                {/* PDF预览切换按钮 */}
-                {!isPdfPreview ? (
+                {/* 预览模式切换按钮 */}
+                {isPdfPreview ? (
+                  <button
+                    onClick={handleSwitchToHtml}
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-600 text-white hover:bg-gray-700"
+                  >
+                    <i className="ri-html5-line mr-2"></i>
+                    返回HTML预览
+                  </button>
+                ) : (
                   <button
                     onClick={handleConvertToPdfPreview}
                     disabled={pdfLoading}
@@ -433,14 +505,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                   >
                     <i className="ri-file-pdf-line mr-2"></i>
                     {pdfLoading ? '转换中...' : '转换PDF预览'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSwitchToMarkdown}
-                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-600 text-white hover:bg-gray-700"
-                  >
-                    <i className="ri-markdown-line mr-2"></i>
-                    返回MD预览
                   </button>
                 )}
 
@@ -466,7 +530,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                   }`}
                 >
                   <i className="ri-download-line mr-2"></i>
-                  下载MD
+                  下载HTML
                 </button>
               </>
             )}
@@ -590,28 +654,45 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                     </div>
                   </div>
                 ) : (
-                  // Markdown预览模式
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-4 py-2 border-b border-gray-200">
+                  // HTML预览模式（默认）
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
+                    <div className="bg-gradient-to-r from-gray-50 to-green-50 px-4 py-2 border-b border-gray-200">
                       <div className="flex items-center space-x-2">
-                        <i className="ri-file-text-line text-blue-600"></i>
+                        <i className="ri-html5-line text-green-600"></i>
                         <span className="text-sm font-medium text-gray-700">征信报告</span>
-                        <span className="text-xs text-gray-500">• Markdown格式</span>
+                        <span className="text-xs text-gray-500">• HTML格式</span>
                       </div>
                     </div>
-                    <div className="p-6">
-                      <MarkdownPreview
-                        source={reportContent || '# 报告内容为空\n\n此报告没有可预览的内容。'}
-                        style={{
-                          backgroundColor: 'transparent',
-                          color: '#374151',
-                          lineHeight: '1.7',
-                          fontSize: '14px'
-                        }}
-                        wrapperElement={{
-                          'data-color-mode': 'light'
-                        }}
-                      />
+                    <div
+                      className="overflow-y-auto px-6 h-full"
+                      style={{
+                        height: 'calc(100% - 50px)',
+                        width: '100%'
+                      }}
+                    >
+                      {htmlLoading ? (
+                        <div className="text-center py-8">
+                          <div className="animate-spin w-6 h-6 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                          <p className="text-gray-600">正在转换HTML格式...</p>
+                        </div>
+                      ) : htmlContent ? (
+                        <iframe
+                          srcDoc={htmlContent}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            border: 'none',
+                            backgroundColor: 'white'
+                          }}
+                          title="征信报告HTML预览"
+                          sandbox="allow-same-origin"
+                        />
+                      ) : (
+                        <div className="text-center py-8 text-gray-500">
+                          <i className="ri-html5-line text-4xl mb-4"></i>
+                          <p>HTML内容加载失败，请刷新页面重试</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )

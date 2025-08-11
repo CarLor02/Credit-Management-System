@@ -13,6 +13,9 @@ from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 import tempfile
 from pathlib import Path
+import base64
+import datetime
+import re
 try:
     from .pdf_config import (
         PAGE_CONFIG, FONT_CONFIG, COLOR_THEME, HEADING_STYLES,
@@ -83,8 +86,6 @@ class MarkdownToPDFConverter:
 
         h1 {{
             font-size: {HEADING_STYLES['h1']['font_size']};
-            border-bottom: {HEADING_STYLES['h1']['border_bottom']};
-            padding-bottom: 0.3em;
         }}
 
         h2 {{
@@ -183,31 +184,163 @@ class MarkdownToPDFConverter:
         }}
         """
     
-    def convert_markdown_to_html(self, markdown_content):
+    def convert_markdown_to_html(self, markdown_content, file_path=None):
         """将Markdown内容转换为HTML"""
         md = markdown.Markdown(
             extensions=MARKDOWN_EXTENSIONS,
             extension_configs=MARKDOWN_EXTENSION_CONFIGS
         )
-        
+
         html_content = md.convert(markdown_content)
-        
-        # 创建完整的HTML文档
+
+        # 获取与PDF相同的CSS样式
+        css_styles = self.get_css_styles()
+
+        # 创建完整的HTML文档，包含与PDF相同的样式
         full_html = f"""
         <!DOCTYPE html>
         <html lang="zh-CN">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Markdown to PDF</title>
+            <title>征信报告</title>
+            <style>
+                {css_styles}
+                /* 针对HTML预览的额外样式调整 */
+                body {{
+                    max-width: 800px;
+                    margin: 20px auto;
+                    padding: 20px;
+                    background-color: white;
+                }}
+                @page {{
+                    /* 移除打印相关的页面设置 */
+                }}
+                /* 报告头部样式 */
+                .report-header {{
+                    position: relative;
+                    text-align: center;
+                    margin-bottom: 40px;
+                    padding-top: 60px;
+                }}
+                .report-logo {{
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    height: 40px;
+                    width: auto;
+                }}
+                .report-title {{
+                    color: #000000;
+                    font-size: 32px;
+                    font-weight: bold;
+                    margin: 0;
+                    padding: 0;
+                    margin-top: 20px;
+                }}
+                .report-time {{
+                    color: #666666;
+                    font-size: 14px;
+                    margin-top: 8px;
+                    font-weight: normal;
+                }}
+            </style>
         </head>
         <body>
+            <div class="report-header">
+                <img src="data:image/png;base64,{self.get_logo_base64()}" alt="Logo" class="report-logo">
+                <h1 class="report-title">征信报告</h1>
+                <div class="report-time">{self.extract_report_time(markdown_content, file_path)}</div>
+            </div>
             {html_content}
         </body>
         </html>
         """
-        
+
         return full_html
+
+    def get_logo_base64(self):
+        """获取logo的base64编码"""
+        try:
+            # 查找logo文件的路径
+            logo_paths = [
+                'logo.jpg',
+                'frontend/logo.jpg',
+                '../frontend/logo.jpg',
+                os.path.join(os.path.dirname(__file__), '../../frontend/logo.jpg'),
+                os.path.join(os.path.dirname(__file__), '../../../frontend/logo.jpg')
+            ]
+
+            for logo_path in logo_paths:
+                if os.path.exists(logo_path):
+                    with open(logo_path, 'rb') as f:
+                        logo_data = f.read()
+                        return base64.b64encode(logo_data).decode('utf-8')
+
+            # 如果找不到logo文件，返回空字符串
+            return ""
+        except Exception as e:
+            print(f"获取logo失败: {e}")
+            return ""
+
+    def extract_report_time(self, markdown_content, file_path=None):
+        """从Markdown内容中提取报告生成时间，优先使用文件修改时间"""
+        import re
+
+        # 首先尝试从文件修改时间获取
+        if file_path and os.path.exists(file_path):
+            try:
+                # 获取文件的最后修改时间
+                mtime = os.path.getmtime(file_path)
+                file_time = datetime.datetime.fromtimestamp(mtime)
+                return f"生成时间：{file_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            except Exception as e:
+                print(f"获取文件修改时间失败: {e}")
+
+        # 如果文件时间获取失败，尝试从内容中提取
+        time_patterns = [
+            r'生成时间[：:]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})',
+            r'报告时间[：:]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})',
+            r'创建时间[：:]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})',
+            r'时间[：:]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})',
+            r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})',  # 直接匹配时间格式
+            r'生成时间[：:]\s*(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})',
+            r'(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})',  # 斜杠分隔的日期
+        ]
+
+        for pattern in time_patterns:
+            match = re.search(pattern, markdown_content)
+            if match:
+                return f"生成时间：{match.group(1)}"
+
+        # 如果都没有找到，返回当前时间作为最后的回退
+        return f"生成时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+    def get_logo_base64(self):
+        """获取logo的base64编码"""
+        try:
+            # 查找logo文件的路径
+            logo_paths = [
+                'logo.jpg',
+                'frontend/logo.jpg',
+                '../frontend/logo.jpg',
+                os.path.join(os.path.dirname(__file__), '../../frontend/logo.jpg'),
+                os.path.join(os.path.dirname(__file__), '../../../frontend/logo.jpg')
+            ]
+
+            for logo_path in logo_paths:
+                if os.path.exists(logo_path):
+                    with open(logo_path, 'rb') as f:
+                        logo_data = f.read()
+                        return base64.b64encode(logo_data).decode('utf-8')
+
+            # 如果找不到logo文件，返回空字符串
+            return ""
+        except Exception as e:
+            print(f"获取logo失败: {e}")
+            return ""
+
+
     
     def convert_to_pdf(self, input_file, output_file=None):
         """将Markdown文件转换为PDF"""
@@ -217,7 +350,7 @@ class MarkdownToPDFConverter:
                 markdown_content = f.read()
             
             # 转换为HTML
-            html_content = self.convert_markdown_to_html(markdown_content)
+            html_content = self.convert_markdown_to_html(markdown_content, input_file)
             
             # 设置输出文件名
             if output_file is None:

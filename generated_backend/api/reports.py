@@ -21,7 +21,11 @@ from db_models import Project, AnalysisReport, WorkflowEvent, ReportType, Report
 
 # 导入PDF转换服务
 from services.pdf_converter import convert_report_to_pdf, is_pdf_conversion_available
+from services.md_to_pdf_converter import MarkdownToPDFConverter
 from database import db
+
+# 导入认证装饰器
+from api.auth import token_required
 
 # 导入配置（如果需要的话）
 # from config import Config
@@ -583,7 +587,7 @@ def register_report_routes(app):
 
             # 转换为PDF
             current_app.logger.info(f"开始将项目 {project_id} 的报告转换为PDF")
-            success, message, pdf_path = convert_report_to_pdf(md_content, project.name)
+            success, message, pdf_path = convert_report_to_pdf(md_content, project.name, project.report_path)
 
             if not success or not pdf_path:
                 current_app.logger.error(f"PDF转换失败: {message}")
@@ -645,6 +649,165 @@ def register_report_routes(app):
             return jsonify({
                 "success": False,
                 "error": f"下载PDF报告失败: {str(e)}"
+            }), 500
+
+    @app.route('/api/projects/<int:project_id>/report/html', methods=['GET'])
+    @token_required
+    def get_project_report_html(project_id):
+        """
+        获取项目报告的HTML版本
+        """
+        try:
+            project = Project.query.get(project_id)
+            if not project:
+                return jsonify({
+                    "success": False,
+                    "error": "项目不存在"
+                }), 404
+
+            # 检查报告是否存在
+            if not project.report_path or project.report_path.strip() == "":
+                return jsonify({
+                    "success": False,
+                    "error": "该项目尚未生成报告"
+                }), 404
+
+            # 检查报告文件是否存在
+            if not os.path.exists(project.report_path):
+                return jsonify({
+                    "success": False,
+                    "error": "报告文件不存在"
+                }), 404
+
+            # 读取Markdown报告内容
+            try:
+                with open(project.report_path, 'r', encoding='utf-8') as f:
+                    md_content = f.read()
+
+                if not md_content or md_content.strip() == "":
+                    return jsonify({
+                        "success": False,
+                        "error": "报告内容为空"
+                    }), 404
+
+            except Exception as read_error:
+                current_app.logger.error(f"读取报告文件失败: {read_error}")
+                return jsonify({
+                    "success": False,
+                    "error": "读取报告文件失败"
+                }), 500
+
+            # 转换为HTML
+            try:
+                converter = MarkdownToPDFConverter()
+                html_content = converter.convert_markdown_to_html(md_content, project.report_path)
+
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "html_content": html_content,
+                        "company_name": project.name,
+                        "file_path": project.report_path
+                    }
+                })
+
+            except Exception as convert_error:
+                current_app.logger.error(f"Markdown转HTML失败: {convert_error}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Markdown转HTML失败: {str(convert_error)}"
+                }), 500
+
+        except Exception as e:
+            current_app.logger.error(f"获取HTML报告失败: {e}")
+            return jsonify({
+                "success": False,
+                "error": f"获取HTML报告失败: {str(e)}"
+            }), 500
+
+    @app.route('/api/projects/<int:project_id>/report/download-html', methods=['GET'])
+    @token_required
+    def download_project_report_html(project_id):
+        """
+        下载项目报告的HTML版本
+        """
+        try:
+            project = Project.query.get(project_id)
+            if not project:
+                return jsonify({
+                    "success": False,
+                    "error": "项目不存在"
+                }), 404
+
+            # 检查报告是否存在
+            if not project.report_path or project.report_path.strip() == "":
+                return jsonify({
+                    "success": False,
+                    "error": "该项目尚未生成报告"
+                }), 404
+
+            # 检查报告文件是否存在
+            if not os.path.exists(project.report_path):
+                return jsonify({
+                    "success": False,
+                    "error": "报告文件不存在"
+                }), 404
+
+            # 读取Markdown报告内容
+            try:
+                with open(project.report_path, 'r', encoding='utf-8') as f:
+                    md_content = f.read()
+
+                if not md_content or md_content.strip() == "":
+                    return jsonify({
+                        "success": False,
+                        "error": "报告内容为空"
+                    }), 404
+
+            except Exception as read_error:
+                current_app.logger.error(f"读取报告文件失败: {read_error}")
+                return jsonify({
+                    "success": False,
+                    "error": "读取报告文件失败"
+                }), 500
+
+            # 转换为HTML
+            try:
+                converter = MarkdownToPDFConverter()
+                html_content = converter.convert_markdown_to_html(md_content, project.report_path)
+
+                # 创建HTML文件的响应
+                from flask import Response
+
+                # 设置文件名，使用URL编码处理中文
+                import urllib.parse
+                filename = f"{project.name}_征信报告.html"
+                encoded_filename = urllib.parse.quote(filename.encode('utf-8'))
+
+                response = Response(
+                    html_content,
+                    mimetype='text/html',
+                    headers={
+                        'Content-Disposition': f'attachment; filename*=UTF-8\'\'{encoded_filename}',
+                        'Content-Type': 'text/html; charset=utf-8'
+                    }
+                )
+
+                current_app.logger.info(f"HTML报告下载成功: 项目 {project_id}")
+                return response
+
+            except Exception as convert_error:
+                current_app.logger.error(f"Markdown转HTML失败: {convert_error}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Markdown转HTML失败: {str(convert_error)}"
+                }), 500
+
+        except Exception as e:
+            current_app.logger.error(f"下载HTML报告失败: {e}")
+            return jsonify({
+                "success": False,
+                "error": f"下载HTML报告失败: {str(e)}"
             }), 500
 
 

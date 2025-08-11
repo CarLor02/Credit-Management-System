@@ -6,7 +6,7 @@
 # 页面设置
 PAGE_CONFIG = {
     'size': 'A4',  # A4, A3, Letter, Legal
-    'margin': '2cm',  # 页边距
+    'margin': '1cm 2cm 2cm 2cm',  # 上边距1cm，其他边距2cm
     'orientation': 'portrait'  # portrait (竖向) 或 landscape (横向)
 }
 
@@ -44,7 +44,6 @@ COLOR_THEME = {
 HEADING_STYLES = {
     'h1': {
         'font_size': '24pt',
-        'border_bottom': '2px solid #3498db',
         'margin_top': '1.5em',
         'margin_bottom': '0.5em'
     },

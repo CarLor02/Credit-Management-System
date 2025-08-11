@@ -81,14 +81,15 @@ class PDFConverterService:
             self.logger.error(f"PDF转换异常: {e}")
             return False, f"转换异常: {str(e)}", None
     
-    def convert_md_content_to_pdf(self, md_content: str, company_name: str = "报告") -> Tuple[bool, str, Optional[str]]:
+    def convert_md_content_to_pdf(self, md_content: str, company_name: str = "报告", original_file_path: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
         """
         将Markdown内容转换为PDF
-        
+
         Args:
             md_content: Markdown内容字符串
             company_name: 公司名称，用于生成文件名
-            
+            original_file_path: 原始文件路径，用于获取正确的修改时间
+
         Returns:
             Tuple[bool, str, Optional[str]]: (成功标志, 消息, PDF文件路径)
         """
@@ -112,8 +113,11 @@ class PDFConverterService:
                 with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
                     temp_pdf_path = temp_pdf.name
                 
-                # 执行转换
-                success = self.converter.convert_to_pdf(temp_md_path, temp_pdf_path)
+                # 执行转换，如果有原始文件路径，直接使用原始文件进行转换
+                if original_file_path and os.path.exists(original_file_path):
+                    success = self.converter.convert_to_pdf(original_file_path, temp_pdf_path)
+                else:
+                    success = self.converter.convert_to_pdf(temp_md_path, temp_pdf_path)
                 
                 if success and os.path.exists(temp_pdf_path):
                     file_size = os.path.getsize(temp_pdf_path)
@@ -148,18 +152,19 @@ class PDFConverterService:
 pdf_converter_service = PDFConverterService()
 
 
-def convert_report_to_pdf(md_content: str, company_name: str = "报告") -> Tuple[bool, str, Optional[str]]:
+def convert_report_to_pdf(md_content: str, company_name: str = "报告", original_file_path: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
     """
     便捷函数：将报告内容转换为PDF
-    
+
     Args:
         md_content: Markdown报告内容
         company_name: 公司名称
-        
+        original_file_path: 原始文件路径，用于获取正确的修改时间
+
     Returns:
         Tuple[bool, str, Optional[str]]: (成功标志, 消息, PDF文件路径)
     """
-    return pdf_converter_service.convert_md_content_to_pdf(md_content, company_name)
+    return pdf_converter_service.convert_md_content_to_pdf(md_content, company_name, original_file_path)
 
 
 def is_pdf_conversion_available() -> bool:
