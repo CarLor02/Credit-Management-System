@@ -22,7 +22,6 @@ interface ReportPreviewProps {
   onClose: () => void;
   projectId: number;
   companyName: string;
-  isGenerating?: boolean;
   onReportDeleted?: () => void;
 }
 
@@ -31,7 +30,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   onClose,
   projectId,
   companyName,
-  isGenerating = false,
   onReportDeleted
 }) => {
   const [reportContent, setReportContent] = useState<string>('');
@@ -42,12 +40,13 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [isPdfPreview, setIsPdfPreview] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
 
   // 获取已生成的报告内容
   const fetchReportContent = async () => {
-    if (!projectId || isGenerating) return;
+    if (!projectId) return;
 
     setLoading(true);
     setError(null);
@@ -80,6 +79,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
 
     console.log('🔌 弹窗打开，开始WebSocket连接，项目ID:', projectId);
+
+    // 不清空之前的内容和事件，保留历史以便回看
+    console.log('🔁 保留之前的事件和内容，继续接收新的流式数据');
 
     // 按照要求的格式打印事件：时间 事件：内容，支持颜色和详细信息
     const addEvent = (eventType: string, content: string = '', eventData?: any) => {
@@ -151,13 +153,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     // 添加测试事件验证功能
     addEvent('预览窗口打开', '开始监听流式事件');
 
-    // 在生成过程中不更新右侧内容，只在完成后加载
+    // 接收流式内容但不实时显示，仅记录到事件中
     const addContent = (content: string) => {
-      // 在生成模式下，不实时更新右侧内容
-      // setReportContent(prev => prev + content);
-
-      // 右侧保持加载状态，内容将在完成后统一加载
-      console.log('📝 收到内容块，但在生成模式下不显示:', content.substring(0, 50) + '...');
+      console.log('📝 收到内容块，记录到事件中:', content.substring(0, 50) + '...');
+      // 不再实时累积到 reportContent，等待完成事件时一次性加载
     };
 
     // 定义事件处理函数，以便后续清理
@@ -165,6 +164,11 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       console.log('🎯 收到workflow_event:', data);
       const eventType = data.event_type || '工作流事件';
       addEvent(eventType, '', data);
+
+      if (eventType === 'generation_started' || eventType === 'workflow_started') {
+        setGenerating(true);
+        console.log('🚀 开始生成报告，设置generating为true');
+      }
     };
 
     const handleWorkflowContent = (data: any) => {
@@ -180,16 +184,23 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       console.log('✅ 收到workflow_complete:', data);
       addEvent('报告生成完成', '');
       setWebsocketStatus('生成完成');
-
-      // 报告完成后，加载报告文件内容
-      console.log('✅ 报告生成完成，开始加载报告文件');
-      fetchReportContent();
+      setGenerating(false);
+      // 优先使用完成事件中的最终内容，否则从文件加载最新内容
+      if (data.final_content) {
+        console.log('✅ 使用完成事件中的最终内容');
+        setReportContent(data.final_content);
+      } else {
+        console.log('✅ 从文件加载最终报告内容');
+        fetchReportContent();
+      }
     };
 
     const handleWorkflowError = (data: any) => {
       console.log('❌ 收到workflow_error:', data);
       addEvent('错误', data.error_message || '未知错误');
       setError(data.error_message);
+      setGenerating(false);
+      console.log('❌ 报告生成出错，设置generating为false');
     };
 
     // 监听WebSocket消息 - 详细展示不同类型的事件
@@ -212,12 +223,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     };
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 获取报告内容（非生成模式）
+  // 获取报告内容（每次打开时都加载）
   useEffect(() => {
-    if (isOpen && !isGenerating) {
+    if (isOpen) {
       fetchReportContent();
     }
-  }, [isOpen, isGenerating, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 清理PDF URL
   useEffect(() => {
@@ -385,7 +396,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     return null;
   }
 
-  console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen, 'isGenerating:', isGenerating);
+  console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -407,7 +418,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           </div>
           <div className="flex items-center space-x-3">
             {/* 预览切换和下载按钮 */}
-            {!isGenerating && reportContent && (
+            {reportContent && (
               <>
                 {/* PDF预览切换按钮 */}
                 {!isPdfPreview ? (
@@ -461,7 +472,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             )}
 
             {/* 删除按钮 */}
-            {!isGenerating && reportContent && (
+            {reportContent && (
               <button
                 onClick={handleDeleteReport}
                 disabled={loading}
@@ -492,12 +503,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             <div className="bg-gray-900 px-4 py-3 border-b border-gray-700">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-medium text-gray-300">实时输出</h3>
-                {isGenerating && (
-                  <div className="flex items-center">
-                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
-                    <span className="text-xs text-green-400">生成中</span>
-                  </div>
-                )}
+
               </div>
               {/* WebSocket状态 */}
               <div className="flex items-center">
@@ -517,7 +523,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             >
               {streamingEvents.length === 0 ? (
                 <div className="text-gray-500 text-center mt-8">
-                  {isGenerating ? '等待流式事件...' : '暂无事件'}
+                  暂无事件
                 </div>
               ) : (
                 streamingEvents.map((event, index) => (
@@ -553,13 +559,13 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                   </div>
                   <p className="text-red-600 font-medium">{error}</p>
                 </div>
-              ) : isGenerating ? (
+              ) : (generating || loading) ? (
                 <div className="text-center py-12">
                   <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
                   <p className="text-gray-600">正在生成报告，请稍候...</p>
                   <p className="text-gray-500 text-sm mt-2">报告完成后将自动加载内容</p>
                 </div>
-              ) : loading ? (
+              ) : (generating || loading) ? (
                 <div className="text-center py-12">
                   <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
                   <p className="text-gray-600">加载报告内容中...</p>

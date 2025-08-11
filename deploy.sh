@@ -169,7 +169,7 @@ start_backend() {
 
     print_message $GREEN "✓ 后端服务已启动"
     print_message $GREEN "  - 后端服务地址: http://localhost:${BACKEND_PORT}"
-    print_message $YELLOW "  - 内存限制: 2GB"
+    print_message $YELLOW "  - 内存限制: 8GB"
     print_message $YELLOW "  - Worker数量: 2个"
 }
 
