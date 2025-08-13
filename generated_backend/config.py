@@ -51,11 +51,25 @@ class Config:
     HOST = os.environ.get('HOST', '0.0.0.0')
     PORT = int(os.environ.get('PORT', 5001))
 
-    # 数据库配置
-    # 获取当前目录的绝对路径
-    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-    DATABASE_PATH = os.path.join(BASE_DIR, 'instance', 'credit_system.db')
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{DATABASE_PATH}'
+    # 数据库配置 - MySQL专用
+    # MySQL配置
+    MYSQL_HOST = os.environ.get('MYSQL_HOST', 'localhost')
+    MYSQL_PORT = int(os.environ.get('MYSQL_PORT', 3306))
+    MYSQL_USER = os.environ.get('MYSQL_USER', 'root')
+    MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD', 'RootPass123!')
+    MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE', 'credit_db')
+    MYSQL_CHARSET = os.environ.get('MYSQL_CHARSET', 'utf8mb4')
+    
+    # 构建MySQL连接URI
+    from urllib.parse import quote_plus
+    encoded_password = quote_plus(MYSQL_PASSWORD)
+    SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{MYSQL_USER}:{encoded_password}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset={MYSQL_CHARSET}'
+    
+    # 检查是否设置了完整的数据库URL（优先级最高）
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    if DATABASE_URL:
+        SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = os.environ.get('SQLALCHEMY_ECHO', 'False').lower() == 'true'
 
