@@ -9,7 +9,7 @@ from flask import request, jsonify, Response
 from functools import wraps
 from typing import Dict, List, Any
 
-from models import *
+from db_models import *
 from utils import validate_request, handle_async_route
 from api.projects import register_project_routes
 from api.documents import register_document_routes
