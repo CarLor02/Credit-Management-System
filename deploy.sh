@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # 征信管理系统一键部署脚本
-# 功能：拉取git仓库，构建Docker镜像，启动前后端服务
+# 功能：拉取git仓库，使用挂载方式启动前后端服务（避免重复构建镜像）
 #
 # 使用方法:
 #   ./deploy.sh           # 正常部署（包含代码拉取）
 #   ./deploy.sh --skip-git # 跳过代码拉取，直接部署
+#   ./deploy.sh --force-build # 强制重新构建基础镜像
 
 set -e  # 遇到错误立即退出
 
@@ -22,6 +23,7 @@ FRONTEND_PORT=3000
 BACKEND_PORT=5001
 DEPLOY_DIR="$(pwd)"
 SKIP_GIT=false
+FORCE_BUILD=false
 
 # 解析命令行参数
 for arg in "$@"; do
@@ -30,11 +32,16 @@ for arg in "$@"; do
             SKIP_GIT=true
             shift
             ;;
+        --force-build)
+            FORCE_BUILD=true
+            shift
+            ;;
         -h|--help)
             echo "使用方法:"
-            echo "  $0           # 正常部署（包含代码拉取）"
-            echo "  $0 --skip-git # 跳过代码拉取，直接部署"
-            echo "  $0 --help     # 显示帮助信息"
+            echo "  $0                # 正常部署（包含代码拉取）"
+            echo "  $0 --skip-git     # 跳过代码拉取，直接部署"
+            echo "  $0 --force-build  # 强制重新构建基础镜像"
+            echo "  $0 --help         # 显示帮助信息"
             exit 0
             ;;
         *)
@@ -127,36 +134,166 @@ update_code() {
     fi
 }
 
-# 构建后端镜像
-build_backend() {
-    print_title "构建后端镜像"
-    
-    print_message $YELLOW "正在构建后端Docker镜像..."
-    docker build -f Dockerfile.backend -t ${PROJECT_NAME}-backend:latest .
-    print_message $GREEN "✓ 后端镜像构建完成"
+# 检查依赖是否变化
+check_dependencies_changed() {
+    local service=$1
+    local deps_file=""
+    local hash_file=""
+
+    if [ "$service" = "backend" ]; then
+        deps_file="generated_backend/requirements.txt OCR/requirements.txt"
+        hash_file=".backend_deps_hash"
+    elif [ "$service" = "frontend" ]; then
+        deps_file="frontend/package.json frontend/pnpm-lock.yaml"
+        hash_file=".frontend_deps_hash"
+    else
+        return 1
+    fi
+
+    # 计算当前依赖文件的哈希值
+    local current_hash=""
+    for file in $deps_file; do
+        if [ -f "$file" ]; then
+            # 兼容 macOS 和 Linux 的 md5 命令
+            if command -v md5sum >/dev/null 2>&1; then
+                current_hash="${current_hash}$(md5sum "$file" 2>/dev/null || echo "")"
+            elif command -v md5 >/dev/null 2>&1; then
+                current_hash="${current_hash}$(md5 -q "$file" 2>/dev/null || echo "")"
+            else
+                current_hash="${current_hash}$(stat -c %Y "$file" 2>/dev/null || echo "")"
+            fi
+        fi
+    done
+
+    # 计算最终哈希值
+    if command -v md5sum >/dev/null 2>&1; then
+        current_hash=$(echo "$current_hash" | md5sum | cut -d' ' -f1)
+    elif command -v md5 >/dev/null 2>&1; then
+        current_hash=$(echo "$current_hash" | md5 -q)
+    else
+        current_hash=$(echo "$current_hash" | cksum | cut -d' ' -f1)
+    fi
+
+    # 检查是否存在之前的哈希值
+    if [ -f "$hash_file" ]; then
+        local old_hash=$(cat "$hash_file")
+        if [ "$current_hash" = "$old_hash" ]; then
+            return 1  # 依赖未变化
+        fi
+    fi
+
+    # 保存新的哈希值
+    echo "$current_hash" > "$hash_file"
+    return 0  # 依赖已变化
 }
 
-# 构建前端镜像
-build_frontend() {
-    print_title "构建前端镜像"
-    
-    print_message $YELLOW "正在构建前端Docker镜像..."
-    docker build -f frontend/Dockerfile -t ${PROJECT_NAME}-frontend:latest ./frontend
-    print_message $GREEN "✓ 前端镜像构建完成"
+# 构建后端基础镜像（仅包含依赖）
+build_backend_base() {
+    print_title "构建后端基础镜像"
+
+    # 检查是否需要重新构建
+    if [ "$FORCE_BUILD" = false ] && ! check_dependencies_changed "backend"; then
+        if docker image inspect ${PROJECT_NAME}-backend-base:latest >/dev/null 2>&1; then
+            print_message $GREEN "✓ 后端依赖未变化，跳过基础镜像构建"
+            return
+        fi
+    fi
+
+    print_message $YELLOW "正在构建后端基础镜像（仅依赖）..."
+
+    # 创建临时 Dockerfile
+    cat > Dockerfile.backend.base << 'EOF'
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+RUN apt-get update && apt-get install -y python3 python3-pip && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
+
+RUN apt-get install -y \
+    libglib2.0-0 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
+    libcairo2 \
+    libcairo-gobject2
+
+WORKDIR /app
+
+COPY generated_backend/requirements.txt ./generated_backend/requirements.txt
+COPY OCR/requirements.txt ./OCR/requirements.txt
+
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r generated_backend/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip install --no-cache-dir -r OCR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 设置环境变量
+ENV FLASK_ENV=production
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app/generated_backend
+EOF
+
+    docker build -f Dockerfile.backend.base -t ${PROJECT_NAME}-backend-base:latest .
+    rm -f Dockerfile.backend.base
+    print_message $GREEN "✓ 后端基础镜像构建完成"
 }
 
-# 启动后端服务
+# 构建前端基础镜像（仅包含依赖）
+build_frontend_base() {
+    print_title "构建前端基础镜像"
+
+    # 检查是否需要重新构建
+    if [ "$FORCE_BUILD" = false ] && ! check_dependencies_changed "frontend"; then
+        if docker image inspect ${PROJECT_NAME}-frontend-base:latest >/dev/null 2>&1; then
+            print_message $GREEN "✓ 前端依赖未变化，跳过基础镜像构建"
+            return
+        fi
+    fi
+
+    print_message $YELLOW "正在构建前端基础镜像（仅依赖）..."
+
+    # 创建临时 Dockerfile
+    cat > frontend/Dockerfile.base << 'EOF'
+FROM node:22.17.0
+
+# 设置工作目录
+WORKDIR /app
+
+# 使用国内镜像加速依赖下载（可选）
+RUN npm install -g pnpm && \
+    npm config set registry https://registry.npmmirror.com
+
+# 拷贝依赖描述文件
+COPY package.json pnpm-lock.yaml ./
+
+# 安装依赖（使用缓存）
+RUN pnpm install
+
+EXPOSE 3000
+EOF
+
+    docker build -f frontend/Dockerfile.base -t ${PROJECT_NAME}-frontend-base:latest ./frontend
+    rm -f frontend/Dockerfile.base
+    print_message $GREEN "✓ 前端基础镜像构建完成"
+}
+
+# 启动后端服务（使用挂载方式）
 start_backend() {
     print_title "启动后端服务"
 
-    print_message $YELLOW "正在启动后端容器..."
+    print_message $YELLOW "正在启动后端容器（使用代码挂载）..."
     docker run -d \
         --name ${PROJECT_NAME}-backend \
         -p ${BACKEND_PORT}:5001 \
         --memory=8g \
         --memory-swap=8g \
         --oom-kill-disable=false \
-        -v $(pwd)/generated_backend/instance:/app/generated_backend/instance \
+        -v $(pwd)/generated_backend:/app/generated_backend \
+        -v $(pwd)/OCR:/app/OCR \
         -v $(pwd)/uploads:/app/uploads \
         -e GUNICORN_WORKERS=2 \
         -e GUNICORN_WORKER_CLASS=sync \
@@ -165,26 +302,42 @@ start_backend() {
         -e GUNICORN_MAX_REQUESTS_JITTER=100 \
         -e GUNICORN_TIMEOUT=60 \
         -e GUNICORN_KEEPALIVE=5 \
-        ${PROJECT_NAME}-backend:latest
+        ${PROJECT_NAME}-backend-base:latest \
+        gunicorn -w 2 -b 0.0.0.0:5001 --timeout 60 --max-requests 1000 --max-requests-jitter 100 --worker-tmp-dir /dev/shm --preload --access-logfile - --error-logfile - app:app
 
-    print_message $GREEN "✓ 后端服务已启动"
+    print_message $GREEN "✓ 后端服务已启动（代码挂载模式）"
     print_message $GREEN "  - 后端服务地址: http://localhost:${BACKEND_PORT}"
     print_message $YELLOW "  - 内存限制: 8GB"
     print_message $YELLOW "  - Worker数量: 2个"
+    print_message $YELLOW "  - 代码实时同步: 是"
 }
 
-# 启动前端服务
+# 启动前端服务（使用挂载方式）
 start_frontend() {
     print_title "启动前端服务"
-    
-    print_message $YELLOW "正在启动前端容器..."
+
+    print_message $YELLOW "正在启动前端容器（使用代码挂载）..."
+
+    # 首先在基础镜像中构建项目
+    print_message $YELLOW "正在构建前端项目..."
+    docker run --rm \
+        -v $(pwd)/frontend:/app \
+        -w /app \
+        ${PROJECT_NAME}-frontend-base:latest \
+        pnpm build
+
+    # 启动前端服务
     docker run -d \
         --name ${PROJECT_NAME}-frontend \
         -p ${FRONTEND_PORT}:3000 \
-        ${PROJECT_NAME}-frontend:latest
-    
-    print_message $GREEN "✓ 前端服务已启动"
+        -v $(pwd)/frontend:/app \
+        -w /app \
+        ${PROJECT_NAME}-frontend-base:latest \
+        pnpm start
+
+    print_message $GREEN "✓ 前端服务已启动（代码挂载模式）"
     print_message $GREEN "  - 前端服务地址: http://localhost:${FRONTEND_PORT}"
+    print_message $YELLOW "  - 代码实时同步: 是"
 }
 
 # 等待服务启动
@@ -241,12 +394,18 @@ show_result() {
     print_message $GREEN "  - 前端: http://localhost:${FRONTEND_PORT}"
     print_message $GREEN "  - 后端: http://localhost:${BACKEND_PORT}"
     echo ""
+    print_message $BLUE "部署特性:"
+    print_message $BLUE "  - 使用代码挂载模式，代码修改实时生效"
+    print_message $BLUE "  - 基础镜像缓存，仅在依赖变化时重新构建"
+    print_message $BLUE "  - 大幅减少部署时间和网络流量"
+    echo ""
     print_message $YELLOW "常用命令:"
     print_message $YELLOW "  - 查看容器状态: docker ps"
     print_message $YELLOW "  - 查看后端日志: docker logs ${PROJECT_NAME}-backend"
     print_message $YELLOW "  - 查看前端日志: docker logs ${PROJECT_NAME}-frontend"
     print_message $YELLOW "  - 停止服务: docker stop ${PROJECT_NAME}-frontend ${PROJECT_NAME}-backend"
     print_message $YELLOW "  - 重新部署: ./deploy.sh"
+    print_message $YELLOW "  - 强制重建基础镜像: ./deploy.sh --force-build"
 }
 
 # 主函数
@@ -275,12 +434,12 @@ main() {
     
     # 更新代码
     update_code
-    
-    # 构建镜像
-    build_backend
-    build_frontend
-    
-    # 启动服务
+
+    # 构建基础镜像（仅在依赖变化时）
+    build_backend_base
+    build_frontend_base
+
+    # 启动服务（使用挂载方式）
     start_backend
     start_frontend
     
