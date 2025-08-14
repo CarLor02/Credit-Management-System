@@ -38,6 +38,7 @@ ENV PYTHONPATH=/app
 # 内存优化环境变量
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV MALLOC_TRIM_THRESHOLD_=100000
 
-CMD gunicorn -w 2 -b 0.0.0.0:5001 --timeout 60 --max-requests 1000 --max-requests-jitter 100 --worker-tmp-dir /dev/shm --preload --access-logfile - --error-logfile - app:app
+CMD gunicorn -w 1 -b 0.0.0.0:5001 --timeout 300 --worker-class sync --worker-connections 1000 --max-requests 500 --max-requests-jitter 50 --worker-tmp-dir /dev/shm --preload --access-logfile - --error-logfile - --graceful-timeout 30 --keep-alive 5 app:app
 
