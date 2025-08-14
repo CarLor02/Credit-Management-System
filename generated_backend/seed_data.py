@@ -1,15 +1,12 @@
 """
 数据库种子数据
-用于初始化测试数据
+用于初始化用户数据
 """
 
 from datetime import datetime, timedelta, timezone
 
 from database import db
-from db_models import (
-    User, SystemSetting,
-    UserRole
-)
+from db_models import User, UserRole
 
 def create_seed_data():
     """创建种子数据"""
@@ -17,9 +14,6 @@ def create_seed_data():
 
     # 创建用户
     create_users()
-
-    # 创建系统设置
-    create_system_settings()
 
     db.session.commit()
     print("种子数据创建完成!")
@@ -84,48 +78,3 @@ def create_users():
     print(f"创建了 {created_count} 个新用户，跳过了 {len(users_data) - created_count} 个已存在的用户")
     return users
 
-def create_system_settings():
-    """创建系统设置数据"""
-    settings_data = [
-        {
-            'key': 'system_name',
-            'value': '征信管理系统',
-            'description': '系统名称',
-            'category': 'general',
-            'is_public': True
-        },
-        {
-            'key': 'max_file_size',
-            'value': '16777216',  # 16MB
-            'description': '最大文件上传大小（字节）',
-            'category': 'upload',
-            'is_public': False
-        },
-        {
-            'key': 'allowed_file_types',
-            'value': 'pdf,doc,docx,xls,xlsx,txt,jpg,jpeg,png',
-            'description': '允许上传的文件类型',
-            'category': 'upload',
-            'is_public': False
-        },
-        {
-            'key': 'session_timeout',
-            'value': '86400',  # 1天
-            'description': '会话超时时间（秒）',
-            'category': 'security',
-            'is_public': False
-        },
-        {
-            'key': 'enable_registration',
-            'value': 'false',
-            'description': '是否允许用户注册',
-            'category': 'security',
-            'is_public': True
-        }
-    ]
-
-    for setting_data in settings_data:
-        setting = SystemSetting(**setting_data)
-        db.session.add(setting)
-
-    print(f"创建了 {len(settings_data)} 个系统设置")

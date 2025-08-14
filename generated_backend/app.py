@@ -13,32 +13,24 @@ from concurrent.futures import ThreadPoolExecutor
 from routes import register_routes
 from config import Config
 from utils import setup_logging
-from database import init_db, create_tables
+from database import init_db
 from websocket_handlers import register_websocket_handlers
 
-def init_database_if_needed(app):
-    """检查MySQL数据库连接"""
+def test_database_connection(app):
+    """测试MySQL数据库连接"""
     try:
-        # 获取数据库URI
-        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
-        print("数据库类型: MySQL")
-        
-        # MySQL数据库连接测试
-        print("MySQL数据库模式，检查连接状态")
-        
-        # 仅测试连接
-        try:
-            from database import db
-            with db.engine.connect() as conn:
-                conn.execute(db.text("SELECT 1"))
-            print("✓ MySQL数据库连接正常")
-        except Exception as e:
-            print(f"⚠ MySQL连接测试: {e}")
-            print("应用将继续启动，请确保数据库配置正确")
-            
+        print("正在测试MySQL数据库连接...")
+
+        from database import db
+        with db.engine.connect() as conn:
+            conn.execute(db.text("SELECT 1"))
+        print("✓ MySQL数据库连接正常")
+        return True
+
     except Exception as e:
-        print(f"数据库连接检查失败: {e}")
-        print("应用将继续启动，如有问题请手动检查数据库配置")
+        print(f"⚠ MySQL连接测试失败: {e}")
+        print("请检查数据库配置和连接状态")
+        return False
 
 # 创建Flask应用
 app = Flask(__name__)
@@ -56,12 +48,12 @@ socketio = SocketIO(
     engineio_logger=True
 )
 
-# 初始化数据库
+# 初始化数据库（包含自动创建数据库和表）
 db = init_db(app)
 
-# 检查并初始化数据库（如果需要）
+# 测试数据库连接
 with app.app_context():
-    init_database_if_needed(app)
+    test_database_connection(app)
 
 # 设置日志
 setup_logging(app)
