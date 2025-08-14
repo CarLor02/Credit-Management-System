@@ -318,7 +318,16 @@ start_frontend() {
 
     print_message $YELLOW "正在启动前端容器（使用代码挂载）..."
 
-    # 首先在基础镜像中构建项目
+    # 首先确保本地有 node_modules（从基础镜像复制）
+    if [ ! -d "frontend/node_modules" ]; then
+        print_message $YELLOW "正在从基础镜像复制 node_modules..."
+        docker run --rm \
+            -v $(pwd)/frontend:/host_app \
+            ${PROJECT_NAME}-frontend-base:latest \
+            sh -c "cp -r /app/node_modules /host_app/"
+    fi
+
+    # 构建前端项目
     print_message $YELLOW "正在构建前端项目..."
     docker run --rm \
         -v $(pwd)/frontend:/app \
@@ -338,6 +347,7 @@ start_frontend() {
     print_message $GREEN "✓ 前端服务已启动（代码挂载模式）"
     print_message $GREEN "  - 前端服务地址: http://localhost:${FRONTEND_PORT}"
     print_message $YELLOW "  - 代码实时同步: 是"
+    print_message $YELLOW "  - node_modules: 已同步到本地"
 }
 
 # 等待服务启动
