@@ -228,6 +228,9 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r generated_backend/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     pip install --no-cache-dir -r OCR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
+# 复制 Gunicorn 配置文件
+COPY generated_backend/gunicorn_config.py ./generated_backend/gunicorn_config.py
+
 # 设置环境变量
 ENV FLASK_ENV=production
 ENV PYTHONPATH=/app
@@ -285,33 +288,29 @@ EOF
 start_backend() {
     print_title "启动后端服务"
 
-    print_message $YELLOW "正在启动后端容器（使用代码挂载）..."
+    print_message $YELLOW "正在启动后端容器（使用专用Gunicorn配置）..."
     docker run -d \
         --name ${PROJECT_NAME}-backend \
         -p ${BACKEND_PORT}:5001 \
-        --memory=12g \
-        --memory-swap=12g \
+        --memory=16g \
+        --memory-swap=16g \
         --oom-kill-disable=false \
+        --cpus="4.0" \
         -v $(pwd)/generated_backend:/app/generated_backend \
         -v $(pwd)/OCR:/app/OCR \
         -v $(pwd)/uploads:/app/uploads \
-        -e GUNICORN_WORKERS=1 \
-        -e GUNICORN_WORKER_CLASS=sync \
-        -e GUNICORN_WORKER_CONNECTIONS=1000 \
-        -e GUNICORN_MAX_REQUESTS=500 \
-        -e GUNICORN_MAX_REQUESTS_JITTER=50 \
-        -e GUNICORN_TIMEOUT=300 \
-        -e GUNICORN_KEEPALIVE=5 \
-        -e MALLOC_TRIM_THRESHOLD_=100000 \
         ${PROJECT_NAME}-backend-base:latest \
-        gunicorn -w 1 -b 0.0.0.0:5001 --timeout 300 --worker-class sync --worker-connections 1000 --max-requests 500 --max-requests-jitter 50 --worker-tmp-dir /dev/shm --preload --access-logfile - --error-logfile - --graceful-timeout 30 --keep-alive 5 app:app
+        gunicorn --config gunicorn_config.py app:app
 
-    print_message $GREEN "✓ 后端服务已启动（代码挂载模式）"
+    print_message $GREEN "✓ 后端服务已启动（专用Gunicorn配置）"
     print_message $GREEN "  - 后端服务地址: http://localhost:${BACKEND_PORT}"
-    print_message $YELLOW "  - 内存限制: 12GB"
-    print_message $YELLOW "  - Worker数量: 1个 (优化配置)"
-    print_message $YELLOW "  - 超时时间: 300秒 (5分钟)"
+    print_message $YELLOW "  - 内存限制: 16GB"
+    print_message $YELLOW "  - CPU限制: 4核"
+    print_message $YELLOW "  - Worker数量: 4个"
+    print_message $YELLOW "  - 超时时间: 600秒 (10分钟)"
+    print_message $YELLOW "  - 配置文件: gunicorn_config.py"
     print_message $YELLOW "  - 代码实时同步: 是"
+    print_message $YELLOW "  - 环境配置: 自动从.env文件加载"
 }
 
 # 启动前端服务（使用挂载方式）

@@ -39,6 +39,8 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV MALLOC_TRIM_THRESHOLD_=100000
+ENV FLASK_ENV=production
 
-CMD gunicorn -w 1 -b 0.0.0.0:5001 --timeout 300 --worker-class sync --worker-connections 1000 --max-requests 500 --max-requests-jitter 50 --worker-tmp-dir /dev/shm --preload --access-logfile - --error-logfile - --graceful-timeout 30 --keep-alive 5 app:app
+# 使用专门的Gunicorn配置文件启动
+CMD ["gunicorn", "--config", "gunicorn_config.py", "app:app"]
 
