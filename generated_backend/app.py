@@ -43,7 +43,7 @@ CORS(app, origins="*")
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",  # 临时允许所有来源，用于调试
-    async_mode='threading',
+    async_mode='eventlet',  # 使用eventlet异步模式支持WebSocket
     logger=True,
     engineio_logger=True
 )

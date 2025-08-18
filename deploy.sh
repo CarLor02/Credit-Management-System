@@ -302,14 +302,16 @@ start_backend() {
         ${PROJECT_NAME}-backend-base:latest \
         gunicorn --config gunicorn_config.py app:app
 
-    print_message $GREEN "✓ 后端服务已启动（专用Gunicorn配置）"
+    print_message $GREEN "✓ 后端服务已启动（专用Gunicorn + WebSocket配置）"
     print_message $GREEN "  - 后端服务地址: http://localhost:${BACKEND_PORT}"
     print_message $YELLOW "  - 内存限制: 16GB"
     print_message $YELLOW "  - CPU限制: 4核"
-    print_message $YELLOW "  - Worker数量: 4个"
-    print_message $YELLOW "  - 超时时间: 600秒 (10分钟)"
+    print_message $YELLOW "  - Worker数量: 1个 (WebSocket优化)"
+    print_message $YELLOW "  - Worker类型: eventlet (支持WebSocket)"
+    print_message $YELLOW "  - 超时时间: 无限制 (支持长连接)"
     print_message $YELLOW "  - 配置文件: gunicorn_config.py"
     print_message $YELLOW "  - 代码实时同步: 是"
+    print_message $YELLOW "  - WebSocket支持: 是"
     print_message $YELLOW "  - 环境配置: 自动从.env文件加载"
 }
 
