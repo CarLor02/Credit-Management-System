@@ -55,10 +55,16 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         content: string;
         file_path: string;
         company_name: string;
+        has_report: boolean;
       }>(`/projects/${projectId}/report`);
 
-      if (response.success && response.data) {
-        setReportContent(response.data.content);
+      if (response.success) {
+        if (response.data?.has_report) {
+          setReportContent(response.data.content || '');
+        } else {
+          setReportContent('');
+          setError('该项目尚未生成报告');
+        }
       } else {
         setError(response.error || '获取报告内容失败');
       }
