@@ -20,6 +20,7 @@ interface ReportPreviewProps {
   projectId: number;
   companyName: string;
   onReportDeleted?: () => void;
+  isGenerating?: boolean;
 }
 
 const ReportPreview: React.FC<ReportPreviewProps> = ({
@@ -27,7 +28,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   onClose,
   projectId,
   companyName,
-  onReportDeleted
+  onReportDeleted,
+  isGenerating = false
 }) => {
   const [reportContent, setReportContent] = useState<string>('');
   const [htmlContent, setHtmlContent] = useState<string>('');
@@ -64,7 +66,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           setReportContent(response.data.content || '');
         } else {
           setReportContent('');
-          setError('该项目尚未生成报告');
+          // 只有在报告不在生成过程中时才显示错误信息
+          if (!isGenerating) {
+            setError('该项目尚未生成报告');
+          }
         }
       } else {
         setError(response.error || '获取报告内容失败');
@@ -234,9 +239,19 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     const handleWorkflowContent = (data: any) => {
       console.log('📄 收到workflow_content:', data);
       if (data.content_chunk) {
-        addContent(data.content_chunk);
-        // 显示具体内容而不是字符数
-        addEvent('内容块', data.content_chunk);
+        // 直接更新报告内容到右侧显示区域
+        setReportContent(prev => {
+          const newContent = prev ? `${prev}${data.content_chunk}` : data.content_chunk;
+          // 延迟执行滚动以确保DOM更新完成
+          setTimeout(() => {
+            if (streamingContentRef.current) {
+              streamingContentRef.current.scrollTop = streamingContentRef.current.scrollHeight;
+            }
+          }, 50);
+          return newContent;
+        });
+        // 同时也在左侧事件列表中显示内容块信息（但显示摘要而不是完整内容）
+        addEvent('内容块', `收到${data.content_chunk.length}字符的内容块`);
       }
     };
 
@@ -779,7 +794,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                       sandbox="allow-same-origin"
                     />
                   ) : reportContent ? (
-                    <div className="p-6">
+                    <div className="p-6" ref={streamingContentRef}>
                       <MarkdownPreview
                         source={reportContent}
                         className="prose max-w-none"

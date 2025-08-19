@@ -1598,6 +1598,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         onClose={() => setShowReportPreview(false)}
         companyName={project?.name || ''}
         projectId={project?.id || 0}
+        isGenerating={project?.report_status === 'generating'}
         onReportDeleted={() => {
           // 报告删除后的回调，刷新页面以更新项目数据
           window.location.reload();
