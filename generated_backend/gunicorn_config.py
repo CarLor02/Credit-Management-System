@@ -12,14 +12,16 @@ bind = "0.0.0.0:5001"
 backlog = 2048
 
 # Worker 配置 - 针对文档处理和WebSocket通信优化
-workers = 1  # 使用1个worker，WebSocket需要保持连接状态
+# 动态调整worker数量以平衡WebSocket支持和性能
+cpu_count = multiprocessing.cpu_count()
+workers = min(max(2, cpu_count // 2), 4)  # 2-4个worker，根据CPU核心数调整
 worker_class = "eventlet"  # 使用eventlet支持WebSocket长连接
-worker_connections = 1000  # 每个worker的最大连接数
-max_requests = 0  # 设置为0禁用自动重启，保持WebSocket连接
-max_requests_jitter = 0  # 禁用随机重启
+worker_connections = 2000  # 增加每个worker的最大连接数
+max_requests = 1000  # 适度的请求重启，平衡内存和连接稳定性
+max_requests_jitter = 100  # 添加随机性避免同时重启
 
 # 超时配置 - 为长时间文档处理和WebSocket连接优化
-timeout = 0  # 设置为0，允许WebSocket长连接
+timeout = 300  # 设置为5分钟，平衡长连接和资源释放
 keepalive = 5  # 保持连接时间
 graceful_timeout = 60  # 优雅关闭超时
 
@@ -94,13 +96,15 @@ raw_env = [
     'EVENTLET_HUB=poll',  # 优化eventlet性能
 ]
 
-# 根据可用CPU数量动态调整worker数量（WebSocket环境下保持1个worker）
+# 根据环境变量和CPU数量动态调整worker数量
 if os.environ.get('GUNICORN_AUTO_WORKERS', '').lower() == 'true':
-    # WebSocket应用建议使用单worker模式以保持连接状态
-    workers = 1
-    print(f"WebSocket模式：使用单Worker: {workers}")
+    # 自动调整worker数量，平衡WebSocket支持和性能
+    cpu_count = multiprocessing.cpu_count()
+    workers = min(max(2, cpu_count // 2), 4)
+    print(f"自动调整Worker数量: {workers} (基于CPU核心数: {cpu_count})")
 else:
-    workers = 1  # 默认使用1个worker支持WebSocket
+    # 默认使用多worker模式提升性能
+    print(f"默认多Worker模式: {workers}")
 
 # 开发环境特殊配置
 if os.environ.get('FLASK_ENV') == 'development':
@@ -110,9 +114,16 @@ if os.environ.get('FLASK_ENV') == 'development':
 else:
     reload = False
 
-# WebSocket 配置说明:
+# WebSocket 多Worker配置说明:
 # - 使用 eventlet worker 类支持 WebSocket 长连接
-# - 设置 workers=1 确保 WebSocket 连接状态一致性
-# - timeout=0 允许无限制的长连接，适合实时通信
-# - max_requests=0 禁用自动重启，保持连接稳定性
+# - 多worker模式通过Redis/消息队列实现WebSocket状态共享
+# - timeout=300 平衡长连接和资源管理
+# - max_requests=1000 适度重启worker，避免内存泄漏
 # - Flask-SocketIO 应用需要使用 async_mode='eventlet'
+# - 需要配置Redis作为消息代理以支持多worker WebSocket通信
+
+# 性能优化建议:
+# 1. 设置 GUNICORN_AUTO_WORKERS=true 启用自动worker调整
+# 2. 配置Redis消息队列支持多worker WebSocket
+# 3. 使用负载均衡器分发HTTP和WebSocket请求
+# 4. 监控worker内存使用情况，适时调整max_requests

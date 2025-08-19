@@ -15,6 +15,10 @@ Jinja2==3.1.2
 gunicorn==21.2.0
 eventlet==0.33.3
 
+# Redis支持（用于多worker WebSocket通信）
+redis==5.0.1
+python-socketio[client]==5.9.0
+
 # 数据库驱动
 PyMySQL==1.1.0
 # mysqlclient==2.2.0  # 在macOS上可能需要额外配置，使用PyMySQL即可

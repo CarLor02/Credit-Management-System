@@ -5,6 +5,7 @@
 
 import os
 import asyncio
+import time
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO
@@ -39,14 +40,31 @@ app.config.from_object(Config)
 # 启用CORS支持 - 允许所有来源
 CORS(app, origins="*")
 
-# 创建SocketIO实例
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",  # 临时允许所有来源，用于调试
-    async_mode='eventlet',  # 使用eventlet异步模式支持WebSocket
-    logger=True,
-    engineio_logger=True
-)
+# 创建SocketIO实例 - 支持多worker模式
+redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+use_redis = os.environ.get('USE_REDIS_BROKER', 'false').lower() == 'true'
+
+if use_redis:
+    # 多worker模式：使用Redis作为消息代理
+    socketio = SocketIO(
+        app,
+        cors_allowed_origins="*",
+        async_mode='eventlet',
+        message_queue=redis_url,  # Redis消息队列
+        logger=True,
+        engineio_logger=True
+    )
+    app.logger.info(f"SocketIO配置为多worker模式，Redis URL: {redis_url}")
+else:
+    # 单worker模式：不使用消息队列
+    socketio = SocketIO(
+        app,
+        cors_allowed_origins="*",
+        async_mode='eventlet',
+        logger=True,
+        engineio_logger=True
+    )
+    app.logger.info("SocketIO配置为单worker模式")
 
 # 初始化数据库（包含自动创建数据库和表）
 db = init_db(app)
@@ -66,6 +84,40 @@ register_websocket_handlers(socketio)
 
 # 将socketio实例设置为全局变量，供其他模块使用
 app.socketio = socketio
+
+# 健康检查端点
+@app.route('/health', methods=['GET'])
+def health_check():
+    """健康检查端点，用于负载均衡器和监控"""
+    try:
+        # 检查数据库连接
+        from database import db
+        db.engine.execute('SELECT 1')
+
+        # 检查Redis连接（如果启用）
+        redis_status = "disabled"
+        if use_redis:
+            try:
+                import redis
+                r = redis.from_url(redis_url)
+                r.ping()
+                redis_status = "connected"
+            except Exception:
+                redis_status = "error"
+
+        return jsonify({
+            "status": "healthy",
+            "database": "connected",
+            "redis": redis_status,
+            "workers": os.environ.get('GUNICORN_AUTO_WORKERS', 'false'),
+            "timestamp": time.time()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": time.time()
+        }), 503
 
 # 全局错误处理
 @app.errorhandler(404)
