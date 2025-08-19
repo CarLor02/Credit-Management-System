@@ -28,7 +28,7 @@ def parse_excel_with_merged_cells(file_path, active_sheet_only=False):
 
 def parse_xlsx_file(file_path, active_sheet_only=False):
     """使用openpyxl处理.xlsx文件"""
-    wb = load_workbook(file_path)
+    wb = load_workbook(file_path,data_only=True)
     sheets_data = {}
     
     # 确定要处理的工作表列表
