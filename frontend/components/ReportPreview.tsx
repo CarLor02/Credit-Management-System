@@ -67,7 +67,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         } else {
           setReportContent('');
           // 只有在报告不在生成过程中时才显示错误信息
-          if (!isGenerating) {
+          if (!generating) {
             setError('该项目尚未生成报告');
           }
         }
@@ -308,6 +308,13 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       fetchHtmlContent(); // 同时获取HTML内容
     }
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 同步外部isGenerating prop到内部generating状态
+  useEffect(() => {
+    if (isGenerating !== generating) {
+      setGenerating(isGenerating);
+    }
+  }, [isGenerating]);
 
   // 清理PDF URL
   useEffect(() => {
