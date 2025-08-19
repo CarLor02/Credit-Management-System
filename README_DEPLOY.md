@@ -70,7 +70,7 @@ cd Credit-Management-System
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │   前端服务   │    │   后端服务   │    │  Redis服务  │
-│ Port: 3000  │    │ Port: 5001  │    │ Port: 6379  │
+│ Port: 3000  │    │ Port: 5001  │    │ Port: 6380  │
 │             │    │ 2-4 Workers │    │ 消息代理    │
 └─────────────┘    └─────────────┘    └─────────────┘
 ```
@@ -106,7 +106,7 @@ docker stop credit-management-system-frontend credit-management-system-backend c
 ```bash
 lsof -ti:5001 | xargs kill -9  # 后端端口
 lsof -ti:3000 | xargs kill -9  # 前端端口
-lsof -ti:6379 | xargs kill -9  # Redis端口
+lsof -ti:6380 | xargs kill -9  # Redis端口
 ```
 
 ### 容器启动失败
