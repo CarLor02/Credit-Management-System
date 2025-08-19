@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
 import PdfViewer from './PDFViewer';
@@ -170,10 +171,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       }
 
       // 区分事件类型处理
-      if (eventType === 'content_generated') {
+      if (eventType === 'content_generated' || eventType === 'markdown_content') {
         // 内容事件直接更新报告内容，并自动滚动
         setReportContent(prev => {
-          const newContent = prev ? `${prev}\n${content}` : content;
+          const newContent = prev ? `${prev}${content}` : content; // 移除换行符拼接
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
