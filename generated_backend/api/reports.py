@@ -173,9 +173,15 @@ def register_report_routes(app):
             if project.report_status == ReportStatus.GENERATING:
                 return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
 
-            # 检查报告状态，如果正在生成则不允许重复生成
+            # 检查报告状态和文件是否存在
             if project.report_status == ReportStatus.GENERATED:
-                return jsonify({"success": False, "error": "报告已生成，若需重新生成，请先删除旧报告"}), 400
+                # 如果报告文件不存在，更新状态为未生成
+                if not project.report_path or not os.path.exists(project.report_path):
+                    project.report_status = ReportStatus.NOT_GENERATED
+                    project.report_path = None
+                    db.session.commit()
+                else:
+                    return jsonify({"success": False, "error": "报告已生成，若需重新生成，请先删除旧报告"}), 400
             
             # 如果没有提供knowledge_name，使用company_name作为默认值
             if not knowledge_name:
