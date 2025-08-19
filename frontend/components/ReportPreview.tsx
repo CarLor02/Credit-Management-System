@@ -169,22 +169,32 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           eventColor = 'text-gray-400';
       }
 
+      // 区分事件类型处理
+      if (eventType === 'content_generated') {
+        // 内容事件直接更新报告内容，并自动滚动
+        setReportContent(prev => {
+          const newContent = prev ? `${prev}\n${content}` : content;
+          // 延迟执行滚动以确保DOM更新完成
+          setTimeout(() => {
+            if (streamingContentRef.current) {
+              streamingContentRef.current.scrollTop = streamingContentRef.current.scrollHeight;
+            }
+          }, 50);
+          return newContent;
+        });
+        return;
+      }
+
+      // 节点状态事件添加到事件列表
       const eventEntry = {
         timestamp,
         eventType,
         content: detailInfo,
         color: eventColor,
-        isContent: eventType === '内容块' || eventType === 'markdown_content'
+        isContent: false
       };
 
-      console.log('📝 添加事件到界面:', eventEntry);
-      // 如果是内容块，则只更新报告内容，不显示在事件列表
-      if (eventEntry.isContent) {
-        setReportContent(prev => prev + '\n' + eventEntry.content);
-        return; // 不添加到事件列表
-      }
-      
-      // 非内容块添加到事件列表
+      console.log('📝 添加节点事件到界面:', eventEntry);
       setStreamingEvents(prev => [...prev, eventEntry]);
 
       // 自动滚动事件列表
