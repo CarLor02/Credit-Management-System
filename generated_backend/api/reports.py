@@ -840,21 +840,23 @@ def check_parsing_status(dataset_id):
 def call_report_generation_api_streaming(company_name, knowledge_name, project_id=None, project_room_id=None):
     """调用报告生成API - 流式模式"""
     try:
-        # 真实API调用
-        report_api_url = current_app.config.get('REPORT_API_URL', 'http://172.16.76.203/v1/workflows/run')
-        api_key = current_app.config.get('REPORT_API_KEY', 'app-zLDrndvfJ81HaTWD3gXXVJaq')
+        # 新API调用
+        report_api_url = current_app.config.get('REPORT_API_URL', 'http://172.16.76.203/v1/chat-messages')
+        api_key = current_app.config.get('REPORT_API_KEY', 'app-c8cKydhESsFxtG7QZvZkR5YU')
 
         current_app.logger.info(f"调用报告生成API (流式): {report_api_url}")
         current_app.logger.info(f"使用公司名称: {company_name}, 知识库名称: {knowledge_name}")
 
         # 构建请求数据 - 使用streaming模式
         request_data = {
+            "query": "生成报告",
             "inputs": {
                 "company": company_name,
                 "knowledge_name": knowledge_name
             },
-            "response_mode": "streaming",  # 改为流式模式
-            "user": "root"
+            "response_mode": "streaming",
+            "user": f"user-{project_id}" if project_id else "user-anonymous",
+            "conversation_id": ""
         }
 
         current_app.logger.info(f"请求数据: {request_data}")
@@ -1042,7 +1044,7 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
     Returns:
         tuple: (workflow_run_id, full_content, metadata, events)
     """
-    workflow_run_id = None
+    workflow_run_id = f"workflow_{int(time.time())}"  # 新接口没有workflow_run_id，我们自己生成一个
     full_content = ""
     metadata = {}
     events = []
@@ -1069,64 +1071,12 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                 data = json.loads(data_str)
                 print(f"解析的 JSON 数据: {json.dumps(data, ensure_ascii=False)[:500]}...")
 
-                # 提取 workflow_run_id
-                if 'workflow_run_id' in data and workflow_run_id is None:
-                    workflow_run_id = data['workflow_run_id']
-                    print(f"提取到 workflow_run_id: {workflow_run_id}")
-
-                    # 清理该workflow_run_id的旧事件（如果有的话）
-                    if project_id:
-                        try:
-                            WorkflowEvent.query.filter_by(workflow_run_id=workflow_run_id).delete()
-                            db.session.commit()
-                            print(f"清理旧事件: {workflow_run_id}")
-                        except Exception as e:
-                            print(f"清理旧事件失败: {e}")
-                            db.session.rollback()
-
-                    # 通过WebSocket广播工作流开始事件到项目房间
-                    try:
-                        socketio = current_app.socketio
-                        # 只向项目房间广播，避免重复
-                        if project_room_id:
-                            broadcast_workflow_event(socketio, project_room_id, 'workflow_started', data)
-                    except Exception as e:
-                        print(f"WebSocket广播失败: {e}")
-
                 # 提取生成的内容
                 content_chunk = None
-
-                # 直接检查顶层字段
-                for field in ['answer', 'content', 'text', 'message']:
-                    if field in data:
-                        content_chunk = data[field]
-                        print(f"从顶层字段 '{field}' 提取内容: {content_chunk[:50] if content_chunk else 'None'}...")
-                        break
-
-                # 检查 data.outputs 结构
-                if not content_chunk and 'data' in data and isinstance(data['data'], dict):
-                    if 'outputs' in data['data'] and isinstance(data['data']['outputs'], dict):
-                        outputs = data['data']['outputs']
-                        for field in ['answer', 'content', 'text', 'message']:
-                            if field in outputs:
-                                text_value = outputs[field]
-                                if isinstance(text_value, str):
-                                    try:
-                                        # 尝试解析可能的 JSON 字符串
-                                        json_content = json.loads(text_value)
-                                        if 'text' in json_content:
-                                            content_chunk = json_content['text']
-                                            print(f"从 data.outputs.{field} 的 JSON 中提取 'text' 字段")
-                                        else:
-                                            content_chunk = json.dumps(json_content, ensure_ascii=False)
-                                            print(f"从 data.outputs.{field} 的 JSON 中提取整个对象")
-                                    except json.JSONDecodeError:
-                                        content_chunk = text_value
-                                        print(f"从 data.outputs.{field} 提取原始字符串")
-                                else:
-                                    content_chunk = str(text_value)
-                                    print(f"从 data.outputs.{field} 提取并转换为字符串")
-                                break
+                if 'answer' in data:
+                    content_chunk = data['answer']
+                elif 'message' in data:
+                    content_chunk = data['message']
 
                 # 如果找到内容块，累积到完整内容并广播
                 if content_chunk and content_chunk.strip():
@@ -1137,7 +1087,6 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                     # 通过WebSocket广播内容到项目房间
                     try:
                         socketio = current_app.socketio
-                        # 只向项目房间广播，避免重复
                         if project_room_id:
                             broadcast_workflow_content(socketio, project_room_id, content_chunk)
                             print(f"已广播内容块到房间 {project_room_id}: {content_chunk[:50]}...")
@@ -1149,32 +1098,30 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                     event_type = data['event']
                     print(f"提取到事件: {event_type}")
 
-                    # 对于特定事件，确保内容完整性
-                    if event_type == "workflow_finished":
-                        # 如果在完成事件中有最终内容，使用它
-                        if content_chunk and not full_content:
-                            full_content = content_chunk
-                        print(f"工作流完成，最终内容长度: {len(full_content)}")
+                    # 映射事件类型到我们系统的事件
+                    mapped_event = {
+                        'message': 'content_generated',
+                        'message_end': 'workflow_finished',
+                        'error': 'workflow_error'
+                    }.get(event_type, event_type)
 
-                    events.append(event_type)
+                    events.append(mapped_event)
                     sequence_number += 1
 
                     # 实时存储事件到数据库
-                    if workflow_run_id and project_id:
+                    if project_id:
                         try:
                             workflow_event = WorkflowEvent(
                                 workflow_run_id=workflow_run_id,
                                 project_id=project_id,
                                 company_name=company_name,
-                                event_type=event_type,
+                                event_type=mapped_event,
                                 event_data=data,
                                 sequence_number=sequence_number
                             )
                             db.session.add(workflow_event)
                             db.session.commit()
-                            print(f"事件已存储到数据库: {event_type} (序号: {sequence_number})")
-
-                            # 立即刷新数据库连接，确保其他查询能看到最新数据
+                            print(f"事件已存储到数据库: {mapped_event} (序号: {sequence_number})")
                             db.session.flush()
                         except Exception as e:
                             print(f"存储事件到数据库失败: {e}")
@@ -1183,9 +1130,8 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                     # 通过WebSocket广播事件到项目房间
                     try:
                         socketio = current_app.socketio
-                        # 只向项目房间广播，避免重复
                         if project_room_id:
-                            broadcast_workflow_event(socketio, project_room_id, event_type, data)
+                            broadcast_workflow_event(socketio, project_room_id, mapped_event, data)
                     except Exception as e:
                         print(f"WebSocket事件广播失败: {e}")
 
@@ -1201,7 +1147,6 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
     # 流式解析完成，广播完成事件到项目房间
     try:
         socketio = current_app.socketio
-        # 只向项目房间广播，避免重复
         if project_room_id:
             broadcast_workflow_complete(socketio, project_room_id, full_content)
             print(f"已广播完成事件到房间 {project_room_id}，最终内容长度: {len(full_content)}")
