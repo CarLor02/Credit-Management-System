@@ -132,26 +132,7 @@ def internal_error(error):
 def bad_request(error):
     return jsonify({"error": "请求参数错误"}), 400
 
-# 健康检查端点
-@app.route('/health', methods=['GET'])
-def health_check():
-    try:
-        # 检查数据库连接
-        from db_models import User
-        user_count = User.query.count()
 
-        return jsonify({
-            "status": "healthy",
-            "message": "征信管理系统后端服务运行正常",
-            "database": "connected",
-            "users": user_count
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "unhealthy",
-            "message": "数据库连接失败",
-            "error": str(e)
-        }), 500
 
 if __name__ == '__main__':
     # 创建上传目录
