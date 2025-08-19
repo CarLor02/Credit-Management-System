@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
+import MarkdownPreview from '@uiw/react-markdown-preview';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
 import PdfViewer from './PDFViewer';
@@ -779,8 +779,11 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                       sandbox="allow-same-origin"
                     />
                   ) : reportContent ? (
-                    <div className="prose max-w-none p-6">
-                      <ReactMarkdown>{reportContent}</ReactMarkdown>
+                    <div className="p-6">
+                      <MarkdownPreview
+                        source={reportContent}
+                        className="prose max-w-none"
+                      />
                     </div>
                   ) : (
                     <div className="text-center py-12">
