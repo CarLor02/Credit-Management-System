@@ -440,25 +440,33 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     if (!projectId) return;
     
     try {
-      const response = await apiClient.post(`/stop_report_generation`, {
-        project_id: projectId
-      });
+      // 发送API请求停止生成
+      const apiResponse = await apiClient.post(`/projects/${projectId}/stop-generation`);
       
-      if (response.success) {
+      if (apiResponse.success) {
         setGenerating(false);
         setStreamingEvents(prev => [...prev, {
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toLocaleTimeString(),
           eventType: '报告生成已停止',
           content: '用户手动停止了报告生成',
           color: 'text-red-500',
           isContent: false
         }]);
+        // 强制断开WebSocket连接
+        websocketService.disconnect();
+        setWebsocketStatus('已断开');
       } else {
-        alert(response.error || '停止报告生成失败');
+        throw new Error(apiResponse.error || '停止请求失败');
       }
     } catch (error) {
       console.error('停止报告生成失败:', error);
-      alert('停止报告生成失败，请稍后重试');
+      setStreamingEvents(prev => [...prev, {
+        timestamp: new Date().toLocaleTimeString(),
+        eventType: '停止失败',
+        content: error instanceof Error ? error.message : '停止报告生成失败',
+        color: 'text-red-500',
+        isContent: false
+      }]);
     }
   };
 
