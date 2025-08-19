@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.10"
+  }
+}

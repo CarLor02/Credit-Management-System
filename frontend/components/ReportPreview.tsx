@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
 import PdfViewer from './PDFViewer';
@@ -152,6 +152,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         case 'workflow_complete':
           detailInfo = '工作流完成';
           eventColor = 'text-green-500';
+          setGenerating(false);
+          break;
+        case 'start_generating':
+          detailInfo = '开始生成报告';
+          eventColor = 'text-blue-500';
+          setGenerating(true);
           break;
         case '内容块':
           eventColor = 'text-yellow-400';
@@ -168,20 +174,22 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         eventType,
         content: detailInfo,
         color: eventColor,
-        isContent: eventType === '内容块'
+        isContent: eventType === '内容块' || eventType === 'markdown_content'
       };
 
       console.log('📝 添加事件到界面:', eventEntry);
-      // 如果是内容块，则更新报告内容；否则添加到事件列表
+      // 如果是内容块，则只更新报告内容，不显示在事件列表
       if (eventEntry.isContent) {
         setReportContent(prev => prev + '\n' + eventEntry.content);
-      } else {
-        setStreamingEvents(prev => [...prev, eventEntry]);
+        return; // 不添加到事件列表
       }
+      
+      // 非内容块添加到事件列表
+      setStreamingEvents(prev => [...prev, eventEntry]);
 
       // 自动滚动事件列表
       setTimeout(() => {
-        if (eventsRef.current && !eventEntry.isContent) {
+        if (eventsRef.current) {
           eventsRef.current.scrollTop = eventsRef.current.scrollHeight;
         }
       }, 100);
@@ -417,6 +425,33 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   };
 
+  // 停止报告生成
+  const handleStopGeneration = async () => {
+    if (!projectId) return;
+    
+    try {
+      const response = await apiClient.post(`/stop_report_generation`, {
+        project_id: projectId
+      });
+      
+      if (response.success) {
+        setGenerating(false);
+        setStreamingEvents(prev => [...prev, {
+          timestamp: new Date().toISOString(),
+          eventType: '报告生成已停止',
+          content: '用户手动停止了报告生成',
+          color: 'text-red-500',
+          isContent: false
+        }]);
+      } else {
+        alert(response.error || '停止报告生成失败');
+      }
+    } catch (error) {
+      console.error('停止报告生成失败:', error);
+      alert('停止报告生成失败，请稍后重试');
+    }
+  };
+
   // 转换PDF预览
   const handleConvertToPdfPreview = async () => {
     if (!projectId || pdfLoading) return;
@@ -459,6 +494,16 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   };
 
   // 切换到HTML预览
+  const handleSwitchToHtmlPreview = () => {
+    if (websocketService.isSocketConnected()) {
+      const socket = (websocketService as any).socket;
+      if (socket) {
+        socket.emit('stop_generation', { project_id: projectId });
+      }
+    }
+    setGenerating(false);
+  };
+
   const handleSwitchToHtml = () => {
     setIsPdfPreview(false);
     if (pdfUrl) {
@@ -478,7 +523,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <style jsx>{`
+      <style>{`
         @keyframes fade-in {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
@@ -495,6 +540,17 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             <p className="text-sm text-gray-500 mt-1">公司：{companyName}</p>
           </div>
           <div className="flex items-center space-x-3">
+            {/* 停止生成按钮 */}
+            {generating && (
+              <button
+                onClick={handleStopGeneration}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-red-600 text-white hover:bg-red-700"
+              >
+                <i className="ri-stop-circle-line mr-2"></i>
+                停止生成
+              </button>
+            )}
+            
             {/* 预览切换和下载按钮 */}
             {reportContent && (
               <>
@@ -549,21 +605,34 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
               </>
             )}
 
-            {/* 删除按钮 */}
-            {reportContent && (
-              <button
-                onClick={handleDeleteReport}
-                disabled={loading}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  loading
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-red-600 text-white hover:bg-red-700'
-                }`}
-              >
-                <i className="ri-delete-bin-line mr-2"></i>
-                删除报告
-              </button>
-            )}
+            {/* 操作按钮组 */}
+            <div className="flex items-center gap-2">
+              {/* 删除按钮 */}
+              {reportContent && (
+                <button
+                  onClick={handleDeleteReport}
+                  disabled={loading}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    loading
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-red-600 text-white hover:bg-red-700'
+                  }`}
+                >
+                  <i className="ri-delete-bin-line mr-2"></i>
+                  删除报告
+                </button>
+              )}
+              {/* 停止生成按钮 */}
+              {(generating || (streamingEvents.length > 0 && !reportContent)) && (
+                <button
+                  onClick={handleStopGeneration}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-orange-600 text-white hover:bg-orange-700`}
+                >
+                  <i className="ri-stop-circle-line mr-2"></i>
+                  停止生成
+                </button>
+              )}
+            </div>
             <button
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
@@ -580,7 +649,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             {/* Header */}
             <div className="bg-gray-900 px-4 py-3 border-b border-gray-700">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-gray-300">实时输出</h3>
+                <h3 className="text-sm font-medium text-gray-300">节点工作情况</h3>
 
               </div>
               {/* WebSocket状态 */}
@@ -625,100 +694,97 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
           {/* 右侧：报告内容 - 固定75%宽度 */}
           <div className="w-3/4 min-w-0 flex flex-col">
-            {/* 内容区域 */}
-            <div 
-              ref={streamingContentRef}
-              className="flex-1 overflow-y-auto p-6 bg-gray-50"
-            >
-              {error ? (
-                <div className="text-center py-12">
-                  <div className="text-red-600 mb-4">
-                    <i className="ri-error-warning-line text-4xl"></i>
-                  </div>
-                  <p className="text-red-600 font-medium">{error}</p>
+            {error ? (
+              <div className="text-center py-12">
+                <div className="text-red-600 mb-4">
+                  <i className="ri-error-warning-line text-4xl"></i>
                 </div>
-              ) : (generating || loading) ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-600">正在生成报告，请稍候...</p>
-                  <p className="text-gray-500 text-sm mt-2">报告完成后将自动加载内容</p>
-                </div>
-              ) : (generating || loading) ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-600">加载报告内容中...</p>
-                </div>
-              ) : reportContent ? (
-                isPdfPreview && pdfUrl ? (
-                  // PDF预览模式
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
-                    <div className="bg-gradient-to-r from-gray-50 to-red-50 px-4 py-2 border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <i className="ri-file-pdf-line text-red-600"></i>
-                        <span className="text-sm font-medium text-gray-700">征信报告</span>
-                        <span className="text-xs text-gray-500">• PDF格式</span>
-                      </div>
-                    </div>
-                    <div className="h-full" style={{ height: 'calc(100% - 50px)' }}>
-                      <PdfViewer
-                        pdfUrl={pdfUrl}
-                        title="征信报告PDF预览"
-                        showControls={true}
-                      />
+                <p className="text-red-600 font-medium">{error}</p>
+              </div>
+            ) : generating ? (
+              <div className="text-center py-12">
+                <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                <p className="text-gray-600">正在生成报告，请稍候...</p>
+              </div>
+            ) : loading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                <p className="text-gray-600">加载报告内容中...</p>
+              </div>
+            ) : isPdfPreview ? (
+              pdfUrl ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
+                  <div className="bg-gradient-to-r from-gray-50 to-red-50 px-4 py-2 border-b border-gray-200">
+                    <div className="flex items-center space-x-2">
+                      <i className="ri-file-pdf-line text-red-600"></i>
+                      <span className="text-sm font-medium text-gray-700">征信报告</span>
+                      <span className="text-xs text-gray-500">• PDF格式</span>
                     </div>
                   </div>
-                ) : (
-                  // HTML预览模式（默认）
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
-                    <div className="bg-gradient-to-r from-gray-50 to-green-50 px-4 py-2 border-b border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <i className="ri-html5-line text-green-600"></i>
-                        <span className="text-sm font-medium text-gray-700">征信报告</span>
-                        <span className="text-xs text-gray-500">• HTML格式</span>
-                      </div>
-                    </div>
-                    <div
-                      className="overflow-y-auto px-6 h-full"
-                      style={{
-                        height: 'calc(100% - 50px)',
-                        width: '100%'
-                      }}
-                    >
-                      {htmlLoading ? (
-                        <div className="text-center py-8">
-                          <div className="animate-spin w-6 h-6 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                          <p className="text-gray-600">正在转换HTML格式...</p>
-                        </div>
-                      ) : htmlContent ? (
-                        <iframe
-                          srcDoc={htmlContent}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            border: 'none',
-                            backgroundColor: 'white'
-                          }}
-                          title="征信报告HTML预览"
-                          sandbox="allow-same-origin"
-                        />
-                      ) : (
-                        <div className="text-center py-8 text-gray-500">
-                          <i className="ri-html5-line text-4xl mb-4"></i>
-                          <p>HTML内容加载失败，请刷新页面重试</p>
-                        </div>
-                      )}
-                    </div>
+                  <div className="h-full" style={{ height: 'calc(100% - 50px)' }}>
+                    <PdfViewer
+                      pdfUrl={pdfUrl}
+                      title="征信报告PDF预览"
+                      showControls={true}
+                    />
                   </div>
-                )
+                </div>
               ) : (
                 <div className="text-center py-12">
                   <div className="text-gray-400 mb-4">
-                    <i className="ri-file-text-line text-4xl"></i>
+                    <i className="ri-file-pdf-line text-4xl"></i>
                   </div>
-                  <p className="text-gray-600">暂无报告内容</p>
+                  <p className="text-gray-600">PDF加载中...</p>
                 </div>
-              )}
-            </div>
+              )
+            ) : (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
+                <div className="bg-gradient-to-r from-gray-50 to-green-50 px-4 py-2 border-b border-gray-200">
+                  <div className="flex items-center space-x-2">
+                    <i className="ri-html5-line text-green-600"></i>
+                    <span className="text-sm font-medium text-gray-700">征信报告</span>
+                    <span className="text-xs text-gray-500">• HTML格式</span>
+                  </div>
+                </div>
+                <div
+                  className="overflow-y-auto px-6 h-full"
+                  style={{
+                    height: 'calc(100% - 50px)',
+                    width: '100%'
+                  }}
+                >
+                  {htmlLoading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin w-6 h-6 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                      <p className="text-gray-600">正在转换HTML格式...</p>
+                    </div>
+                  ) : htmlContent ? (
+                    <iframe
+                      srcDoc={htmlContent}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        backgroundColor: 'white'
+                      }}
+                      title="征信报告HTML预览"
+                      sandbox="allow-same-origin"
+                    />
+                  ) : reportContent ? (
+                    <div className="prose max-w-none p-6">
+                      {reportContent}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <div className="text-gray-400 mb-4">
+                        <i className="ri-file-text-line text-4xl"></i>
+                      </div>
+                      <p className="text-gray-600">暂无报告内容</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
