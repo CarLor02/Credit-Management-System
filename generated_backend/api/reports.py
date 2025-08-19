@@ -175,10 +175,14 @@ def register_report_routes(app):
 
             # 检查报告状态和文件是否存在
             if project.report_status == ReportStatus.GENERATED:
-                current_app.logger.info(f"检查报告文件是否存在: {project.report_path}")
+                # 获取项目根目录绝对路径
+                base_dir = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                full_path = os.path.join(base_dir, project.report_path) if project.report_path else None
+                current_app.logger.info(f"检查报告文件是否存在(完整路径): {full_path}")
+                
                 # 如果报告文件不存在，更新状态为未生成
-                if not project.report_path or not os.path.exists(project.report_path):
-                    current_app.logger.info("报告文件不存在，更新状态为未生成")
+                if not full_path or not os.path.exists(full_path):
+                    current_app.logger.info(f"报告文件不存在于: {full_path}，更新状态为未生成")
                     project.report_status = ReportStatus.NOT_GENERATED
                     project.report_path = None
                     try:
