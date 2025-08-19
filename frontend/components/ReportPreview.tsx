@@ -512,17 +512,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   };
 
-  // 切换到HTML预览
-  const handleSwitchToHtmlPreview = () => {
-    if (websocketService.isSocketConnected()) {
-      const socket = (websocketService as any).socket;
-      if (socket) {
-        socket.emit('stop_generation', { project_id: projectId });
-      }
-    }
-    setGenerating(false);
-  };
-
   const handleSwitchToHtml = () => {
     setIsPdfPreview(false);
     if (pdfUrl) {
