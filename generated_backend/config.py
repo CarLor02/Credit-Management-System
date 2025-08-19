@@ -87,7 +87,7 @@ class Config:
     RAG_API_KEY = os.environ.get('RAG_API_KEY', 'ragflow-VmMWVkNGUwNjhmYTExZjBhNTgzNzYwNT')
 
     # 报告生成API配置
-    REPORT_API_URL = os.environ.get('REPORT_API_URL', 'http://172.16.76.203/v1/chat-messages')
+    REPORT_API_URL = os.environ.get('REPORT_API_URL', 'http://172.16.18.157:18080/v1/chat-messages')
     REPORT_API_KEY = os.environ.get('REPORT_API_KEY', 'app-c8cKydhESsFxtG7QZvZkR5YU')
 
     # 文档处理服务API配置

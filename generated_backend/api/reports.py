@@ -859,7 +859,7 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
     """调用报告生成API - 流式模式"""
     try:
         # 新API调用
-        report_api_url = current_app.config.get('REPORT_API_URL', 'http://172.16.76.203/v1/chat-messages')
+        report_api_url = current_app.config.get('REPORT_API_URL', 'http://172.16.18.157:18080/v1/chat-messages')
         api_key = current_app.config.get('REPORT_API_KEY', 'app-c8cKydhESsFxtG7QZvZkR5YU')
 
         current_app.logger.info(f"调用报告生成API (流式): {report_api_url}")
