@@ -175,12 +175,20 @@ def register_report_routes(app):
 
             # 检查报告状态和文件是否存在
             if project.report_status == ReportStatus.GENERATED:
+                current_app.logger.info(f"检查报告文件是否存在: {project.report_path}")
                 # 如果报告文件不存在，更新状态为未生成
                 if not project.report_path or not os.path.exists(project.report_path):
+                    current_app.logger.info("报告文件不存在，更新状态为未生成")
                     project.report_status = ReportStatus.NOT_GENERATED
                     project.report_path = None
-                    db.session.commit()
+                    try:
+                        db.session.commit()
+                        current_app.logger.info("数据库状态更新成功")
+                    except Exception as e:
+                        current_app.logger.error(f"数据库提交失败: {str(e)}")
+                        db.session.rollback()
                 else:
+                    current_app.logger.info("报告文件存在，不允许重复生成")
                     return jsonify({"success": False, "error": "报告已生成，若需重新生成，请先删除旧报告"}), 400
             
             # 如果没有提供knowledge_name，使用company_name作为默认值
