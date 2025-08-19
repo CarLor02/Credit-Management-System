@@ -127,7 +127,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       switch (eventType) {
         case 'node_started':
           if (eventData?.data?.title) {
-            detailInfo = `节点启动: ${eventData.data.title}`;
+            detailInfo = `[${eventData.data.node_id || '节点'}] ${eventData.data.title}`;
+            eventColor = 'text-blue-400';
+          } else if (eventData?.data?.node_id) {
+            detailInfo = `节点启动: ${eventData.data.node_id}`;
             eventColor = 'text-blue-400';
           } else {
             detailInfo = '节点启动';
@@ -169,11 +172,16 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       };
 
       console.log('📝 添加事件到界面:', eventEntry);
-      setStreamingEvents(prev => [...prev, eventEntry]);
+      // 如果是内容块，则更新报告内容；否则添加到事件列表
+      if (eventEntry.isContent) {
+        setReportContent(prev => prev + '\n' + eventEntry.content);
+      } else {
+        setStreamingEvents(prev => [...prev, eventEntry]);
+      }
 
       // 自动滚动事件列表
       setTimeout(() => {
-        if (eventsRef.current) {
+        if (eventsRef.current && !eventEntry.isContent) {
           eventsRef.current.scrollTop = eventsRef.current.scrollHeight;
         }
       }, 100);
