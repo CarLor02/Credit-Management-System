@@ -791,7 +791,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                     />
                   ) : reportContent ? (
                     <div className="prose max-w-none p-6">
-                      {reportContent}
+                      <ReactMarkdown>{reportContent}</ReactMarkdown>
                     </div>
                   ) : (
                     <div className="text-center py-12">
