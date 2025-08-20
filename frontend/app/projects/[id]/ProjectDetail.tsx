@@ -389,7 +389,14 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         return;
       } catch (error) {
         console.error('下载PDF报告失败:', error);
-        alert(error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试');
+        const errorMessage = error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试';
+        alert(errorMessage);
+        
+        // 如果下载失败，可能是报告文件不存在，将状态重置为未生成
+        // 这样用户可以重新生成报告
+        if (errorMessage.includes('报告文件不存在') || errorMessage.includes('404')) {
+          setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
+        }
         return;
       }
     }
@@ -397,6 +404,14 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     // 检查必要的项目信息
     if (!project.dataset_id && !project.knowledge_base_name) {
       alert('项目尚未创建知识库，请先上传文档并等待处理完成');
+      return;
+    }
+
+    // 检查是否已有报告，如果有则提示用户
+    // 注意：如果代码执行到这里，说明report_status不是'generated'
+    // 但为了安全起见，仍然检查其他可能的状态
+    if (project.report_status === 'generating') {
+      alert('报告正在生成中，请稍后再试');
       return;
     }
 
