@@ -802,8 +802,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                       backgroundColor: 'white'
                     }} title="征信报告HTML预览" sandbox="allow-same-origin" />
                   ) : reportContent ? (
-                    <div className="p-6" ref={streamingContentRef}>
-                      <MarkdownPreview source={reportContent} className="prose max-w-none" />
+                    <div className="p-6 bg-white" ref={streamingContentRef}>
+                      <MarkdownPreview
+                        source={reportContent}
+                        className="max-w-none"
+                        style={{
+                          backgroundColor: 'white',
+                          color: 'black'
+                        }}
+                      />
                       {generating && (
                         <p className="text-gray-400 mt-4 text-center">报告生成中，内容持续更新...</p>
                       )}
