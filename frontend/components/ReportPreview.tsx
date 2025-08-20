@@ -263,7 +263,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         // 清除错误状态，确保内容能够显示
         setError(null);
         // 同时也在左侧事件列表中显示内容块信息
-        //addEvent('内容块', `收到${data.content_chunk.length}字符的内容块`);
+        //addEvent('内容块', `${data.content_chunk}`);
       }
     };
 
@@ -741,24 +741,22 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
           {/* 右侧：报告内容 - 固定75%宽度 */}
           <div className="w-3/4 min-w-0 flex flex-col">
-            {error && !generating ? (
+            {error && !generating && !reportContent ? (
+              // 错误提示
               <div className="text-center py-12">
                 <div className="text-red-600 mb-4">
                   <i className="ri-error-warning-line text-4xl"></i>
                 </div>
                 <p className="text-red-600 font-medium">{error}</p>
               </div>
-            ) : generating ? (
-              <div className="text-center py-12">
-                <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                <p className="text-gray-600">正在生成报告，请稍候...</p>
-              </div>
             ) : loading ? (
+              // 加载提示
               <div className="text-center py-12">
                 <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
                 <p className="text-gray-600">加载报告内容中...</p>
               </div>
             ) : isPdfPreview ? (
+              // PDF预览
               pdfUrl ? (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
                   <div className="bg-gradient-to-r from-gray-50 to-red-50 px-4 py-2 border-b border-gray-200">
@@ -793,44 +791,27 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                     <span className="text-xs text-gray-500">• HTML格式</span>
                   </div>
                 </div>
-                <div
-                  className="overflow-y-auto px-6 h-full"
-                  style={{
-                    height: 'calc(100% - 50px)',
-                    width: '100%'
-                  }}
-                >
+                <div className="overflow-y-auto px-6 h-full">
                   {htmlLoading ? (
-                    <div className="text-center py-8">
-                      <div className="animate-spin w-6 h-6 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                      <p className="text-gray-600">正在转换HTML格式...</p>
-                    </div>
+                    <div className="text-center py-8">正在转换HTML格式...</div>
                   ) : htmlContent ? (
-                    <iframe
-                      srcDoc={htmlContent}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                        backgroundColor: 'white'
-                      }}
-                      title="征信报告HTML预览"
-                      sandbox="allow-same-origin"
-                    />
+                    <iframe srcDoc={htmlContent} style={{
+                      width: '100%',
+                      height: '100%',
+                      border: 'none',
+                      backgroundColor: 'white'
+                    }} title="征信报告HTML预览" sandbox="allow-same-origin" />
                   ) : reportContent ? (
                     <div className="p-6" ref={streamingContentRef}>
-                      <MarkdownPreview
-                        source={reportContent}
-                        className="prose max-w-none"
-                      />
+                      <MarkdownPreview source={reportContent} className="prose max-w-none" />
+                      {generating && (
+                        <p className="text-gray-400 mt-4 text-center">报告生成中，内容持续更新...</p>
+                      )}
                     </div>
+                  ) : generating ? (
+                    <div className="text-center py-12">正在生成报告，请稍候...</div>
                   ) : (
-                    <div className="text-center py-12">
-                      <div className="text-gray-400 mb-4">
-                        <i className="ri-file-text-line text-4xl"></i>
-                      </div>
-                      <p className="text-gray-600">暂无报告内容</p>
-                    </div>
+                    <div className="text-center py-12">暂无报告内容</div>
                   )}
                 </div>
               </div>
