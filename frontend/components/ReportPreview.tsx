@@ -42,6 +42,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [htmlLoading, setHtmlLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [hasStreamingContent, setHasStreamingContent] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
 
@@ -64,11 +65,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (response.success) {
         if (response.data?.has_report) {
           setReportContent(response.data.content || '');
+          setError(null); // 清除错误状态
         } else {
-          setReportContent('');
-          // 只有在报告不在生成过程中时才显示错误信息
+          // 只有在报告不在生成过程中时才清空内容和显示错误信息
           if (!generating) {
+            setReportContent('');
             setError('该项目尚未生成报告');
+          } else {
+            // 生成过程中不清空内容，保持流式内容
+            setError(null); // 生成过程中不显示错误
           }
         }
       } else {
@@ -211,8 +216,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       }, 100);
     };
 
-    // WebSocket已在项目详情页连接，这里只需要设置状态和监听器
+    // WebSocket已在项目详情页连接，这里需要加入项目房间并设置监听器
     const projectRoom = `project_${projectId}`;
+    console.log('🏠 加入项目房间:', projectRoom);
+    websocketService.joinWorkflow(projectRoom);
     setWebsocketStatus(`监听房间: ${projectRoom}`);
 
     // 添加测试事件验证功能
@@ -239,9 +246,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     const handleWorkflowContent = (data: any) => {
       console.log('📄 收到workflow_content:', data);
       if (data.content_chunk) {
+        // 标记已经有流式内容
+        setHasStreamingContent(true);
         // 直接更新报告内容到右侧显示区域
         setReportContent(prev => {
           const newContent = prev ? `${prev}${data.content_chunk}` : data.content_chunk;
+          console.log('✅ 更新报告内容，新长度:', newContent.length);
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
@@ -250,8 +260,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           }, 50);
           return newContent;
         });
-        // 同时也在左侧事件列表中显示内容块信息（但显示摘要而不是完整内容）
-        addEvent('内容块', `收到${data.content_chunk.length}字符的内容块`);
+        // 清除错误状态，确保内容能够显示
+        setError(null);
+        // 同时也在左侧事件列表中显示内容块信息
+        //addEvent('内容块', `收到${data.content_chunk.length}字符的内容块`);
       }
     };
 
@@ -297,17 +309,22 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       websocketService.off('workflow_complete', handleWorkflowComplete);
       websocketService.off('workflow_error', handleWorkflowError);
 
+      // 离开项目房间
+      const projectRoom = `project_${projectId}`;
+      console.log('🚪 离开项目房间:', projectRoom);
+      websocketService.leaveWorkflow(projectRoom);
+
       setWebsocketStatus('未连接');
     };
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 获取报告内容（每次打开时都加载）
+  // 获取报告内容（只在弹窗打开、不在生成过程中且没有流式内容时加载）
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !generating && !hasStreamingContent) {
       fetchReportContent();
       fetchHtmlContent(); // 同时获取HTML内容
     }
-  }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, projectId, generating, hasStreamingContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 同步外部isGenerating prop到内部generating状态
   useEffect(() => {
@@ -724,7 +741,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
           {/* 右侧：报告内容 - 固定75%宽度 */}
           <div className="w-3/4 min-w-0 flex flex-col">
-            {error ? (
+            {error && !generating ? (
               <div className="text-center py-12">
                 <div className="text-red-600 mb-4">
                   <i className="ri-error-warning-line text-4xl"></i>
