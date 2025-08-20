@@ -117,7 +117,7 @@ def create_tables_if_not_exists():
     try:
         # 导入所有模型以确保它们被注册
         from db_models import (User, Project, Document, ProjectMember,
-                             AnalysisReport, WorkflowEvent, SystemLog, SystemSetting)
+                             AnalysisReport, SystemLog, SystemSetting)
 
         # 检查是否已有表
         inspector = db.inspect(db.engine)
@@ -181,9 +181,6 @@ def create_indexes():
             "CREATE INDEX IF NOT EXISTS idx_project_members_user_id ON project_members(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_analysis_reports_project_id ON analysis_reports(project_id)",
             "CREATE INDEX IF NOT EXISTS idx_analysis_reports_status ON analysis_reports(status)",
-            "CREATE INDEX IF NOT EXISTS idx_workflow_events_workflow_run_id ON workflow_events(workflow_run_id)",
-            "CREATE INDEX IF NOT EXISTS idx_workflow_events_project_id ON workflow_events(project_id)",
-            "CREATE INDEX IF NOT EXISTS idx_workflow_events_created_at ON workflow_events(created_at)",
             "CREATE INDEX IF NOT EXISTS idx_knowledge_bases_project_id ON knowledge_bases(project_id)",
             "CREATE INDEX IF NOT EXISTS idx_system_logs_user_id ON system_logs(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at)"

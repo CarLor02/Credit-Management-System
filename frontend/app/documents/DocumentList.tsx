@@ -314,17 +314,17 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   const getFileIcon = (type: string) => {
     switch (type) {
       case 'pdf':
-        return 'ri-file-pdf-line text-red-600';
+        return { icon: 'ri-file-pdf-line', color: 'text-red-600', bg: 'bg-red-100' };
       case 'excel':
-        return 'ri-file-excel-line text-green-600';
+        return { icon: 'ri-file-excel-line', color: 'text-green-600', bg: 'bg-green-100' };
       case 'word':
-        return 'ri-file-word-line text-blue-600';
+        return { icon: 'ri-file-word-line', color: 'text-blue-600', bg: 'bg-blue-100' };
       case 'image':
-        return 'ri-image-line text-purple-600';
+        return { icon: 'ri-image-line', color: 'text-purple-600', bg: 'bg-purple-100' };
       case 'markdown':
-        return 'ri-markdown-line text-orange-600';
+        return { icon: 'ri-markdown-line', color: 'text-blue-600', bg: 'bg-blue-100' };
       default:
-        return 'ri-file-line text-gray-600';
+        return { icon: 'ri-file-line', color: 'text-gray-600', bg: 'bg-gray-100' };
     }
   };
 
@@ -429,10 +429,12 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                     </div>
                   ) : (
                     <div className="space-y-4 animate-fadeIn">
-                      {filteredDocuments.map((doc) => (
+                      {filteredDocuments.map((doc) => {
+                        const fileIcon = getFileIcon(doc.type);
+                        return (
             <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-all duration-200 ease-in-out transform hover:scale-[1.01] hover:shadow-md">
-              <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
-                <i className={`${getFileIcon(doc.type)} text-lg`}></i>
+              <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${fileIcon.bg}`}>
+                <i className={`${fileIcon.icon} ${fileIcon.color} text-lg`}></i>
               </div>
               
               <div className="flex-1 min-w-0">
@@ -507,7 +509,8 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                 </div>
               </div>
             </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </>

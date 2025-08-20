@@ -17,7 +17,7 @@ from websocket_handlers import (
 )
 
 # 导入数据库模型
-from db_models import Project, AnalysisReport, WorkflowEvent, ReportType, ReportStatus
+from db_models import Project, AnalysisReport, ReportType, ReportStatus
 
 # 导入PDF转换服务
 from services.pdf_converter import convert_report_to_pdf, is_pdf_conversion_available
@@ -421,45 +421,7 @@ def register_report_routes(app):
             # 通过WebSocket广播错误
             broadcast_workflow_error(socketio, project_room_id, f"生成报告失败: {str(e)}")
 
-    @app.route('/api/check_workflow_events/<workflow_run_id>', methods=['GET'])
-    def check_workflow_events(workflow_run_id):
-        """
-        获取指定工作流的事件和内容
-        """
-        if not workflow_run_id:
-            return jsonify({"error": "缺少必要参数: workflow_run_id"}), 400
 
-        try:
-            # 从数据库查询事件
-            events = WorkflowEvent.query.filter_by(
-                workflow_run_id=workflow_run_id
-            ).order_by(WorkflowEvent.sequence_number).all()
-
-            if not events:
-                return jsonify({
-                    "exists": False,
-                    "message": "未找到对应的工作流事件"
-                })
-
-            # 提取事件类型列表
-            event_types = [event.event_type for event in events]
-
-            # 获取第一个事件的基本信息
-            first_event = events[0]
-
-            # 返回事件和内容
-            return jsonify({
-                "exists": True,
-                "events": event_types,
-                "content": "",  # 内容在报告完成后从文件读取
-                "metadata": {},
-                "timestamp": first_event.created_at.timestamp(),
-                "company_name": first_event.company_name
-            })
-
-        except Exception as e:
-            current_app.logger.error(f"查询工作流事件失败: {e}")
-            return jsonify({"error": f"查询失败: {str(e)}"}), 500
 
     @app.route('/api/projects/<int:project_id>/report', methods=['GET'])
     def get_project_report(project_id):
@@ -565,17 +527,7 @@ def register_report_routes(app):
             db.session.commit()
             current_app.logger.info(f"已清空项目 {project_id} 的报告路径")
 
-            # 删除数据库中对应的工作流事件
-            try:
-                deleted_count = WorkflowEvent.query.filter_by(
-                    project_id=project_id,
-                    company_name=project.name
-                ).delete()
-                db.session.commit()
-                current_app.logger.info(f"已删除 {deleted_count} 个工作流事件记录")
-            except Exception as db_error:
-                current_app.logger.error(f"删除工作流事件失败: {db_error}")
-                # 继续执行，不因为数据库删除失败而中断
+
 
             return jsonify({
                 "success": True,
@@ -1165,25 +1117,6 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
 
                     events.append(mapped_event)
                     sequence_number += 1
-
-                    # 实时存储事件到数据库
-                    if project_id:
-                        try:
-                            workflow_event = WorkflowEvent(
-                                workflow_run_id=workflow_run_id,
-                                project_id=project_id,
-                                company_name=company_name,
-                                event_type=mapped_event,
-                                event_data=data,
-                                sequence_number=sequence_number
-                            )
-                            db.session.add(workflow_event)
-                            db.session.commit()
-                            print(f"事件已存储到数据库: {mapped_event} (序号: {sequence_number})")
-                            db.session.flush()
-                        except Exception as e:
-                            print(f"存储事件到数据库失败: {e}")
-                            db.session.rollback()
 
                     # 通过WebSocket广播事件到项目房间
                     try:
