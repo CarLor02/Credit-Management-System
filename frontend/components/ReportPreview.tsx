@@ -184,7 +184,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (eventType === 'content_generated' || eventType === 'markdown_content') {
         // 内容事件直接更新报告内容，并自动滚动
         setReportContent(prev => {
-          const newContent = prev ? `${prev}${content}` : content; // 移除换行符拼接
+          const newContent = prev ? prev + content.replace(/\r?\n/g, '\n') : content.replace(/\r?\n/g, '\n');
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
@@ -250,7 +250,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         setHasStreamingContent(true);
         // 直接更新报告内容到右侧显示区域
         setReportContent(prev => {
-          const newContent = prev ? `${prev}${data.content_chunk}` : data.content_chunk;
+          const newContent = prev ? prev + data.content_chunk.replace(/\r?\n/g, '\n') : data.content_chunk.replace(/\r?\n/g, '\n');
           console.log('✅ 更新报告内容，新长度:', newContent.length);
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
