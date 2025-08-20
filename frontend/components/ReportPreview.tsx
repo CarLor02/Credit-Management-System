@@ -42,6 +42,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [htmlLoading, setHtmlLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [hasStreamingContent, setHasStreamingContent] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
 
@@ -64,11 +65,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (response.success) {
         if (response.data?.has_report) {
           setReportContent(response.data.content || '');
+          setError(null); // 清除错误状态
         } else {
-          setReportContent('');
-          // 只有在报告不在生成过程中时才显示错误信息
+          // 只有在报告不在生成过程中时才清空内容和显示错误信息
           if (!generating) {
+            setReportContent('');
             setError('该项目尚未生成报告');
+          } else {
+            // 生成过程中不清空内容，保持流式内容
+            setError(null); // 生成过程中不显示错误
           }
         }
       } else {
@@ -179,7 +184,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (eventType === 'content_generated' || eventType === 'markdown_content') {
         // 内容事件直接更新报告内容，并自动滚动
         setReportContent(prev => {
-          const newContent = prev ? `${prev}${content}` : content; // 移除换行符拼接
+          const newContent = prev ? prev + content.replace(/\r?\n/g, '\n') : content.replace(/\r?\n/g, '\n');
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
@@ -211,8 +216,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       }, 100);
     };
 
-    // WebSocket已在项目详情页连接，这里只需要设置状态和监听器
+    // WebSocket已在项目详情页连接，这里需要加入项目房间并设置监听器
     const projectRoom = `project_${projectId}`;
+    console.log('🏠 加入项目房间:', projectRoom);
+    websocketService.joinWorkflow(projectRoom);
     setWebsocketStatus(`监听房间: ${projectRoom}`);
 
     // 添加测试事件验证功能
@@ -239,9 +246,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     const handleWorkflowContent = (data: any) => {
       console.log('📄 收到workflow_content:', data);
       if (data.content_chunk) {
+        // 标记已经有流式内容
+        setHasStreamingContent(true);
         // 直接更新报告内容到右侧显示区域
         setReportContent(prev => {
-          const newContent = prev ? `${prev}${data.content_chunk}` : data.content_chunk;
+          const newContent = prev ? prev + data.content_chunk.replace(/\r?\n/g, '\n') : data.content_chunk.replace(/\r?\n/g, '\n');
+          console.log('✅ 更新报告内容，新长度:', newContent.length);
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
@@ -250,8 +260,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           }, 50);
           return newContent;
         });
-        // 同时也在左侧事件列表中显示内容块信息（但显示摘要而不是完整内容）
-        addEvent('内容块', `收到${data.content_chunk.length}字符的内容块`);
+        // 清除错误状态，确保内容能够显示
+        setError(null);
+        // 同时也在左侧事件列表中显示内容块信息
+        //addEvent('内容块', `${data.content_chunk}`);
       }
     };
 
@@ -297,17 +309,22 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       websocketService.off('workflow_complete', handleWorkflowComplete);
       websocketService.off('workflow_error', handleWorkflowError);
 
+      // 离开项目房间
+      const projectRoom = `project_${projectId}`;
+      console.log('🚪 离开项目房间:', projectRoom);
+      websocketService.leaveWorkflow(projectRoom);
+
       setWebsocketStatus('未连接');
     };
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 获取报告内容（每次打开时都加载）
+  // 获取报告内容（只在弹窗打开、不在生成过程中且没有流式内容时加载）
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !generating && !hasStreamingContent) {
       fetchReportContent();
       fetchHtmlContent(); // 同时获取HTML内容
     }
-  }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, projectId, generating, hasStreamingContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 同步外部isGenerating prop到内部generating状态
   useEffect(() => {
@@ -724,24 +741,22 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
           {/* 右侧：报告内容 - 固定75%宽度 */}
           <div className="w-3/4 min-w-0 flex flex-col">
-            {error ? (
+            {error && !generating && !reportContent ? (
+              // 错误提示
               <div className="text-center py-12">
                 <div className="text-red-600 mb-4">
                   <i className="ri-error-warning-line text-4xl"></i>
                 </div>
                 <p className="text-red-600 font-medium">{error}</p>
               </div>
-            ) : generating ? (
-              <div className="text-center py-12">
-                <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                <p className="text-gray-600">正在生成报告，请稍候...</p>
-              </div>
             ) : loading ? (
+              // 加载提示
               <div className="text-center py-12">
                 <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
                 <p className="text-gray-600">加载报告内容中...</p>
               </div>
             ) : isPdfPreview ? (
+              // PDF预览
               pdfUrl ? (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-full">
                   <div className="bg-gradient-to-r from-gray-50 to-red-50 px-4 py-2 border-b border-gray-200">
@@ -776,44 +791,34 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                     <span className="text-xs text-gray-500">• HTML格式</span>
                   </div>
                 </div>
-                <div
-                  className="overflow-y-auto px-6 h-full"
-                  style={{
-                    height: 'calc(100% - 50px)',
-                    width: '100%'
-                  }}
-                >
+                <div className="overflow-y-auto px-6 h-full">
                   {htmlLoading ? (
-                    <div className="text-center py-8">
-                      <div className="animate-spin w-6 h-6 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                      <p className="text-gray-600">正在转换HTML格式...</p>
-                    </div>
+                    <div className="text-center py-8">正在转换HTML格式...</div>
                   ) : htmlContent ? (
-                    <iframe
-                      srcDoc={htmlContent}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                        backgroundColor: 'white'
-                      }}
-                      title="征信报告HTML预览"
-                      sandbox="allow-same-origin"
-                    />
+                    <iframe srcDoc={htmlContent} style={{
+                      width: '100%',
+                      height: '100%',
+                      border: 'none',
+                      backgroundColor: 'white'
+                    }} title="征信报告HTML预览" sandbox="allow-same-origin" />
                   ) : reportContent ? (
-                    <div className="p-6" ref={streamingContentRef}>
+                    <div className="p-6 bg-white" ref={streamingContentRef}>
                       <MarkdownPreview
                         source={reportContent}
-                        className="prose max-w-none"
+                        className="max-w-none"
+                        style={{
+                          backgroundColor: 'white',
+                          color: 'black'
+                        }}
                       />
+                      {generating && (
+                        <p className="text-gray-400 mt-4 text-center">报告生成中，内容持续更新...</p>
+                      )}
                     </div>
+                  ) : generating ? (
+                    <div className="text-center py-12">正在生成报告，请稍候...</div>
                   ) : (
-                    <div className="text-center py-12">
-                      <div className="text-gray-400 mb-4">
-                        <i className="ri-file-text-line text-4xl"></i>
-                      </div>
-                      <p className="text-gray-600">暂无报告内容</p>
-                    </div>
+                    <div className="text-center py-12">暂无报告内容</div>
                   )}
                 </div>
               </div>
