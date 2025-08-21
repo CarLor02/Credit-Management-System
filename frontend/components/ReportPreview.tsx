@@ -257,10 +257,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       switch (eventType) {
         case 'node_started':
-          // 尝试从不同的数据结构中获取title信息
-          // eventData.event_data 是从后端传来的原始Dify数据
-          const nodeTitle = eventData?.event_data?.data?.title || eventData?.event_data?.title || eventData?.data?.title;
-          const nodeId = eventData?.event_data?.data?.node_id || eventData?.event_data?.node_id || eventData?.data?.node_id;
+          // 根据Dify API格式，节点信息在event_data.data中
+          const nodeTitle = eventData?.event_data?.data?.title || eventData?.data?.title;
+          const nodeId = eventData?.event_data?.data?.node_id || eventData?.data?.node_id;
 
           if (nodeTitle) {
             detailInfo = `[${nodeId || '节点'}] ${nodeTitle}`;
@@ -278,10 +277,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           eventColor = 'text-purple-400';
           break;
         case 'node_finished':
-          // 尝试从不同的数据结构中获取title信息
-          // eventData.event_data 是从后端传来的原始Dify数据
-          const finishedNodeTitle = eventData?.event_data?.data?.title || eventData?.event_data?.title || eventData?.data?.title;
-          const finishedNodeId = eventData?.event_data?.data?.node_id || eventData?.event_data?.node_id || eventData?.data?.node_id;
+          // 根据Dify API格式，节点信息在event_data.data中
+          const finishedNodeTitle = eventData?.event_data?.data?.title || eventData?.data?.title;
+          const finishedNodeId = eventData?.event_data?.data?.node_id || eventData?.data?.node_id;
 
           if (finishedNodeTitle) {
             detailInfo = `[${finishedNodeId || '节点'}] ${finishedNodeTitle}`;
@@ -375,19 +373,23 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     const handleWorkflowEvent = (data: any) => {
       console.log('🎯 收到workflow_event:', data);
 
-      // 调试：打印事件数据结构
+      // 调试：打印所有事件的详细信息
+      console.log('📊 收到事件详情:', {
+        event_type: data.event_type,
+        event_data: data.event_data,
+        data: data.data,
+        raw_data: JSON.stringify(data, null, 2)
+      });
+
+      // 特别关注节点事件
       if (data.event_type === 'node_started' || data.event_type === 'node_finished') {
-        console.log('📊 节点事件详情:', {
-          event_type: data.event_type,
-          event_data: data.event_data,
-          data: data.data,
+        console.log('🎯 节点事件解析:', {
           title_from_event_data_data: data.event_data?.data?.title,
           title_from_event_data: data.event_data?.title,
           title_from_data: data.data?.title,
           node_id_from_event_data_data: data.event_data?.data?.node_id,
           node_id_from_event_data: data.event_data?.node_id,
-          node_id_from_data: data.data?.node_id,
-          raw_data: JSON.stringify(data, null, 2)
+          node_id_from_data: data.data?.node_id
         });
       }
 
@@ -520,6 +522,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       addEvent('报告生成已取消', '用户手动停止了报告生成');
       setGenerating(false);
+      setWebsocketStatus('已取消');
+      setError('报告生成已取消');
 
       // 更新流式内容服务状态
       if (projectId) {

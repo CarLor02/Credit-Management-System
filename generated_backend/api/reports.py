@@ -1152,8 +1152,14 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                     mapped_event = {
                         'message': 'content_generated',
                         'message_end': 'workflow_finished',
-                        'error': 'workflow_error'
+                        'error': 'workflow_error',
+                        'node_started': 'node_started',
+                        'node_finished': 'node_finished',
+                        'parallel_branch_started': 'parallel_branch_started',
+                        'parallel_branch_finished': 'parallel_branch_finished'
                     }.get(event_type, event_type)
+
+                    print(f"📤 广播事件: {mapped_event} 到房间: {project_room_id}")
 
                     events.append(mapped_event)
                     sequence_number += 1
