@@ -492,35 +492,44 @@ def register_report_routes(app):
         获取项目的报告内容
         """
         try:
-            project = Project.query.get(project_id)
+            # 使用新的数据库会话查询，避免连接问题
+            project = db.session.get(Project, project_id)
             if not project:
                 return jsonify({
                     "success": False,
                     "error": "项目不存在"
                 }), 404
 
-            # 如果报告路径为空或None，返回成功但无内容的响应
+            # 获取项目名称（在检查报告之前先获取，避免后续数据库连接问题）
+            company_name = project.name
+
+            # 如果报告路径为空或None，返回友好提示
             if not project.report_path or project.report_path.strip() == "":
                 return jsonify({
                     "success": False,
                     "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": project.name
-                }), 200  # 改为200状态码，表示请求成功但无报告
+                    "company_name": company_name
+                }), 404  # 使用404状态码，表示资源不存在
 
             # 检查文件是否存在
             if not os.path.exists(project.report_path):
                 # 文件不存在，清空数据库中的路径
-                project.report_path = None
-                db.session.commit()
-                current_app.logger.warning(f"报告文件不存在，已清空数据库路径: {project.report_path}")
+                try:
+                    project.report_path = None
+                    project.report_status = ReportStatus.NOT_GENERATED
+                    db.session.commit()
+                    current_app.logger.warning(f"报告文件不存在，已清空数据库路径: 项目ID {project_id}")
+                except Exception as db_error:
+                    current_app.logger.error(f"更新数据库失败: {db_error}")
+                    db.session.rollback()
 
                 return jsonify({
                     "success": False,
-                    "error": "报告文件不存在",
+                    "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": project.name
-                }), 200  # 改为200状态码
+                    "company_name": company_name
+                }), 404  # 使用404状态码
 
             # 读取报告内容
             try:
@@ -531,34 +540,42 @@ def register_report_routes(app):
                 if not content or content.strip() == "":
                     return jsonify({
                         "success": False,
-                        "error": "报告内容为空",
+                        "error": "该项目尚未生成报告",
                         "has_report": False,
-                        "company_name": project.name
-                    }), 200
+                        "company_name": company_name
+                    }), 404
 
                 return jsonify({
                     "success": True,
                     "content": content,
                     "file_path": project.report_path,
-                    "company_name": project.name,
+                    "company_name": company_name,
                     "has_report": True
                 })
             except Exception as read_error:
                 current_app.logger.error(f"读取报告文件失败: {read_error}")
                 return jsonify({
                     "success": False,
-                    "error": "读取报告文件失败",
+                    "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": project.name
-                }), 200  # 改为200状态码
+                    "company_name": company_name
+                }), 404
 
         except Exception as e:
             current_app.logger.error(f"获取项目报告失败: {str(e)}")
-            return jsonify({
-                "success": False,
-                "error": f"获取项目报告失败: {str(e)}",
-                "has_report": False
-            }), 500
+            # 对于数据库连接问题，也返回友好的提示
+            if "result object does not return rows" in str(e).lower() or "closed automatically" in str(e).lower():
+                return jsonify({
+                    "success": False,
+                    "error": "该项目尚未生成报告",
+                    "has_report": False
+                }), 404
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "获取报告时发生错误，请稍后重试",
+                    "has_report": False
+                }), 500
 
     @app.route('/api/projects/<int:project_id>/report', methods=['DELETE'])
     def delete_project_report(project_id):
@@ -566,7 +583,8 @@ def register_report_routes(app):
         删除项目的报告文件和相关数据
         """
         try:
-            project = Project.query.get(project_id)
+            # 使用新的数据库会话查询，避免连接问题
+            project = db.session.get(Project, project_id)
             if not project:
                 return jsonify({
                     "success": False,
@@ -575,22 +593,31 @@ def register_report_routes(app):
 
             current_app.logger.info(f"开始删除项目 {project_id} 的报告")
 
+            # 保存报告路径用于删除文件
+            report_path = project.report_path
+
             # 删除报告文件
-            if project.report_path and os.path.exists(project.report_path):
+            if report_path and os.path.exists(report_path):
                 try:
-                    os.remove(project.report_path)
-                    current_app.logger.info(f"已删除报告文件: {project.report_path}")
+                    os.remove(report_path)
+                    current_app.logger.info(f"已删除报告文件: {report_path}")
                 except Exception as file_error:
                     current_app.logger.error(f"删除报告文件失败: {file_error}")
                     # 继续执行，不因为文件删除失败而中断
 
             # 清空数据库中的报告路径
-            project.report_status = ReportStatus.NOT_GENERATED
-            project.report_path = None
-            db.session.commit()
-            current_app.logger.info(f"已清空项目 {project_id} 的报告路径")
-
-
+            try:
+                project.report_status = ReportStatus.NOT_GENERATED
+                project.report_path = None
+                db.session.commit()
+                current_app.logger.info(f"已清空项目 {project_id} 的报告路径")
+            except Exception as db_error:
+                current_app.logger.error(f"更新数据库失败: {db_error}")
+                db.session.rollback()
+                return jsonify({
+                    "success": False,
+                    "error": "删除报告时数据库更新失败"
+                }), 500
 
             return jsonify({
                 "success": True,
@@ -599,6 +626,7 @@ def register_report_routes(app):
 
         except Exception as e:
             current_app.logger.error(f"删除项目报告失败: {str(e)}")
+            db.session.rollback()  # 确保回滚事务
             return jsonify({
                 "success": False,
                 "error": f"删除项目报告失败: {str(e)}"
@@ -729,7 +757,8 @@ def register_report_routes(app):
         获取项目报告的HTML版本
         """
         try:
-            project = Project.query.get(project_id)
+            # 使用新的数据库会话查询，避免连接问题
+            project = db.session.get(Project, project_id)
             if not project:
                 return jsonify({
                     "success": False,
@@ -745,9 +774,19 @@ def register_report_routes(app):
 
             # 检查报告文件是否存在
             if not os.path.exists(project.report_path):
+                # 文件不存在，清空数据库中的路径
+                try:
+                    project.report_path = None
+                    project.report_status = ReportStatus.NOT_GENERATED
+                    db.session.commit()
+                    current_app.logger.warning(f"报告文件不存在，已清空数据库路径: 项目ID {project_id}")
+                except Exception as db_error:
+                    current_app.logger.error(f"更新数据库失败: {db_error}")
+                    db.session.rollback()
+
                 return jsonify({
                     "success": False,
-                    "error": "报告文件不存在"
+                    "error": "该项目尚未生成报告"
                 }), 404
 
             # 读取Markdown报告内容
@@ -758,15 +797,15 @@ def register_report_routes(app):
                 if not md_content or md_content.strip() == "":
                     return jsonify({
                         "success": False,
-                        "error": "报告内容为空"
+                        "error": "该项目尚未生成报告"
                     }), 404
 
             except Exception as read_error:
                 current_app.logger.error(f"读取报告文件失败: {read_error}")
                 return jsonify({
                     "success": False,
-                    "error": "读取报告文件失败"
-                }), 500
+                    "error": "该项目尚未生成报告"
+                }), 404
 
             # 转换为HTML
             try:
@@ -791,10 +830,17 @@ def register_report_routes(app):
 
         except Exception as e:
             current_app.logger.error(f"获取HTML报告失败: {e}")
-            return jsonify({
-                "success": False,
-                "error": f"获取HTML报告失败: {str(e)}"
-            }), 500
+            # 对于数据库连接问题，也返回友好的提示
+            if "result object does not return rows" in str(e).lower() or "closed automatically" in str(e).lower():
+                return jsonify({
+                    "success": False,
+                    "error": "该项目尚未生成报告"
+                }), 404
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "获取报告时发生错误，请稍后重试"
+                }), 500
 
     @app.route('/api/projects/<int:project_id>/report/download-html', methods=['GET'])
     @token_required
