@@ -60,46 +60,20 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     // 0. 首先修复标题格式
     processedContent = fixHeadingFormat(processedContent);
 
-    // 1. 修复标题格式：确保#号后面有空格
-    processedContent = processedContent.replace(/^(#{1,6})([^#\s])/gm, '$1 $2');
-
-    // 2. 确保标题前有空行（除了文档开头）
-    processedContent = processedContent.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
-
-    // 3. 确保标题后有空行（如果后面不是另一个标题）
-    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n([^#\n])/g, '$1\n\n$2');
-
-    // 4. 修复连续标题之间的间距
-    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n(#{1,6})/g, '$1\n\n$2');
-
-    // 5. 特殊处理：修复具体的问题标题
+    // 1. 强制修复所有可能的标题格式问题
     processedContent = processedContent
-      // 修复"### 第二节 企业基本面分析"类型的标题
-      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+节\s*[^\n]*)/gm, '$1 $2')
-      // 修复"### 第三节 动态财务诊断"类型的标题
-      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+章\s*[^\n]*)/gm, '$1 $2')
+      // 确保#号后面有空格
+      .replace(/^(#{1,6})([^#\s])/gm, '$1 $2')
+      // 修复"### 第二节 企业基本面分析"等标题（强化版）
+      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+[节章]\s*[^\n]*)/gm, '$1 $2')
+      // 修复可能的标题格式变体
+      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+[节章])\s*([^\n]*)/gm, '$1 $2 $3')
       // 确保所有以"第"开头的标题都有正确格式
-      .replace(/^(#{1,6})\s*(第[^\n]*)/gm, '$1 $2');
+      .replace(/^(#{1,6})\s*(第[^\n]*)/gm, '$1 $2')
+      // 修复可能的企业分析相关标题
+      .replace(/^(#{1,6})\s*(企业基本面分析|动态财务诊断|风险评估|经营状况分析)/gm, '$1 $2');
 
-    // 6. 修复列表格式：确保-号后面有空格
-    processedContent = processedContent.replace(/^(\s*)-([^\s])/gm, '$1- $2');
-
-    // 7. 修复数字列表格式：确保数字后面有空格
-    processedContent = processedContent.replace(/^(\s*)(\d+\.)([^\s])/gm, '$1$2 $3');
-
-    // 8. 确保列表前有空行
-    processedContent = processedContent.replace(/([^\n])\n(\s*[-*+\d])/g, '$1\n\n$2');
-
-    // 9. 修复表格格式问题
-    processedContent = processedContent.replace(/\|([^|\n]*)\|/g, (_, content) => {
-      return `| ${content.trim()} |`;
-    });
-
-    // 10. 确保表格前后有空行
-    processedContent = processedContent.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
-    processedContent = processedContent.replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2');
-
-    // 11. 强制修复可能的标题行（最后一道防线）
+    // 2. 处理没有#号的标题行（强制添加）
     processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/gm, (match, spaces, title) => {
       // 如果这行看起来像标题但没有#号，添加###
       if (!title.startsWith('#')) {
@@ -108,28 +82,70 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       return match;
     });
 
-    // 12. 修复可能遗漏的企业分析相关标题
-    processedContent = processedContent.replace(/^(\s*)(企业基本面分析|动态财务诊断|风险评估|经营状况分析)/gm, '### $2');
+    // 3. 修复企业分析相关的独立标题
+    processedContent = processedContent.replace(/^(\s*)(企业基本面分析|动态财务诊断|风险评估|经营状况分析)(\s*)$/gm, '### $2');
 
-    // 13. 清理多余的空行（超过2个连续空行的情况）
+    // 4. 确保标题前有空行（除了文档开头）
+    processedContent = processedContent.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
+
+    // 5. 确保标题后有空行（如果后面不是另一个标题）
+    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n([^#\n])/g, '$1\n\n$2');
+
+    // 6. 修复连续标题之间的间距
+    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n(#{1,6})/g, '$1\n\n$2');
+
+    // 7. 修复列表格式：确保-号后面有空格
+    processedContent = processedContent.replace(/^(\s*)-([^\s])/gm, '$1- $2');
+
+    // 8. 修复数字列表格式：确保数字后面有空格
+    processedContent = processedContent.replace(/^(\s*)(\d+\.)([^\s])/gm, '$1$2 $3');
+
+    // 9. 确保列表前有空行
+    processedContent = processedContent.replace(/([^\n])\n(\s*[-*+\d])/g, '$1\n\n$2');
+
+    // 10. 修复表格格式问题
+    processedContent = processedContent.replace(/\|([^|\n]*)\|/g, (_, content) => {
+      return `| ${content.trim()} |`;
+    });
+
+    // 11. 确保表格前后有空行
+    processedContent = processedContent.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
+    processedContent = processedContent.replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2');
+
+    // 12. 清理多余的空行（超过2个连续空行的情况）
     processedContent = processedContent.replace(/\n{3,}/g, '\n\n');
 
-    // 14. 确保文档开头和结尾没有多余的空行
+    // 13. 确保文档开头和结尾没有多余的空行
     processedContent = processedContent.trim();
+
+    // 14. 最后一次强化检查：确保所有标题都被正确处理
+    const lines = processedContent.split('\n');
+    const fixedLines = lines.map(line => {
+      // 检查是否是看起来像标题但没有#号的行
+      if (/^第[一二三四五六七八九十\d]+[节章]/.test(line.trim()) && !line.trim().startsWith('#')) {
+        return `### ${line.trim()}`;
+      }
+      if (/^(企业基本面分析|动态财务诊断|风险评估|经营状况分析)$/.test(line.trim()) && !line.trim().startsWith('#')) {
+        return `### ${line.trim()}`;
+      }
+      return line;
+    });
+    processedContent = fixedLines.join('\n');
 
     // 调试：打印处理前后的标题行
     if (content !== processedContent) {
       const originalTitles = content.match(/^#{1,6}.*$/gm) || [];
       const processedTitles = processedContent.match(/^#{1,6}.*$/gm) || [];
+      const allTitleLikeLines = processedContent.match(/^.*第[一二三四五六七八九十\d]+[节章].*$/gm) || [];
 
-      if (originalTitles.length > 0) {
-        console.log('📝 Markdown标题预处理:', {
-          原始标题数量: originalTitles.length,
-          处理后标题数量: processedTitles.length,
-          原始标题: originalTitles.slice(0, 5), // 只显示前5个
-          处理后标题: processedTitles.slice(0, 5)
-        });
-      }
+      console.log('📝 Markdown标题预处理 (强化版):', {
+        原始标题数量: originalTitles.length,
+        处理后标题数量: processedTitles.length,
+        所有标题样式行数量: allTitleLikeLines.length,
+        原始标题: originalTitles.slice(0, 5),
+        处理后标题: processedTitles.slice(0, 5),
+        标题样式行示例: allTitleLikeLines.slice(0, 5)
+      });
     }
 
     return processedContent;
@@ -1064,6 +1080,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                             wrapperElement={{
                               'data-color-mode': 'light'
                             }}
+                            rehypeRewrite={(node) => {
+                              // 确保标题元素正确渲染
+                              if (node.type === 'element' && /^h[1-6]$/.test(node.tagName)) {
+                                node.properties = {
+                                  ...node.properties,
+                                  style: 'display: block; font-weight: 600;'
+                                };
+                              }
+                            }}
                           />
                           <style jsx>{`
                             .markdown-content h1,
@@ -1072,25 +1097,31 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                             .markdown-content h4,
                             .markdown-content h5,
                             .markdown-content h6 {
-                              margin-top: 1.5em;
-                              margin-bottom: 0.5em;
-                              line-height: 1.3;
+                              margin-top: 1.5em !important;
+                              margin-bottom: 0.5em !important;
+                              line-height: 1.3 !important;
+                              font-weight: 600 !important;
+                              color: #1f2937 !important;
+                              display: block !important;
                             }
                             .markdown-content h1 {
-                              font-size: 1.8em;
-                              border-bottom: 2px solid #e5e7eb;
-                              padding-bottom: 0.3em;
+                              font-size: 1.8em !important;
+                              border-bottom: 2px solid #e5e7eb !important;
+                              padding-bottom: 0.3em !important;
                             }
                             .markdown-content h2 {
-                              font-size: 1.5em;
-                              border-bottom: 1px solid #e5e7eb;
-                              padding-bottom: 0.2em;
+                              font-size: 1.5em !important;
+                              border-bottom: 1px solid #e5e7eb !important;
+                              padding-bottom: 0.2em !important;
                             }
                             .markdown-content h3 {
-                              font-size: 1.3em;
+                              font-size: 1.3em !important;
+                              font-weight: 600 !important;
+                              color: #374151 !important;
                             }
                             .markdown-content h4 {
-                              font-size: 1.1em;
+                              font-size: 1.1em !important;
+                              font-weight: 600 !important;
                             }
                             .markdown-content p {
                               margin-bottom: 1em;
@@ -1156,8 +1187,49 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                         wrapperElement={{
                           'data-color-mode': 'light'
                         }}
+                        rehypeRewrite={(node) => {
+                          // 确保标题元素正确渲染
+                          if (node.type === 'element' && /^h[1-6]$/.test(node.tagName)) {
+                            node.properties = {
+                              ...node.properties,
+                              style: 'display: block; font-weight: 600;'
+                            };
+                          }
+                        }}
                       />
                       <style jsx>{`
+                        .markdown-content h1,
+                        .markdown-content h2,
+                        .markdown-content h3,
+                        .markdown-content h4,
+                        .markdown-content h5,
+                        .markdown-content h6 {
+                          margin-top: 1.5em !important;
+                          margin-bottom: 0.5em !important;
+                          line-height: 1.3 !important;
+                          font-weight: 600 !important;
+                          color: #1f2937 !important;
+                          display: block !important;
+                        }
+                        .markdown-content h1 {
+                          font-size: 1.8em !important;
+                          border-bottom: 2px solid #e5e7eb !important;
+                          padding-bottom: 0.3em !important;
+                        }
+                        .markdown-content h2 {
+                          font-size: 1.5em !important;
+                          border-bottom: 1px solid #e5e7eb !important;
+                          padding-bottom: 0.2em !important;
+                        }
+                        .markdown-content h3 {
+                          font-size: 1.3em !important;
+                          font-weight: 600 !important;
+                          color: #374151 !important;
+                        }
+                        .markdown-content h4 {
+                          font-size: 1.1em !important;
+                          font-weight: 600 !important;
+                        }
                         .markdown-content table {
                           border-collapse: collapse;
                           width: 100%;

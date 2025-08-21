@@ -27,6 +27,11 @@ from database import db
 # 导入认证装饰器
 from api.auth import token_required
 
+# 全局变量：跟踪正在进行的工作流
+import threading
+active_workflows = {}  # {project_id: {'workflow_run_id': str, 'stop_flag': bool, 'thread': Thread}}
+workflow_lock = threading.Lock()
+
 # 导入配置（如果需要的话）
 # from config import Config
 
@@ -186,6 +191,14 @@ def register_report_routes(app):
             project = Project.query.get(project_id)
             if not project:
                 return jsonify({"success": False, "error": "项目不存在"}), 404
+
+            # 设置停止标志
+            with workflow_lock:
+                if project_id in active_workflows:
+                    active_workflows[project_id]['stop_flag'] = True
+                    current_app.logger.info(f"设置项目 {project_id} 的停止标志")
+                else:
+                    current_app.logger.warning(f"项目 {project_id} 没有活跃的工作流")
 
             # 更新项目报告状态为已取消（使用NOT_GENERATED作为取消状态）
             project.report_status = ReportStatus.NOT_GENERATED
@@ -396,6 +409,13 @@ def register_report_routes(app):
 
             # 真实的流式调用报告生成API
             try:
+                # 注册活跃工作流
+                with workflow_lock:
+                    active_workflows[project_id] = {
+                        'workflow_run_id': f"workflow_{int(time.time())}",
+                        'stop_flag': False
+                    }
+
                 # 调用流式报告生成API，传递项目房间ID用于WebSocket广播
                 report_content, workflow_run_id, events = call_report_generation_api_streaming(company_name, knowledge_name, project_id, project_room_id)
 
@@ -424,8 +444,19 @@ def register_report_routes(app):
 
                 # 通过WebSocket广播报告完成
                 broadcast_workflow_complete(socketio, project_room_id, report_content)
+
+                # 清理活跃工作流
+                with workflow_lock:
+                    if project_id in active_workflows:
+                        del active_workflows[project_id]
+
             except Exception as api_error:
                 current_app.logger.error(f"调用外部API失败: {str(api_error)}")
+
+                # 清理活跃工作流
+                with workflow_lock:
+                    if project_id in active_workflows:
+                        del active_workflows[project_id]
 
                 # 通过WebSocket广播错误事件
                 try:
@@ -1098,6 +1129,12 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
         if not line:
             continue
 
+        # 检查停止标志
+        with workflow_lock:
+            if project_id in active_workflows and active_workflows[project_id].get('stop_flag', False):
+                print(f"检测到停止标志，终止项目 {project_id} 的流式处理")
+                break
+
         # 解析 SSE 格式数据
         line_str = line.decode('utf-8') if isinstance(line, bytes) else line
         if line_str.startswith('data: '):
@@ -1189,6 +1226,12 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
             print(f"已广播完成事件到房间 {project_room_id}，最终内容长度: {len(full_content)}")
     except Exception as e:
         print(f"WebSocket完成事件广播失败: {e}")
+
+    # 清理活跃工作流（无论是正常完成还是被停止）
+    with workflow_lock:
+        if project_id in active_workflows:
+            del active_workflows[project_id]
+            print(f"已清理项目 {project_id} 的活跃工作流")
 
     print(f"流式解析完成 - workflow_run_id: {workflow_run_id}, 事件数: {len(events)}, 内容长度: {len(full_content)}")
     return workflow_run_id, full_content, metadata, events
