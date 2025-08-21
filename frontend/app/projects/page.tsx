@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import ProjectCard from './ProjectCard';
 import CreateProjectModal from './CreateProjectModal';
 import { projectService, Project } from '@/services/projectService';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function ProjectsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -15,6 +16,7 @@ export default function ProjectsPage() {
   const [allProjects, setAllProjects] = useState<Project[]>([]); // 存储所有项目，用于计算标签数量
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { addNotification } = useNotification();
 
   // 加载所有项目数据（用于计算标签数量）
   const loadAllProjects = async () => {
@@ -94,13 +96,12 @@ export default function ProjectsPage() {
         // 重新加载项目列表和统计数据
         await Promise.all([loadProjects(), loadAllProjects()]);
         
-        // 可以添加成功提示（可选）
-        // 这里可以使用 toast 或其他通知方式
+        addNotification('项目删除成功', 'success');
       } else {
-        alert(response.error || '删除项目失败');
+        addNotification(response.error || '删除项目失败', 'error');
       }
     } catch (err) {
-      alert('删除项目失败，请稍后重试');
+      addNotification('删除项目失败，请稍后重试', 'error');
       console.error('Delete project error:', err);
     }
   };

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import { useAuth } from '@/contexts/AuthContext';
 import { userService, UpdateUserData } from '@/services/userService';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState('info');
@@ -15,6 +16,7 @@ export default function ProfilePage() {
   });
 
   const { user, updateUser } = useAuth();
+  const { addNotification } = useNotification();
 
   // 用户数据 - 使用真实用户数据，如果没有则使用默认值
   const userData = {
@@ -46,20 +48,20 @@ export default function ProfilePage() {
   // 表单验证
   const validateForm = () => {
     if (!formData.email.trim()) {
-      alert('邮箱不能为空');
+      addNotification('邮箱不能为空', 'error');
       return false;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      alert('请输入有效的邮箱地址');
+      addNotification('请输入有效的邮箱地址', 'error');
       return false;
     }
 
     if (formData.phone && formData.phone.trim()) {
       const phoneRegex = /^1[3-9]\d{9}$/;
       if (!phoneRegex.test(formData.phone)) {
-        alert('请输入有效的手机号码');
+        addNotification('请输入有效的手机号码', 'error');
         return false;
       }
     }
@@ -92,7 +94,7 @@ export default function ProfilePage() {
 
       // 如果没有变化，直接关闭弹窗
       if (Object.keys(updateData).length === 0) {
-        alert('没有检测到任何修改');
+        addNotification('没有检测到任何修改', 'info');
         setShowEditModal(false);
         return;
       }
@@ -106,14 +108,14 @@ export default function ProfilePage() {
           await updateUser(response.data);
         }
 
-        alert(response.message || '个人信息更新成功！');
+        addNotification(response.message || '个人信息更新成功！', 'success');
         setShowEditModal(false);
       } else {
-        alert(response.error || '更新失败，请稍后重试');
+        addNotification(response.error || '更新失败，请稍后重试', 'error');
       }
     } catch (error) {
       console.error('更新用户信息失败:', error);
-      alert('更新失败，请稍后重试');
+      addNotification('更新失败，请稍后重试', 'error');
     } finally {
       setLoading(false);
     }

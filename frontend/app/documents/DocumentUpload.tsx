@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { documentService } from '@/services/documentService';
 import { Project } from '@/services/projectService';
 import Portal from '@/components/Portal';
+import { useNotification } from '@/contexts/NotificationContext';
 
 interface DocumentUploadProps {
   selectedProject: string;
@@ -18,6 +19,7 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
   const [error, setError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const { addNotification } = useNotification();
 
   // ESC键关闭弹窗
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
 
   const showUploadConfirmation = (files: File[]) => {
     if (!selectedProject) {
-      alert('请先选择关联项目');
+      addNotification('请先选择关联项目', 'warning');
       return;
     }
 

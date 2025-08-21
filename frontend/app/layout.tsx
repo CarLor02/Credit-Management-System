@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Pacifico } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "../contexts/AuthContext";
+import { NotificationProvider } from '@/contexts/NotificationProvider';
+import { ConfirmProvider } from '@/contexts/ConfirmContext';
 
 const pacifico = Pacifico({
   weight: '400',
@@ -36,7 +38,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${pacifico.variable} antialiased`}
       >
         <AuthProvider>
-          {children}
+          <NotificationProvider>
+            <ConfirmProvider>
+              {children}
+            </ConfirmProvider>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

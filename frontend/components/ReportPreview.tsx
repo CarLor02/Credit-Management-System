@@ -5,6 +5,8 @@ import MarkdownPreview from '@uiw/react-markdown-preview';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
 import PdfViewer from './PDFViewer';
+import { useNotification } from '@/contexts/NotificationContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 
 interface StreamingEvent {
   timestamp: string;
@@ -45,6 +47,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [hasStreamingContent, setHasStreamingContent] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
+  const { addNotification } = useNotification();
+  const { showConfirm } = useConfirm();
 
   // 获取已生成的报告内容
   const fetchReportContent = async () => {
@@ -351,7 +355,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       const token = localStorage.getItem('auth_token');
       if (!token) {
-        alert('请先登录');
+        addNotification('请先登录', 'error');
         return;
       }
 
@@ -390,7 +394,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     } catch (error) {
       console.error('下载HTML报告失败:', error);
-      alert(error instanceof Error ? error.message : '下载HTML报告失败，请稍后重试');
+      addNotification(error instanceof Error ? error.message : '下载HTML报告失败，请稍后重试', 'error');
     } finally {
       setLoading(false);
     }
@@ -405,7 +409,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       const token = localStorage.getItem('auth_token');
       if (!token) {
-        alert('请先登录');
+        addNotification('请先登录', 'error');
         return;
       }
 
@@ -444,7 +448,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     } catch (error) {
       console.error('下载PDF报告失败:', error);
-      alert(error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试');
+      addNotification(error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试', 'error');
     } finally {
       setLoading(false);
     }
@@ -454,7 +458,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const handleDeleteReport = async () => {
     if (!projectId || loading) return;
 
-    if (!confirm('确定要删除这个报告吗？此操作不可撤销。')) {
+    const confirmed = await showConfirm({
+      title: '确认删除报告',
+      message: '确定要删除这个报告吗？<br><br><strong>此操作不可恢复。</strong>',
+      confirmText: '确认删除',
+      cancelText: '取消',
+      type: 'danger'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -462,14 +474,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     try {
       const response = await apiClient.delete(`/projects/${projectId}/report`);
       if (response.success) {
+        addNotification('报告删除成功', 'success');
         onReportDeleted?.();
         onClose();
       } else {
-        alert(response.error || '删除报告失败');
+        addNotification(response.error || '删除报告失败', 'error');
       }
     } catch (error) {
       console.error('删除报告失败:', error);
-      alert('删除报告失败，请稍后重试');
+      addNotification('删除报告失败，请稍后重试', 'error');
     } finally {
       setLoading(false);
     }
@@ -519,7 +532,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       const token = localStorage.getItem('auth_token');
       if (!token) {
-        alert('请先登录');
+        addNotification('请先登录', 'error');
         return;
       }
 
@@ -545,7 +558,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     } catch (error) {
       console.error('转换PDF预览失败:', error);
-      alert(error instanceof Error ? error.message : '转换PDF预览失败，请稍后重试');
+      addNotification(error instanceof Error ? error.message : '转换PDF预览失败，请稍后重试', 'error');
     } finally {
       setPdfLoading(false);
     }

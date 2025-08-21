@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { documentService } from '../services/documentService';
 import { parseApiError } from '../utils/errorMessages';
+import { useNotification } from '@/contexts/NotificationContext';
 
 // 动态导入 Markdown 预览组件，避免 SSR 错误
 const MarkdownPreview = dynamic(() => import('@uiw/react-markdown-preview'), { ssr: false });
@@ -28,6 +29,7 @@ export default function DocumentPreview({ documentId, documentName, isOpen, onCl
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { addNotification } = useNotification();
 
   // 加载预览内容
   const loadPreviewContent = async () => {
@@ -108,10 +110,10 @@ export default function DocumentPreview({ documentId, documentName, isOpen, onCl
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       } else {
-        alert(response.error || '下载失败');
+        addNotification(response.error || '下载失败', 'error');
       }
     } catch (err) {
-      alert(parseApiError(err));
+      addNotification(parseApiError(err), 'error');
     }
   };
 
@@ -164,10 +166,10 @@ export default function DocumentPreview({ documentId, documentName, isOpen, onCl
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       } else {
-        alert(response.error || '下载失败');
+        addNotification(response.error || '下载失败', 'error');
       }
     } catch (err) {
-      alert(parseApiError(err));
+      addNotification(parseApiError(err), 'error');
     }
   };
 

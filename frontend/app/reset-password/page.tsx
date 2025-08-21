@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function ResetPasswordPage() {
   const [step, setStep] = useState<'email' | 'code' | 'password'>('email');
@@ -11,6 +12,7 @@ export default function ResetPasswordPage() {
     newPassword: '',
     confirmPassword: ''
   });
+  const { addNotification } = useNotification();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,8 +29,10 @@ export default function ResetPasswordPage() {
       // 重置密码
       console.log('重置密码:', formData.newPassword);
       // 重置成功后跳转到登录页面
-      alert('密码重置成功，请重新登录');
-      window.location.href = '/login';
+      addNotification('密码重置成功，请重新登录', 'success');
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 2000); // 延迟2秒跳转
     }
   };
 

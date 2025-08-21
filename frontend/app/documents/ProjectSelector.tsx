@@ -4,6 +4,8 @@ import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { projectService, Project } from '@/services/projectService';
 import { knowledgeBaseService } from '@/services/knowledgeBaseService';
+import { useNotification } from '@/contexts/NotificationContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 
 interface ProjectSelectorProps {
   selectedProject: string;
@@ -20,6 +22,8 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
   const [error, setError] = useState<string | null>(null);
   const [isRebuilding, setIsRebuilding] = useState(false);
   const router = useRouter();
+  const { addNotification } = useNotification();
+  const { showConfirm } = useConfirm();
 
   // 加载项目列表
   const loadProjects = async (showLoading = true) => {
@@ -73,18 +77,26 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
   // 重新构建知识库
   const handleRebuildKnowledgeBase = async () => {
     if (!selectedProject || !selectedProjectData) {
-      alert('请先选择项目');
+      addNotification('请先选择项目', 'warning');
       return;
     }
 
-    if (confirm(`确定要重新构建项目"${selectedProjectData.name}"的知识库吗？\n\n此操作将删除现有知识库并重新处理所有文档，可能需要一些时间。`)) {
+    const confirmed = await showConfirm({
+      title: '确认重新构建知识库',
+      message: `确定要重新构建项目"<strong>${selectedProjectData.name}</strong>"的知识库吗？<br><br>此操作将删除现有知识库并重新处理所有文档，可能需要一些时间。`,
+      confirmText: '确认重建',
+      cancelText: '取消',
+      type: 'warning'
+    });
+    
+    if (confirmed) {
       setIsRebuilding(true);
       try {
         // 调用重新构建知识库的API
         const response = await knowledgeBaseService.rebuildKnowledgeBase(selectedProject);
 
         if (response.success) {
-          alert(response.message || '知识库重建任务已启动，请稍后查看处理结果');
+          addNotification(response.message || '知识库重建任务已启动，请稍后查看处理结果', 'success');
 
           // 可选：刷新项目列表或触发文档列表刷新
           if (typeof window !== 'undefined') {
@@ -94,11 +106,11 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
             }));
           }
         } else {
-          alert(response.error || '重建知识库失败，请稍后重试');
+          addNotification(response.error || '重建知识库失败，请稍后重试', 'error');
         }
       } catch (error) {
         console.error('重建知识库失败:', error);
-        alert('重建知识库失败，请稍后重试');
+        addNotification('重建知识库失败，请稍后重试', 'error');
       } finally {
         setIsRebuilding(false);
       }
@@ -108,7 +120,7 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
   // 前往生成报告（项目详情页）
   const handleGoToReport = () => {
     if (!selectedProject) {
-      alert('请先选择项目');
+      addNotification('请先选择项目', 'warning');
       return;
     }
     router.push(`/projects/${selectedProject}`);

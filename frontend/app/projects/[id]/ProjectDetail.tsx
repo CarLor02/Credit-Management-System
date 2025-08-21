@@ -13,6 +13,8 @@ import { documentService } from '@/services/documentService';
 import { BusinessStatus, TimelineEvent } from '@/services/projectDetailService';
 import { apiClient } from '@/services/api';
 import { Project } from '@/services/projectService';
+import { useNotification } from '@/contexts/NotificationContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 
 interface ProjectDetailProps {
   projectId: string;
@@ -44,6 +46,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   const [timelineLoading, setTimelineLoading] = useState(false);
 
   const router = useRouter();
+  const { addNotification } = useNotification();
+  const { showConfirm } = useConfirm();
 
   // 加载项目数据
   useEffect(() => {
@@ -340,7 +344,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
   const handleDownloadReport = async () => {
     if (!project) {
-      alert('项目信息不完整，无法生成报告');
+      addNotification('项目信息不完整，无法生成报告', 'error');
       return;
     }
 
@@ -349,7 +353,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       try {
         const token = localStorage.getItem('auth_token');
         if (!token) {
-          alert('请先登录');
+          addNotification('请先登录', 'error');
           return;
         }
 
@@ -390,7 +394,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       } catch (error) {
         console.error('下载PDF报告失败:', error);
         const errorMessage = error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试';
-        alert(errorMessage);
+        addNotification(errorMessage, 'error');
         
         // 如果下载失败，可能是报告文件不存在，将状态重置为未生成
         // 这样用户可以重新生成报告
@@ -403,7 +407,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
     // 检查必要的项目信息
     if (!project.dataset_id && !project.knowledge_base_name) {
-      alert('项目尚未创建知识库，请先上传文档并等待处理完成');
+      addNotification('项目尚未创建知识库，请先上传文档并等待处理完成', 'warning');
       return;
     }
 
@@ -411,7 +415,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     // 注意：如果代码执行到这里，说明report_status不是'generated'
     // 但为了安全起见，仍然检查其他可能的状态
     if (project.report_status === 'generating') {
-      alert('报告正在生成中，请稍后再试');
+      addNotification('报告正在生成中，请稍后再试', 'info');
       return;
     }
 
@@ -435,6 +439,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       console.log('Generate report response:', response);
 
       if (response.success && response.data?.success) {
+        addNotification('报告生成任务已启动', 'success');
         // 后端已开始异步生成报告，立即打开预览弹窗
         console.log('🎯 设置showReportPreview为true');
         setShowReportPreview(true);
@@ -443,7 +448,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         // 不需要刷新页面，WebSocket会实时更新状态
         // window.location.reload();
       } else {
-        alert(response.data?.error || response.error || '启动报告生成失败');
+        addNotification(response.data?.error || response.error || '启动报告生成失败', 'error');
       }
     } catch (error) {
       console.error('Generate report error:', error);
@@ -465,7 +470,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         }
       }
 
-      alert(errorMessage);
+      addNotification(errorMessage, 'error');
       // 生成失败时关闭预览弹窗
       setShowReportPreview(false);
     }
@@ -687,24 +692,32 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       } else {
-        alert(response.error || '下载文档失败');
+        addNotification(response.error || '下载文档失败', 'error');
       }
     } catch (err) {
-      alert('下载文档失败，请稍后重试');
+      addNotification('下载文档失败，请稍后重试', 'error');
       console.error('Download document error:', err);
     }
   };
 
   // 重试文档处理
   const handleRetryDocument = async (documentId: number, documentName: string) => {
-    if (!confirm(`确定要重试处理文档"${documentName}"吗？\n\n此操作将重新开始文档处理流程。`)) {
+    const confirmed = await showConfirm({
+      title: '确认重试处理',
+      message: `确定要重试处理文档"<strong>${documentName}</strong>"吗？<br><br>此操作将重新开始文档处理流程。`,
+      confirmText: '确认重试',
+      cancelText: '取消',
+      type: 'warning'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
     try {
       const response = await documentService.retryDocumentProcessing(documentId);
       if (response.success) {
-        alert(response.message || '文档重试处理任务已启动');
+        addNotification(response.message || '文档重试处理任务已启动', 'success');
         // 重试成功，立即刷新文档状态
         const updatedResponse = await documentService.getDocuments({
           project_id: project?.id || 0
@@ -713,10 +726,10 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           setDocuments(updatedResponse.data);
         }
       } else {
-        alert(response.error || '重试失败');
+        addNotification(response.error || '重试失败', 'error');
       }
     } catch (err) {
-      alert('重试失败，请稍后重试');
+      addNotification('重试失败，请稍后重试', 'error');
       console.error('Retry document processing error:', err);
     }
   };
@@ -724,7 +737,15 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   // 删除文档
   const handleDeleteDocument = async (id: number) => {
     // 确认删除
-    if (!window.confirm('确定要删除这个文档吗？此操作不可恢复。')) {
+    const confirmed = await showConfirm({
+      title: '确认删除文档',
+      message: '确定要删除这个文档吗？<br><br><strong>此操作不可恢复。</strong>',
+      confirmText: '确认删除',
+      cancelText: '取消',
+      type: 'danger'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -743,7 +764,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         // 删除失败，恢复文档
         const restoredDocuments = [...updatedDocuments, docToDelete].sort((a, b) => a.id - b.id);
         setDocuments(restoredDocuments);
-        alert(response.error || '删除文档失败');
+        addNotification(response.error || '删除文档失败', 'error');
       }
     } catch (err) {
       // 网络错误，恢复文档
@@ -752,7 +773,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         const restoredDocuments = [...documents.filter(doc => doc.id !== id), docToDelete].sort((a, b) => a.id - b.id);
         setDocuments(restoredDocuments);
       }
-      alert('删除文档失败，请稍后重试');
+      addNotification('删除文档失败，请稍后重试', 'error');
       console.error('Delete document error:', err);
     }
   };

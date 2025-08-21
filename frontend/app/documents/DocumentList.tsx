@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { documentService, Document } from '@/services/documentService';
 import DocumentPreview from '@/components/DocumentPreview';
+import { useNotification } from '@/contexts/NotificationContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 
 interface DocumentListProps {
   activeTab: string;
@@ -21,6 +23,8 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   // 预览相关状态
   const [previewDocument, setPreviewDocument] = useState<{ id: number; name: string } | null>(null);
   const [retryingDocuments, setRetryingDocuments] = useState<Set<number>>(new Set());
+  const { addNotification } = useNotification();
+  const { showConfirm } = useConfirm();
 
   // 智能更新函数 - 只更新真正改变的数据
   const updateDocuments = useCallback((newDocuments: Document[]) => {
@@ -178,7 +182,15 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   // 删除文档
   const handleDeleteDocument = async (id: number) => {
     // 确认删除
-    if (!window.confirm('确定要删除这个文档吗？此操作不可恢复。')) {
+    const confirmed = await showConfirm({
+      title: '确认删除文档',
+      message: '确定要删除这个文档吗？<br><br><strong>此操作不可恢复。</strong>',
+      confirmText: '确认删除',
+      cancelText: '取消',
+      type: 'danger'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -200,7 +212,7 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
         // 删除失败，恢复文档
         const restoredDocuments = [...updatedDocuments, docToDelete].sort((a, b) => a.id - b.id);
         updateDocuments(restoredDocuments);
-        alert(response.error || '删除文档失败');
+        addNotification(response.error || '删除文档失败', 'error');
       }
     } catch (err) {
       // 网络错误，恢复文档
@@ -209,7 +221,7 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
         const restoredDocuments = [...documents.filter(doc => doc.id !== id), docToDelete].sort((a, b) => a.id - b.id);
         updateDocuments(restoredDocuments);
       }
-      alert('删除文档失败，请稍后重试');
+      addNotification('删除文档失败，请稍后重试', 'error');
       console.error('Delete document error:', err);
     }
   };
@@ -257,10 +269,10 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       } else {
-        alert(response.error || '下载文档失败');
+        addNotification(response.error || '下载文档失败', 'error');
       }
     } catch (err) {
-      alert('下载文档失败，请稍后重试');
+      addNotification('下载文档失败，请稍后重试', 'error');
       console.error('Download document error:', err);
     }
   };
@@ -281,7 +293,15 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
       return; // 防止重复点击
     }
 
-    if (!confirm(`确定要重试处理文档"${documentName}"吗？\n\n此操作将重新开始文档处理流程。`)) {
+    const confirmed = await showConfirm({
+      title: '确认重试处理',
+      message: `确定要重试处理文档"<strong>${documentName}</strong>"吗？<br><br>此操作将重新开始文档处理流程。`,
+      confirmText: '确认重试',
+      cancelText: '取消',
+      type: 'warning'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -292,15 +312,15 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
       const response = await documentService.retryDocumentProcessing(documentId);
 
       if (response.success) {
-        alert(response.message || '文档重试处理任务已启动');
+        addNotification(response.message || '文档重试处理任务已启动', 'success');
         // 刷新文档列表
         loadDocuments(false);
       } else {
-        alert(response.error || '重试失败，请稍后重试');
+        addNotification(response.error || '重试失败，请稍后重试', 'error');
       }
     } catch (error) {
       console.error('重试文档处理失败:', error);
-      alert('重试失败，请稍后重试');
+      addNotification('重试失败，请稍后重试', 'error');
     } finally {
       // 从重试中的文档集合中移除
       setRetryingDocuments(prev => {
