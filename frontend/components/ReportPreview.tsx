@@ -57,10 +57,19 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     let processedContent = content;
 
-    // 0. 首先修复标题格式
+    // 0. 清理Markdown代码块标记
+    processedContent = processedContent
+      // 移除```markdown开头和结尾的```
+      .replace(/```markdown\s*\n/gi, '')
+      .replace(/```\s*$/gm, '')
+      // 移除其他代码块标记（如果不需要代码块的话）
+      .replace(/```[\w]*\s*\n/gi, '')
+      .replace(/```\s*\n/gi, '');
+
+    // 1. 首先修复标题格式
     processedContent = fixHeadingFormat(processedContent);
 
-    // 1. 特殊处理：修复分段生成导致的标题问题
+    // 2. 特殊处理：修复分段生成导致的标题问题
     // 确保所有标题前都有足够的换行符（针对分段生成的情况）
     processedContent = processedContent
       // 在所有标题前强制添加双换行符（除了文档开头）
@@ -113,10 +122,27 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     // 10. 确保列表前有空行
     processedContent = processedContent.replace(/([^\n])\n(\s*[-*+\d])/g, '$1\n\n$2');
 
-    // 11. 修复表格格式问题
-    processedContent = processedContent.replace(/\|([^|\n]*)\|/g, (_, content) => {
-      return `| ${content.trim()} |`;
-    });
+    // 11. 强化表格格式修复
+    processedContent = processedContent
+      // 修复表格单元格格式
+      .replace(/\|([^|\n]*)\|/g, (_, content) => {
+        return `| ${content.trim()} |`;
+      })
+      // 确保表格分隔行格式正确
+      .replace(/\|\s*[-:]+\s*\|/g, (match) => {
+        // 保持分隔行的格式
+        return match.replace(/\s+/g, ' ');
+      })
+      // 修复可能缺失的表格分隔行
+      .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
+        // 如果表格头后面直接跟数据行，插入分隔行
+        if (!firstRow.includes('---') && !firstRow.includes(':--')) {
+          const columnCount = (header.match(/\|/g) || []).length - 1;
+          const separator = '|' + ' --- |'.repeat(columnCount);
+          return header + '\n' + separator + '\n' + firstRow;
+        }
+        return match;
+      });
 
     // 12. 确保表格前后有空行
     processedContent = processedContent.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
@@ -1131,13 +1157,13 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                     // 生成过程中，优先显示流式输出
                     <div className="px-6 py-6 pb-12 bg-white min-h-full" ref={streamingContentRef}>
                       {reportContent ? (
-                        <>
+                        <div className="report-container" style={{ backgroundColor: 'white', padding: '20px', minHeight: '100%' }}>
                           <MarkdownPreview
                             source={preprocessMarkdown(reportContent)}
                             className="max-w-none markdown-content"
                             style={{
-                              backgroundColor: 'white',
-                              color: 'black'
+                              backgroundColor: 'transparent',
+                              color: '#374151'
                             }}
                             data-color-mode="light"
                             wrapperElement={{
@@ -1149,6 +1175,13 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                                 node.properties = {
                                   ...node.properties,
                                   style: 'display: block; font-weight: 600;'
+                                };
+                              }
+                              // 确保表格元素正确渲染
+                              if (node.type === 'element' && node.tagName === 'table') {
+                                node.properties = {
+                                  ...node.properties,
+                                  style: 'display: table; width: 100%; border-collapse: collapse;'
                                 };
                               }
                             }}
@@ -1166,16 +1199,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                               font-weight: 600 !important;
                               color: #1f2937 !important;
                               display: block !important;
+                              border: none !important;
+                              border-bottom: none !important;
+                              padding-bottom: 0 !important;
                             }
                             .markdown-content h1 {
                               font-size: 1.8em !important;
-                              border-bottom: 2px solid #e5e7eb !important;
-                              padding-bottom: 0.3em !important;
                             }
                             .markdown-content h2 {
                               font-size: 1.5em !important;
-                              border-bottom: 1px solid #e5e7eb !important;
-                              padding-bottom: 0.2em !important;
                             }
                             .markdown-content h3 {
                               font-size: 1.3em !important;
@@ -1189,6 +1221,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                             .markdown-content p {
                               margin-bottom: 1em;
                               line-height: 1.6;
+                              color: #374151 !important;
                             }
                             .markdown-content ul,
                             .markdown-content ol {
@@ -1197,25 +1230,39 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                             }
                             .markdown-content li {
                               margin-bottom: 0.3em;
+                              color: #374151 !important;
                             }
                             .markdown-content table {
-                              border-collapse: collapse;
-                              width: 100%;
-                              margin-bottom: 1em;
+                              border-collapse: collapse !important;
+                              width: 100% !important;
+                              margin: 1em 0 !important;
                               background-color: white !important;
+                              border: 1px solid #d1d5db !important;
+                              display: table !important;
+                            }
+                            .markdown-content thead {
+                              display: table-header-group !important;
+                            }
+                            .markdown-content tbody {
+                              display: table-row-group !important;
+                            }
+                            .markdown-content tr {
+                              display: table-row !important;
                             }
                             .markdown-content th,
                             .markdown-content td {
-                              border: 1px solid #d1d5db;
-                              padding: 0.5em;
-                              text-align: left;
+                              border: 1px solid #d1d5db !important;
+                              padding: 8px 12px !important;
+                              text-align: left !important;
                               background-color: white !important;
-                              color: black !important;
+                              color: #374151 !important;
+                              display: table-cell !important;
+                              vertical-align: top !important;
                             }
                             .markdown-content th {
                               background-color: #f9fafb !important;
-                              font-weight: 600;
-                              color: black !important;
+                              font-weight: 600 !important;
+                              color: #1f2937 !important;
                             }
                             .markdown-content tbody tr:nth-child(even) td {
                               background-color: #f8fafc !important;
@@ -1223,11 +1270,18 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                             .markdown-content tbody tr:nth-child(odd) td {
                               background-color: white !important;
                             }
+                            .markdown-content pre,
+                            .markdown-content code {
+                              display: none !important;
+                            }
+                            .markdown-content blockquote {
+                              display: none !important;
+                            }
                           `}</style>
                           <div className="mt-6 mb-6 text-center">
                             <p className="text-gray-400">报告生成中，内容持续更新...</p>
                           </div>
-                        </>
+                        </div>
                       ) : (
                         <div className="text-center py-12">
                           <div className="animate-spin w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4"></div>
@@ -1243,8 +1297,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                         source={preprocessMarkdown(reportContent)}
                         className="max-w-none markdown-content"
                         style={{
-                          backgroundColor: 'white',
-                          color: 'black'
+                          backgroundColor: 'transparent',
+                          color: '#374151'
                         }}
                         data-color-mode="light"
                         wrapperElement={{
@@ -1256,6 +1310,13 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                             node.properties = {
                               ...node.properties,
                               style: 'display: block; font-weight: 600;'
+                            };
+                          }
+                          // 确保表格元素正确渲染
+                          if (node.type === 'element' && node.tagName === 'table') {
+                            node.properties = {
+                              ...node.properties,
+                              style: 'display: table; width: 100%; border-collapse: collapse;'
                             };
                           }
                         }}
@@ -1273,16 +1334,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                           font-weight: 600 !important;
                           color: #1f2937 !important;
                           display: block !important;
+                          border: none !important;
+                          border-bottom: none !important;
+                          padding-bottom: 0 !important;
                         }
                         .markdown-content h1 {
                           font-size: 1.8em !important;
-                          border-bottom: 2px solid #e5e7eb !important;
-                          padding-bottom: 0.3em !important;
                         }
                         .markdown-content h2 {
                           font-size: 1.5em !important;
-                          border-bottom: 1px solid #e5e7eb !important;
-                          padding-bottom: 0.2em !important;
                         }
                         .markdown-content h3 {
                           font-size: 1.3em !important;
@@ -1293,30 +1353,64 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                           font-size: 1.1em !important;
                           font-weight: 600 !important;
                         }
-                        .markdown-content table {
-                          border-collapse: collapse;
-                          width: 100%;
+                        .markdown-content p {
                           margin-bottom: 1em;
+                          line-height: 1.6;
+                          color: #374151 !important;
+                        }
+                        .markdown-content ul,
+                        .markdown-content ol {
+                          margin-bottom: 1em;
+                          padding-left: 1.5em;
+                        }
+                        .markdown-content li {
+                          margin-bottom: 0.3em;
+                          color: #374151 !important;
+                        }
+                        .markdown-content table {
+                          border-collapse: collapse !important;
+                          width: 100% !important;
+                          margin: 1em 0 !important;
                           background-color: white !important;
+                          border: 1px solid #d1d5db !important;
+                          display: table !important;
+                        }
+                        .markdown-content thead {
+                          display: table-header-group !important;
+                        }
+                        .markdown-content tbody {
+                          display: table-row-group !important;
+                        }
+                        .markdown-content tr {
+                          display: table-row !important;
                         }
                         .markdown-content th,
                         .markdown-content td {
-                          border: 1px solid #d1d5db;
-                          padding: 0.5em;
-                          text-align: left;
+                          border: 1px solid #d1d5db !important;
+                          padding: 8px 12px !important;
+                          text-align: left !important;
                           background-color: white !important;
-                          color: black !important;
+                          color: #374151 !important;
+                          display: table-cell !important;
+                          vertical-align: top !important;
                         }
                         .markdown-content th {
                           background-color: #f9fafb !important;
-                          font-weight: 600;
-                          color: black !important;
+                          font-weight: 600 !important;
+                          color: #1f2937 !important;
                         }
                         .markdown-content tbody tr:nth-child(even) td {
                           background-color: #f8fafc !important;
                         }
                         .markdown-content tbody tr:nth-child(odd) td {
                           background-color: white !important;
+                        }
+                        .markdown-content pre,
+                        .markdown-content code {
+                          display: none !important;
+                        }
+                        .markdown-content blockquote {
+                          display: none !important;
                         }
                       `}</style>
                     </div>
