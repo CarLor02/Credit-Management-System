@@ -60,7 +60,17 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     // 0. 首先修复标题格式
     processedContent = fixHeadingFormat(processedContent);
 
-    // 1. 强制修复所有可能的标题格式问题
+    // 1. 特殊处理：修复分段生成导致的标题问题
+    // 确保所有标题前都有足够的换行符（针对分段生成的情况）
+    processedContent = processedContent
+      // 在所有标题前强制添加双换行符（除了文档开头）
+      .replace(/([^\n])(#{1,6}\s)/g, '$1\n\n$2')
+      // 处理可能紧跟在文本后的标题
+      .replace(/([^\n\s])(#{1,6}\s)/g, '$1\n\n$2')
+      // 确保标题后也有换行符
+      .replace(/(#{1,6}[^\n]*)\n([^#\n\s])/g, '$1\n\n$2');
+
+    // 2. 强制修复所有可能的标题格式问题
     processedContent = processedContent
       // 确保#号后面有空格
       .replace(/^(#{1,6})([^#\s])/gm, '$1 $2')
@@ -73,7 +83,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       // 修复可能的企业分析相关标题
       .replace(/^(#{1,6})\s*(企业基本面分析|动态财务诊断|风险评估|经营状况分析)/gm, '$1 $2');
 
-    // 2. 处理没有#号的标题行（强制添加）
+    // 3. 处理没有#号的标题行（强制添加）
     processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/gm, (match, spaces, title) => {
       // 如果这行看起来像标题但没有#号，添加###
       if (!title.startsWith('#')) {
@@ -82,69 +92,82 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       return match;
     });
 
-    // 3. 修复企业分析相关的独立标题
+    // 4. 修复企业分析相关的独立标题
     processedContent = processedContent.replace(/^(\s*)(企业基本面分析|动态财务诊断|风险评估|经营状况分析)(\s*)$/gm, '### $2');
 
-    // 4. 确保标题前有空行（除了文档开头）
+    // 5. 再次确保标题前有空行（双重保险）
     processedContent = processedContent.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
 
-    // 5. 确保标题后有空行（如果后面不是另一个标题）
+    // 6. 确保标题后有空行（如果后面不是另一个标题）
     processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n([^#\n])/g, '$1\n\n$2');
 
-    // 6. 修复连续标题之间的间距
+    // 7. 修复连续标题之间的间距
     processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n(#{1,6})/g, '$1\n\n$2');
 
-    // 7. 修复列表格式：确保-号后面有空格
+    // 8. 修复列表格式：确保-号后面有空格
     processedContent = processedContent.replace(/^(\s*)-([^\s])/gm, '$1- $2');
 
-    // 8. 修复数字列表格式：确保数字后面有空格
+    // 9. 修复数字列表格式：确保数字后面有空格
     processedContent = processedContent.replace(/^(\s*)(\d+\.)([^\s])/gm, '$1$2 $3');
 
-    // 9. 确保列表前有空行
+    // 10. 确保列表前有空行
     processedContent = processedContent.replace(/([^\n])\n(\s*[-*+\d])/g, '$1\n\n$2');
 
-    // 10. 修复表格格式问题
+    // 11. 修复表格格式问题
     processedContent = processedContent.replace(/\|([^|\n]*)\|/g, (_, content) => {
       return `| ${content.trim()} |`;
     });
 
-    // 11. 确保表格前后有空行
+    // 12. 确保表格前后有空行
     processedContent = processedContent.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
     processedContent = processedContent.replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2');
 
-    // 12. 清理多余的空行（超过2个连续空行的情况）
-    processedContent = processedContent.replace(/\n{3,}/g, '\n\n');
-
-    // 13. 确保文档开头和结尾没有多余的空行
-    processedContent = processedContent.trim();
-
-    // 14. 最后一次强化检查：确保所有标题都被正确处理
+    // 13. 最后一次强化检查：确保所有标题都被正确处理
     const lines = processedContent.split('\n');
-    const fixedLines = lines.map(line => {
+    const fixedLines = lines.map((line, index) => {
+      const trimmedLine = line.trim();
+
       // 检查是否是看起来像标题但没有#号的行
-      if (/^第[一二三四五六七八九十\d]+[节章]/.test(line.trim()) && !line.trim().startsWith('#')) {
-        return `### ${line.trim()}`;
+      if (/^第[一二三四五六七八九十\d]+[节章]/.test(trimmedLine) && !trimmedLine.startsWith('#')) {
+        // 确保标题前有空行（除了第一行）
+        if (index > 0 && lines[index - 1].trim() !== '') {
+          return `\n### ${trimmedLine}`;
+        }
+        return `### ${trimmedLine}`;
       }
-      if (/^(企业基本面分析|动态财务诊断|风险评估|经营状况分析)$/.test(line.trim()) && !line.trim().startsWith('#')) {
-        return `### ${line.trim()}`;
+      if (/^(企业基本面分析|动态财务诊断|风险评估|经营状况分析)$/.test(trimmedLine) && !trimmedLine.startsWith('#')) {
+        // 确保标题前有空行（除了第一行）
+        if (index > 0 && lines[index - 1].trim() !== '') {
+          return `\n### ${trimmedLine}`;
+        }
+        return `### ${trimmedLine}`;
       }
       return line;
     });
     processedContent = fixedLines.join('\n');
+
+    // 14. 清理多余的空行（超过2个连续空行的情况）
+    processedContent = processedContent.replace(/\n{3,}/g, '\n\n');
+
+    // 15. 确保文档开头和结尾没有多余的空行
+    processedContent = processedContent.trim();
 
     // 调试：打印处理前后的标题行
     if (content !== processedContent) {
       const originalTitles = content.match(/^#{1,6}.*$/gm) || [];
       const processedTitles = processedContent.match(/^#{1,6}.*$/gm) || [];
       const allTitleLikeLines = processedContent.match(/^.*第[一二三四五六七八九十\d]+[节章].*$/gm) || [];
+      const unprocessedTitleLike = content.match(/^[^#]*第[一二三四五六七八九十\d]+[节章].*$/gm) || [];
 
-      console.log('📝 Markdown标题预处理 (强化版):', {
+      console.log('📝 Markdown标题预处理 (分段生成优化版):', {
         原始标题数量: originalTitles.length,
         处理后标题数量: processedTitles.length,
         所有标题样式行数量: allTitleLikeLines.length,
+        未处理的标题样式: unprocessedTitleLike.length,
         原始标题: originalTitles.slice(0, 5),
         处理后标题: processedTitles.slice(0, 5),
-        标题样式行示例: allTitleLikeLines.slice(0, 5)
+        标题样式行示例: allTitleLikeLines.slice(0, 5),
+        未处理标题示例: unprocessedTitleLike.slice(0, 3)
       });
     }
 
@@ -336,7 +359,28 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (eventType === 'content_generated' || eventType === 'markdown_content') {
         // 内容事件直接更新报告内容，并自动滚动
         setReportContent(prev => {
-          const newContent = prev ? prev + content.replace(/\r?\n/g, '\n') : content.replace(/\r?\n/g, '\n');
+          let processedContent = content.replace(/\r?\n/g, '\n');
+
+          // 特殊处理：如果新内容以标题开始，确保前面有足够的换行符
+          const trimmedContent = processedContent.trim();
+          if (trimmedContent.match(/^#{1,6}\s/) || trimmedContent.match(/^第[一二三四五六七八九十\d]+[节章]/)) {
+            // 如果前面有内容且不是以换行结尾，添加双换行
+            if (prev && !prev.endsWith('\n\n')) {
+              if (prev.endsWith('\n')) {
+                processedContent = '\n' + processedContent;
+              } else {
+                processedContent = '\n\n' + processedContent;
+              }
+            }
+          }
+
+          // 如果内容看起来像标题但没有#号，添加###
+          if (trimmedContent.match(/^第[一二三四五六七八九十\d]+[节章]/) && !trimmedContent.startsWith('#')) {
+            processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/m, '$1### $2');
+          }
+
+          const newContent = prev ? prev + processedContent : processedContent;
+
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
