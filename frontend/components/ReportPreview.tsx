@@ -239,8 +239,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         setError(response.error || '获取报告内容失败');
       }
     } catch (err) {
-      console.error('获取报告内容失败:', err);
-      setError('获取报告内容失败，请稍后重试');
+      // 对于404错误（报告不存在），使用info级别日志
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage.includes('该项目尚未生成报告') || errorMessage.includes('404')) {
+        console.info('项目暂无报告:', errorMessage);
+        setError('该项目尚未生成报告');
+      } else {
+        console.error('获取报告内容失败:', err);
+        setError('获取报告内容失败，请稍后重试');
+      }
     } finally {
       setLoading(false);
     }
@@ -262,10 +269,22 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (response.success && response.data) {
         setHtmlContent(response.data.html_content);
       } else {
-        console.error('获取HTML内容失败:', response.error);
+        // 对于404错误（报告不存在），使用info级别日志
+        const errorMessage = response.error || '';
+        if (errorMessage.includes('该项目尚未生成报告') || errorMessage.includes('404')) {
+          console.info('项目暂无HTML报告:', errorMessage);
+        } else {
+          console.error('获取HTML内容失败:', response.error);
+        }
       }
     } catch (err) {
-      console.error('获取HTML内容失败:', err);
+      // 对于404错误（报告不存在），使用info级别日志
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage.includes('该项目尚未生成报告') || errorMessage.includes('404')) {
+        console.info('项目暂无HTML报告:', errorMessage);
+      } else {
+        console.error('获取HTML内容失败:', err);
+      }
     } finally {
       setHtmlLoading(false);
     }

@@ -192,13 +192,26 @@ def register_report_routes(app):
             if not project:
                 return jsonify({"success": False, "error": "项目不存在"}), 404
 
-            # 设置停止标志
+            # 获取task_id并调用Dify停止接口
+            task_id = None
             with workflow_lock:
                 if project_id in active_workflows:
                     active_workflows[project_id]['stop_flag'] = True
-                    current_app.logger.info(f"设置项目 {project_id} 的停止标志")
+                    task_id = active_workflows[project_id].get('task_id')
+                    current_app.logger.info(f"设置项目 {project_id} 的停止标志，task_id: {task_id}")
                 else:
                     current_app.logger.warning(f"项目 {project_id} 没有活跃的工作流")
+
+            # 如果有task_id，调用Dify的停止接口
+            if task_id:
+                try:
+                    stop_success = call_dify_stop_api(task_id)
+                    if stop_success:
+                        current_app.logger.info(f"成功调用Dify停止接口，task_id: {task_id}")
+                    else:
+                        current_app.logger.warning(f"调用Dify停止接口失败，task_id: {task_id}")
+                except Exception as stop_error:
+                    current_app.logger.error(f"调用Dify停止接口异常: {stop_error}")
 
             # 更新项目报告状态为已取消（使用NOT_GENERATED作为取消状态）
             project.report_status = ReportStatus.NOT_GENERATED
@@ -1009,9 +1022,9 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
             raise Exception(error_msg)
 
         # 使用解析方法处理流式响应，传递项目房间ID用于WebSocket广播
-        workflow_run_id, full_content, metadata, events = parse_dify_streaming_response(response, company_name, project_id, project_room_id)
+        workflow_run_id, full_content, metadata, events, task_id = parse_dify_streaming_response(response, company_name, project_id, project_room_id)
 
-        current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}")
+        current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}, task_id: {task_id}")
         current_app.logger.info(f"提取到的事件数量: {len(events)}")
         current_app.logger.info(f"内容长度: {len(full_content) if full_content is not None else 0}")
 
@@ -1022,7 +1035,8 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
                 'content': full_content,
                 'metadata': metadata,
                 'timestamp': time.time(),
-                'company_name': company_name
+                'company_name': company_name,
+                'task_id': task_id  # 保存task_id
             }
 
         return full_content, workflow_run_id, events
@@ -1161,13 +1175,14 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
         project_id: 项目ID
 
     Returns:
-        tuple: (workflow_run_id, full_content, metadata, events)
+        tuple: (workflow_run_id, full_content, metadata, events, task_id)
     """
     workflow_run_id = f"workflow_{int(time.time())}"  # 新接口没有workflow_run_id，我们自己生成一个
     full_content = ""
     metadata = {}
     events = []
     sequence_number = 0
+    task_id = None  # 用于保存Dify的task_id
 
     print("开始解析流式响应...")
 
@@ -1195,6 +1210,16 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                 # 解析 JSON 数据
                 data = json.loads(data_str)
                 print(f"解析的 JSON 数据: {json.dumps(data, ensure_ascii=False)[:500]}...")
+
+                # 提取task_id（如果存在）
+                if 'task_id' in data and task_id is None:
+                    task_id = data['task_id']
+                    print(f"提取到task_id: {task_id}")
+                    # 保存task_id到活跃工作流中
+                    with workflow_lock:
+                        if project_id in active_workflows:
+                            active_workflows[project_id]['task_id'] = task_id
+                            print(f"已保存task_id到项目 {project_id}")
 
                 # 提取生成的内容
                 content_chunk = None
@@ -1279,8 +1304,8 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
             del active_workflows[project_id]
             print(f"已清理项目 {project_id} 的活跃工作流")
 
-    print(f"流式解析完成 - workflow_run_id: {workflow_run_id}, 事件数: {len(events)}, 内容长度: {len(full_content)}")
-    return workflow_run_id, full_content, metadata, events
+    print(f"流式解析完成 - workflow_run_id: {workflow_run_id}, task_id: {task_id}, 事件数: {len(events)}, 内容长度: {len(full_content)}")
+    return workflow_run_id, full_content, metadata, events, task_id
 
 
 def save_report_to_file(company_name, content, project_id=None):
@@ -1310,3 +1335,65 @@ def save_report_to_file(company_name, content, project_id=None):
     except Exception as e:
         current_app.logger.error(f"保存报告文件失败: {e}")
         raise Exception(f"保存报告文件失败: {str(e)}")
+
+
+def call_dify_stop_api(task_id):
+    """
+    调用Dify的停止接口
+
+    Args:
+        task_id: Dify返回的任务ID
+
+    Returns:
+        bool: 是否成功停止
+    """
+    try:
+        # 从配置中获取Dify API信息
+        from config import Config
+
+        # 构建停止接口URL
+        dify_base_url = getattr(Config, 'DIFY_BASE_URL', 'http://115.190.121.59')
+        stop_url = f"{dify_base_url}/v1/chat-messages/{task_id}/stop"
+
+        # 获取API密钥
+        api_key = getattr(Config, 'DIFY_API_KEY', '')
+        if not api_key:
+            current_app.logger.error("未配置DIFY_API_KEY")
+            return False
+
+        # 构建请求头
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+
+        # 构建请求体
+        payload = {
+            "user": "system-stop"
+        }
+
+        current_app.logger.info(f"调用Dify停止接口: {stop_url}")
+
+        # 发送停止请求
+        response = requests.post(
+            stop_url,
+            headers=headers,
+            json=payload,
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('result') == 'success':
+                current_app.logger.info(f"Dify停止接口调用成功: {result}")
+                return True
+            else:
+                current_app.logger.warning(f"Dify停止接口返回失败: {result}")
+                return False
+        else:
+            current_app.logger.error(f"Dify停止接口HTTP错误: {response.status_code}, {response.text}")
+            return False
+
+    except Exception as e:
+        current_app.logger.error(f"调用Dify停止接口异常: {str(e)}")
+        return False

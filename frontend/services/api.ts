@@ -97,16 +97,22 @@ class ApiClient {
           errorData = await response.json();
         } catch {
           // 如果无法解析JSON，使用状态码生成错误信息
-          throw new Error(getHttpErrorMessage(response.status));
+          const error = new Error(getHttpErrorMessage(response.status));
+          (error as any).status = response.status;
+          throw error;
         }
 
         // 如果后端返回了具体的错误信息，使用它
         if (errorData && errorData.error) {
-          throw new Error(parseApiError(errorData.error));
+          const error = new Error(parseApiError(errorData.error));
+          (error as any).status = response.status;
+          throw error;
         }
 
         // 否则使用状态码映射
-        throw new Error(getHttpErrorMessage(response.status));
+        const error = new Error(getHttpErrorMessage(response.status));
+        (error as any).status = response.status;
+        throw error;
       }
 
       const responseData = await response.json();
@@ -123,7 +129,17 @@ class ApiClient {
       };
 
     } catch (error) {
-      console.error(`API Error: ${method} ${endpoint}`, error);
+      // 根据状态码决定日志级别
+      const status = (error as any).status;
+      const isExpectedError = status === 404 || status === 401 || status === 403;
+
+      if (isExpectedError) {
+        // 对于预期的业务错误（如资源不存在、未授权等），使用info级别
+        console.info(`API Info: ${method} ${endpoint} - ${status}`, (error as Error).message);
+      } else {
+        // 对于真正的错误（如500、网络错误等），使用error级别
+        console.error(`API Error: ${method} ${endpoint}`, error);
+      }
 
       // 使用友好的错误信息
       const friendlyError = parseApiError(error);
@@ -192,16 +208,22 @@ class ApiClient {
           errorData = await response.json();
         } catch {
           // 如果无法解析JSON，使用状态码生成错误信息
-          throw new Error(getHttpErrorMessage(response.status));
+          const error = new Error(getHttpErrorMessage(response.status));
+          (error as any).status = response.status;
+          throw error;
         }
 
         // 如果后端返回了具体的错误信息，使用它
         if (errorData && errorData.error) {
-          throw new Error(parseApiError(errorData.error));
+          const error = new Error(parseApiError(errorData.error));
+          (error as any).status = response.status;
+          throw error;
         }
 
         // 否则使用状态码映射
-        throw new Error(getHttpErrorMessage(response.status));
+        const error = new Error(getHttpErrorMessage(response.status));
+        (error as any).status = response.status;
+        throw error;
       }
 
       const blob = await response.blob();
@@ -212,7 +234,17 @@ class ApiClient {
       };
 
     } catch (error) {
-      console.error(`API Error: GET Blob ${endpoint}`, error);
+      // 根据状态码决定日志级别
+      const status = (error as any).status;
+      const isExpectedError = status === 404 || status === 401 || status === 403;
+
+      if (isExpectedError) {
+        // 对于预期的业务错误（如资源不存在、未授权等），使用info级别
+        console.info(`API Info: GET Blob ${endpoint} - ${status}`, (error as Error).message);
+      } else {
+        // 对于真正的错误（如500、网络错误等），使用error级别
+        console.error(`API Error: GET Blob ${endpoint}`, error);
+      }
 
       // 使用友好的错误信息
       const friendlyError = parseApiError(error);
