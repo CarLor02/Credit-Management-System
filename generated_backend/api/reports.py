@@ -304,7 +304,7 @@ def register_report_routes(app):
                         # 广播错误事件
                         try:
                             socketio = current_app.socketio
-                            broadcast_workflow_error(socketio, project_room_id, f"报告生成失败: {str(e)}")
+                            broadcast_workflow_error(socketio, project_room_id, f"报告生成失败: {str(e)}", project_id)
                         except Exception as ws_error:
                             current_app.logger.error(f"WebSocket错误广播失败: {ws_error}")
 
@@ -337,7 +337,7 @@ def register_report_routes(app):
                 parsing_complete = check_parsing_status(dataset_id)
                 if not parsing_complete:
                     # 通过WebSocket广播错误
-                    broadcast_workflow_error(socketio, project_room_id, "文档解析尚未完成，请等待解析完成后再生成报告")
+                    broadcast_workflow_error(socketio, project_room_id, "文档解析尚未完成，请等待解析完成后再生成报告", project_id)
                     return
 
             # 对于测试数据，返回模拟响应
@@ -391,7 +391,7 @@ def register_report_routes(app):
                         current_app.logger.error(f"保存报告路径到数据库失败: {db_error}")
 
                 # 通过WebSocket广播测试报告完成
-                broadcast_workflow_complete(socketio, project_room_id, mock_content)
+                broadcast_workflow_complete(socketio, project_room_id, mock_content, project_id)
                 return
 
             # 真实的流式调用报告生成API
@@ -1121,17 +1121,19 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                     content_chunk = data['message']
 
                 # 如果找到内容块，累积到完整内容并广播
-                if content_chunk and content_chunk.strip():
+                # 注意：不使用strip()检查，因为空格和换行符也是重要的格式信息
+                if content_chunk is not None and content_chunk != "":
                     # 累积内容
                     full_content += content_chunk
                     print(f"累积内容，当前总长度: {len(full_content)}")
+                    print(f"内容块详情: {repr(content_chunk[:100])}")  # 使用repr显示转义字符
 
                     # 通过WebSocket广播内容到项目房间
                     try:
                         socketio = current_app.socketio
                         if project_room_id:
                             broadcast_workflow_content(socketio, project_room_id, content_chunk)
-                            print(f"已广播内容块到房间 {project_room_id}: {content_chunk[:50]}...")
+                            print(f"已广播内容块到房间 {project_room_id}: {repr(content_chunk[:50])}")
                     except Exception as e:
                         print(f"WebSocket内容广播失败: {e}")
 
@@ -1139,6 +1141,12 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                 if 'event' in data:
                     event_type = data['event']
                     print(f"提取到事件: {event_type}")
+
+                    # 调试：打印节点事件的详细信息
+                    if event_type in ['node_started', 'node_finished']:
+                        print(f"📊 节点事件详情: {json.dumps(data, ensure_ascii=False, indent=2)}")
+                        if 'data' in data:
+                            print(f"📊 节点数据: title={data['data'].get('title')}, node_id={data['data'].get('node_id')}")
 
                     # 映射事件类型到我们系统的事件
                     mapped_event = {
@@ -1171,7 +1179,7 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
     try:
         socketio = current_app.socketio
         if project_room_id:
-            broadcast_workflow_complete(socketio, project_room_id, full_content)
+            broadcast_workflow_complete(socketio, project_room_id, full_content, project_id)
             print(f"已广播完成事件到房间 {project_room_id}，最终内容长度: {len(full_content)}")
     except Exception as e:
         print(f"WebSocket完成事件广播失败: {e}")

@@ -122,7 +122,7 @@ def broadcast_workflow_content(socketio, workflow_run_id, content_chunk):
     except Exception as e:
         current_app.logger.error(f"广播工作流内容失败: {e}")
 
-def broadcast_workflow_complete(socketio, workflow_run_id, final_content):
+def broadcast_workflow_complete(socketio, workflow_run_id, final_content, project_id=None):
     """
     向指定工作流房间广播完成事件
 
@@ -130,6 +130,7 @@ def broadcast_workflow_complete(socketio, workflow_run_id, final_content):
         socketio: SocketIO实例
         workflow_run_id: 工作流运行ID
         final_content: 最终内容
+        project_id: 项目ID（可选）
     """
     try:
         # 确保final_content不为None
@@ -141,6 +142,10 @@ def broadcast_workflow_complete(socketio, workflow_run_id, final_content):
             'timestamp': time.time()
         }
 
+        # 如果提供了项目ID，添加到消息中
+        if project_id:
+            message['project_id'] = project_id
+
         # 向房间内的所有客户端广播
         socketio.emit('workflow_complete', message, room=workflow_run_id)
 
@@ -149,14 +154,15 @@ def broadcast_workflow_complete(socketio, workflow_run_id, final_content):
     except Exception as e:
         current_app.logger.error(f"广播工作流完成事件失败: {e}")
 
-def broadcast_workflow_error(socketio, workflow_run_id, error_message):
+def broadcast_workflow_error(socketio, workflow_run_id, error_message, project_id=None):
     """
     向指定工作流房间广播错误事件
-    
+
     Args:
         socketio: SocketIO实例
         workflow_run_id: 工作流运行ID
         error_message: 错误消息
+        project_id: 项目ID（可选）
     """
     try:
         message = {
@@ -164,11 +170,15 @@ def broadcast_workflow_error(socketio, workflow_run_id, error_message):
             'error_message': error_message,
             'timestamp': time.time()
         }
-        
+
+        # 如果提供了项目ID，添加到消息中
+        if project_id:
+            message['project_id'] = project_id
+
         # 向房间内的所有客户端广播
         socketio.emit('workflow_error', message, room=workflow_run_id)
-        
+
         current_app.logger.error(f"广播工作流错误到房间 {workflow_run_id}: {error_message}")
-        
+
     except Exception as e:
         current_app.logger.error(f"广播工作流错误失败: {e}")

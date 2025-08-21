@@ -5,14 +5,7 @@ import MarkdownPreview from '@uiw/react-markdown-preview';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
 import PdfViewer from './PDFViewer';
-
-interface StreamingEvent {
-  timestamp: string;
-  eventType: string;
-  content: string;
-  color: string;
-  isContent: boolean;
-}
+import { streamingContentService, StreamingEvent, ProjectStreamingData } from '../services/streamingContentService';
 
 interface ReportPreviewProps {
   isOpen: boolean;
@@ -45,6 +38,60 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [hasStreamingContent, setHasStreamingContent] = useState(false);
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
+
+  // 预处理Markdown内容，修复格式问题
+  const preprocessMarkdown = (content: string): string => {
+    if (!content) return content;
+
+    return content
+      // 修复标题格式：确保#号后面有空格
+      .replace(/^(#{1,6})([^#\s])/gm, '$1 $2')
+      // 修复列表格式：确保-号后面有空格
+      .replace(/^(\s*)-([^\s])/gm, '$1- $2')
+      // 修复数字列表格式：确保数字后面有空格
+      .replace(/^(\s*)(\d+\.)([^\s])/gm, '$1$2 $3')
+      // 确保段落之间有适当的换行
+      .replace(/([^\n])\n([#])/g, '$1\n\n$2')
+      // 修复连续的标题之间的间距
+      .replace(/(#{1,6}[^\n]*)\n(#{1,6})/g, '$1\n\n$2')
+      // 确保列表项之间的格式正确
+      .replace(/([^\n])\n(\s*[-*+])/g, '$1\n\n$2')
+      // 修复表格格式问题
+      .replace(/\|([^|\n]*)\|/g, (_, content) => {
+        return `| ${content.trim()} |`;
+      });
+  };
+
+  // 从流式内容服务加载数据
+  useEffect(() => {
+    if (projectId) {
+      const streamingData = streamingContentService.getProjectData(projectId);
+      if (streamingData) {
+        setStreamingEvents(streamingData.events);
+        setGenerating(streamingData.isGenerating);
+        if (streamingData.reportContent) {
+          setReportContent(streamingData.reportContent);
+        }
+        setHasStreamingContent(streamingData.events.length > 0);
+      }
+
+      // 添加监听器
+      const handleStreamingUpdate = (data: ProjectStreamingData) => {
+        setStreamingEvents(data.events);
+        setGenerating(data.isGenerating);
+        if (data.reportContent) {
+          setReportContent(data.reportContent);
+        }
+        setHasStreamingContent(data.events.length > 0);
+      };
+
+      streamingContentService.addListener(projectId, handleStreamingUpdate);
+
+      return () => {
+        streamingContentService.removeListener(projectId, handleStreamingUpdate);
+      };
+    }
+  }, [projectId]);
 
   // 获取已生成的报告内容
   const fetchReportContent = async () => {
@@ -137,11 +184,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       switch (eventType) {
         case 'node_started':
-          if (eventData?.data?.title) {
-            detailInfo = `[${eventData.data.node_id || '节点'}] ${eventData.data.title}`;
+          // 尝试从不同的数据结构中获取title信息
+          const nodeTitle = eventData?.event_data?.title || eventData?.data?.title;
+          const nodeId = eventData?.event_data?.node_id || eventData?.data?.node_id;
+
+          if (nodeTitle) {
+            detailInfo = `[${nodeId || '节点'}] ${nodeTitle}`;
             eventColor = 'text-blue-400';
-          } else if (eventData?.data?.node_id) {
-            detailInfo = `节点启动: ${eventData.data.node_id}`;
+          } else if (nodeId) {
+            detailInfo = `节点启动: ${nodeId}`;
             eventColor = 'text-blue-400';
           } else {
             detailInfo = '节点启动';
@@ -153,8 +204,20 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           eventColor = 'text-purple-400';
           break;
         case 'node_finished':
-          detailInfo = '节点完成';
-          eventColor = 'text-green-400';
+          // 尝试从不同的数据结构中获取title信息
+          const finishedNodeTitle = eventData?.event_data?.title || eventData?.data?.title;
+          const finishedNodeId = eventData?.event_data?.node_id || eventData?.data?.node_id;
+
+          if (finishedNodeTitle) {
+            detailInfo = `[${finishedNodeId || '节点'}] ${finishedNodeTitle}`;
+            eventColor = 'text-green-400';
+          } else if (finishedNodeId) {
+            detailInfo = `节点完成: ${finishedNodeId}`;
+            eventColor = 'text-green-400';
+          } else {
+            detailInfo = '节点完成';
+            eventColor = 'text-green-400';
+          }
           break;
         case 'workflow_started':
           detailInfo = '工作流开始';
@@ -206,6 +269,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       };
 
       console.log('📝 添加节点事件到界面:', eventEntry);
+
+      // 保存到流式内容服务
+      if (projectId) {
+        streamingContentService.addEvent(projectId, eventEntry);
+      }
+
       setStreamingEvents(prev => [...prev, eventEntry]);
 
       // 自动滚动事件列表
@@ -225,33 +294,70 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     // 添加测试事件验证功能
     addEvent('预览窗口打开', '开始监听流式事件');
 
-    // 接收流式内容但不实时显示，仅记录到事件中
-    const addContent = (content: string) => {
-      console.log('📝 收到内容块，记录到事件中:', content.substring(0, 50) + '...');
-      // 不再实时累积到 reportContent，等待完成事件时一次性加载
-    };
+
 
     // 定义事件处理函数，以便后续清理
     const handleWorkflowEvent = (data: any) => {
       console.log('🎯 收到workflow_event:', data);
+
+      // 调试：打印事件数据结构
+      if (data.event_type === 'node_started' || data.event_type === 'node_finished') {
+        console.log('📊 节点事件详情:', {
+          event_type: data.event_type,
+          event_data: data.event_data,
+          data: data.data,
+          title_from_event_data: data.event_data?.title,
+          title_from_data: data.data?.title,
+          node_id_from_event_data: data.event_data?.node_id,
+          node_id_from_data: data.data?.node_id
+        });
+      }
+
       const eventType = data.event_type || '工作流事件';
       addEvent(eventType, '', data);
 
+      // 处理章节完成事件
+      if (projectId) {
+        streamingContentService.handleChapterComplete(projectId, data);
+      }
+
       if (eventType === 'generation_started' || eventType === 'workflow_started') {
         setGenerating(true);
-        console.log('🚀 开始生成报告，设置generating为true');
+        // 清空旧的报告内容，确保显示生成状态
+        setReportContent('');
+        setHasStreamingContent(false);
+        setError(null);
+
+        if (projectId) {
+          streamingContentService.setGeneratingStatus(projectId, true);
+          // 清空流式内容服务中的旧内容
+          streamingContentService.updateReportContent(projectId, '');
+        }
+        console.log('🚀 开始生成报告，设置generating为true，清空旧内容');
       }
     };
 
     const handleWorkflowContent = (data: any) => {
       console.log('📄 收到workflow_content:', data);
       if (data.content_chunk) {
+        // 调试：打印原始内容块
+        console.log('📄 原始content_chunk:', JSON.stringify(data.content_chunk));
+        console.log('📄 content_chunk长度:', data.content_chunk.length);
+
         // 标记已经有流式内容
         setHasStreamingContent(true);
         // 直接更新报告内容到右侧显示区域
         setReportContent(prev => {
-          const newContent = prev ? prev + data.content_chunk.replace(/\r?\n/g, '\n') : data.content_chunk.replace(/\r?\n/g, '\n');
+          // 保持原始内容，不进行任何替换
+          const newContent = prev ? prev + data.content_chunk : data.content_chunk;
           console.log('✅ 更新报告内容，新长度:', newContent.length);
+          console.log('✅ 最新添加的内容:', JSON.stringify(data.content_chunk));
+
+          // 保存到流式内容服务
+          if (projectId) {
+            streamingContentService.updateReportContent(projectId, newContent);
+          }
+
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
@@ -269,13 +375,30 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     const handleWorkflowComplete = (data: any) => {
       console.log('✅ 收到workflow_complete:', data);
+
+      // 验证事件是否属于当前项目
+      const eventProjectId = data.project_id;
+      if (eventProjectId && eventProjectId !== projectId) {
+        console.log(`🚫 ReportPreview忽略其他项目(${eventProjectId})的workflow_complete事件，当前项目ID: ${projectId}`);
+        return;
+      }
+
       addEvent('报告生成完成', '');
       setWebsocketStatus('生成完成');
       setGenerating(false);
+
+      // 更新流式内容服务状态
+      if (projectId) {
+        streamingContentService.setGeneratingStatus(projectId, false);
+      }
+
       // 优先使用完成事件中的最终内容，否则从文件加载最新内容
       if (data.final_content) {
         console.log('✅ 使用完成事件中的最终内容');
         setReportContent(data.final_content);
+        if (projectId) {
+          streamingContentService.updateReportContent(projectId, data.final_content);
+        }
         // 同时获取HTML内容
         fetchHtmlContent();
       } else {
@@ -287,10 +410,45 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     const handleWorkflowError = (data: any) => {
       console.log('❌ 收到workflow_error:', data);
+
+      // 验证事件是否属于当前项目
+      const eventProjectId = data.project_id;
+      if (eventProjectId && eventProjectId !== projectId) {
+        console.log(`🚫 ReportPreview忽略其他项目(${eventProjectId})的workflow_error事件，当前项目ID: ${projectId}`);
+        return;
+      }
+
       addEvent('错误', data.error_message || '未知错误');
       setError(data.error_message);
       setGenerating(false);
+
+      // 更新流式内容服务状态
+      if (projectId) {
+        streamingContentService.setGeneratingStatus(projectId, false);
+      }
+
       console.log('❌ 报告生成出错，设置generating为false');
+    };
+
+    const handleGenerationCancelled = (data: any) => {
+      console.log('🚫 收到generation_cancelled:', data);
+
+      // 验证事件是否属于当前项目
+      const eventProjectId = data.project_id;
+      if (eventProjectId && eventProjectId !== projectId) {
+        console.log(`🚫 ReportPreview忽略其他项目(${eventProjectId})的generation_cancelled事件，当前项目ID: ${projectId}`);
+        return;
+      }
+
+      addEvent('报告生成已取消', '用户手动停止了报告生成');
+      setGenerating(false);
+
+      // 更新流式内容服务状态
+      if (projectId) {
+        streamingContentService.setGeneratingStatus(projectId, false);
+      }
+
+      console.log('🚫 报告生成已取消，设置generating为false');
     };
 
     // 监听WebSocket消息 - 详细展示不同类型的事件
@@ -298,6 +456,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     websocketService.on('workflow_content', handleWorkflowContent);
     websocketService.on('workflow_complete', handleWorkflowComplete);
     websocketService.on('workflow_error', handleWorkflowError);
+    websocketService.on('generation_cancelled', handleGenerationCancelled);
 
     // 清理函数 - 移除事件监听器，防止重复注册
     return () => {
@@ -308,6 +467,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       websocketService.off('workflow_content', handleWorkflowContent);
       websocketService.off('workflow_complete', handleWorkflowComplete);
       websocketService.off('workflow_error', handleWorkflowError);
+      websocketService.off('generation_cancelled', handleGenerationCancelled);
 
       // 离开项目房间
       const projectRoom = `project_${projectId}`;
@@ -330,8 +490,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   useEffect(() => {
     if (isGenerating !== generating) {
       setGenerating(isGenerating);
+      // 同时更新流式内容服务状态
+      if (projectId) {
+        streamingContentService.setGeneratingStatus(projectId, isGenerating);
+      }
     }
-  }, [isGenerating]);
+  }, [isGenerating, generating, projectId]);
 
   // 清理PDF URL
   useEffect(() => {
@@ -478,20 +642,28 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   // 停止报告生成
   const handleStopGeneration = async () => {
     if (!projectId) return;
-    
+
     try {
       // 发送API请求停止生成
-      const apiResponse = await apiClient.post(`/projects/${projectId}/stop-generation`);
-      
+      const apiResponse = await apiClient.post(`/stop_report_generation`, { project_id: projectId });
+
       if (apiResponse.success) {
         setGenerating(false);
-        setStreamingEvents(prev => [...prev, {
+
+        // 更新流式内容服务状态
+        streamingContentService.setGeneratingStatus(projectId, false);
+
+        const stopEvent = {
           timestamp: new Date().toLocaleTimeString(),
           eventType: '报告生成已停止',
           content: '用户手动停止了报告生成',
           color: 'text-red-500',
           isContent: false
-        }]);
+        };
+
+        setStreamingEvents(prev => [...prev, stopEvent]);
+        streamingContentService.addEvent(projectId, stopEvent);
+
         // 强制断开WebSocket连接
         websocketService.disconnect();
         setWebsocketStatus('已断开');
@@ -500,13 +672,17 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       }
     } catch (error) {
       console.error('停止报告生成失败:', error);
-      setStreamingEvents(prev => [...prev, {
+
+      const errorEvent = {
         timestamp: new Date().toLocaleTimeString(),
         eventType: '停止失败',
         content: error instanceof Error ? error.message : '停止报告生成失败',
         color: 'text-red-500',
         isContent: false
-      }]);
+      };
+
+      setStreamingEvents(prev => [...prev, errorEvent]);
+      streamingContentService.addEvent(projectId, errorEvent);
     }
   };
 
@@ -587,17 +763,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             <p className="text-sm text-gray-500 mt-1">公司：{companyName}</p>
           </div>
           <div className="flex items-center space-x-3">
-            {/* 停止生成按钮 */}
-            {generating && (
-              <button
-                onClick={handleStopGeneration}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-red-600 text-white hover:bg-red-700"
-              >
-                <i className="ri-stop-circle-line mr-2"></i>
-                停止生成
-              </button>
-            )}
-            
             {/* 预览切换和下载按钮 */}
             {reportContent && (
               <>
@@ -791,7 +956,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                     <span className="text-xs text-gray-500">• HTML格式</span>
                   </div>
                 </div>
-                <div className="overflow-y-auto px-6 h-full">
+                <div className="overflow-y-auto h-full" style={{ height: 'calc(100% - 50px)' }}>
                   {htmlLoading ? (
                     <div className="text-center py-8">正在转换HTML格式...</div>
                   ) : htmlContent ? (
@@ -801,22 +966,106 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                       border: 'none',
                       backgroundColor: 'white'
                     }} title="征信报告HTML预览" sandbox="allow-same-origin" />
+                  ) : generating ? (
+                    // 生成过程中，优先显示流式输出
+                    <div className="px-6 py-6 pb-12 bg-white min-h-full" ref={streamingContentRef}>
+                      {reportContent ? (
+                        <>
+                          <MarkdownPreview
+                            source={preprocessMarkdown(reportContent)}
+                            className="max-w-none markdown-content"
+                            style={{
+                              backgroundColor: 'white',
+                              color: 'black'
+                            }}
+                            data-color-mode="light"
+                            wrapperElement={{
+                              'data-color-mode': 'light'
+                            }}
+                          />
+                          <style jsx>{`
+                            .markdown-content h1,
+                            .markdown-content h2,
+                            .markdown-content h3,
+                            .markdown-content h4,
+                            .markdown-content h5,
+                            .markdown-content h6 {
+                              margin-top: 1.5em;
+                              margin-bottom: 0.5em;
+                              line-height: 1.3;
+                            }
+                            .markdown-content h1 {
+                              font-size: 1.8em;
+                              border-bottom: 2px solid #e5e7eb;
+                              padding-bottom: 0.3em;
+                            }
+                            .markdown-content h2 {
+                              font-size: 1.5em;
+                              border-bottom: 1px solid #e5e7eb;
+                              padding-bottom: 0.2em;
+                            }
+                            .markdown-content h3 {
+                              font-size: 1.3em;
+                            }
+                            .markdown-content h4 {
+                              font-size: 1.1em;
+                            }
+                            .markdown-content p {
+                              margin-bottom: 1em;
+                              line-height: 1.6;
+                            }
+                            .markdown-content ul,
+                            .markdown-content ol {
+                              margin-bottom: 1em;
+                              padding-left: 1.5em;
+                            }
+                            .markdown-content li {
+                              margin-bottom: 0.3em;
+                            }
+                            .markdown-content table {
+                              border-collapse: collapse;
+                              width: 100%;
+                              margin-bottom: 1em;
+                            }
+                            .markdown-content th,
+                            .markdown-content td {
+                              border: 1px solid #d1d5db;
+                              padding: 0.5em;
+                              text-align: left;
+                            }
+                            .markdown-content th {
+                              background-color: #f9fafb;
+                              font-weight: 600;
+                            }
+                          `}</style>
+                          <div className="mt-6 mb-6 text-center">
+                            <p className="text-gray-400">报告生成中，内容持续更新...</p>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-center py-12">
+                          <div className="animate-spin w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                          <p className="text-gray-600">正在生成报告，请稍候...</p>
+                          <p className="text-sm text-gray-400 mt-2">生成过程将在左侧实时显示</p>
+                        </div>
+                      )}
+                    </div>
                   ) : reportContent ? (
-                    <div className="p-6 bg-white" ref={streamingContentRef}>
+                    // 非生成状态，显示已有报告内容
+                    <div className="px-6 py-6 pb-12 bg-white min-h-full" ref={streamingContentRef}>
                       <MarkdownPreview
-                        source={reportContent}
-                        className="max-w-none"
+                        source={preprocessMarkdown(reportContent)}
+                        className="max-w-none markdown-content"
                         style={{
                           backgroundColor: 'white',
                           color: 'black'
                         }}
+                        data-color-mode="light"
+                        wrapperElement={{
+                          'data-color-mode': 'light'
+                        }}
                       />
-                      {generating && (
-                        <p className="text-gray-400 mt-4 text-center">报告生成中，内容持续更新...</p>
-                      )}
                     </div>
-                  ) : generating ? (
-                    <div className="text-center py-12">正在生成报告，请稍候...</div>
                   ) : (
                     <div className="text-center py-12">暂无报告内容</div>
                   )}

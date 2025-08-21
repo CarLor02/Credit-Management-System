@@ -4,18 +4,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Portal from '@/components/Portal';
-
-interface Project {
-  id: number;
-  name: string;
-  type: 'enterprise' | 'individual';
-  status: 'collecting' | 'processing' | 'completed';
-  score: number;
-  riskLevel: 'low' | 'medium' | 'high';
-  lastUpdate: string;
-  documents: number;
-  progress: number;
-}
+import { Project } from '@/services/projectService';
+import { streamingContentService } from '@/services/streamingContentService';
 
 interface ProjectCardProps {
   project: Project;
@@ -25,6 +15,34 @@ interface ProjectCardProps {
 export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [currentProgress, setCurrentProgress] = useState(project.progress || 0);
+  const [reportStatus, setReportStatus] = useState(project.report_status || 'not_generated');
+
+  // 监听流式内容服务的进度更新
+  useEffect(() => {
+    const handleProgressUpdate = (data: any) => {
+      if (data.progress !== undefined) {
+        setCurrentProgress(data.progress);
+      }
+      if (data.isGenerating !== undefined) {
+        setReportStatus(data.isGenerating ? 'generating' : 'generated');
+      }
+    };
+
+    // 添加监听器
+    streamingContentService.addListener(project.id, handleProgressUpdate);
+
+    // 获取当前状态
+    const streamingData = streamingContentService.getProjectData(project.id);
+    if (streamingData) {
+      setCurrentProgress(streamingData.progress || project.progress || 0);
+      setReportStatus(streamingData.isGenerating ? 'generating' : (project.report_status || 'not_generated'));
+    }
+
+    return () => {
+      streamingContentService.removeListener(project.id, handleProgressUpdate);
+    };
+  }, [project.id, project.progress, project.report_status]);
 
   // ESC键关闭弹窗
   useEffect(() => {
@@ -118,6 +136,41 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
     }
   };
 
+  // 获取报告状态文本和颜色
+  const getReportStatusInfo = (status: string) => {
+    switch (status) {
+      case 'generating':
+        return {
+          text: '报告生成中...',
+          color: 'text-blue-600',
+          bgColor: 'bg-blue-100',
+          icon: 'ri-loader-4-line animate-spin'
+        };
+      case 'generated':
+        return {
+          text: '报告已生成',
+          color: 'text-green-600',
+          bgColor: 'bg-green-100',
+          icon: 'ri-file-check-line'
+        };
+      case 'cancelled':
+        return {
+          text: '生成已取消',
+          color: 'text-orange-600',
+          bgColor: 'bg-orange-100',
+          icon: 'ri-close-circle-line'
+        };
+      case 'not_generated':
+      default:
+        return {
+          text: '未生成报告',
+          color: 'text-gray-600',
+          bgColor: 'bg-gray-100',
+          icon: 'ri-file-line'
+        };
+    }
+  };
+
   const handleDelete = async () => {
     if (onDelete && !isDeleting) {
       setIsDeleting(true);
@@ -174,17 +227,32 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
             <span className="text-sm text-gray-600">最后更新</span>
             <span className="text-sm font-medium text-gray-800">{project.lastUpdate}</span>
           </div>
+
+          {/* 报告状态显示 */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">征信报告</span>
+            <div className="flex items-center space-x-1">
+              <i className={`${getReportStatusInfo(reportStatus).icon} text-sm ${getReportStatusInfo(reportStatus).color}`}></i>
+              <span className={`text-sm font-medium ${getReportStatusInfo(reportStatus).color}`}>
+                {getReportStatusInfo(reportStatus).text}
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-600">完成进度</span>
-            <span className="text-sm font-medium text-gray-800">{project.progress}%</span>
+            <span className="text-sm text-gray-600">
+              {reportStatus === 'generating' ? '生成进度' : '完成进度'}
+            </span>
+            <span className="text-sm font-medium text-gray-800">{currentProgress}%</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${project.progress}%` }}
+              className={`h-2 rounded-full transition-all duration-300 ${
+                reportStatus === 'generating' ? 'bg-blue-600' : 'bg-green-600'
+              }`}
+              style={{ width: `${currentProgress}%` }}
             ></div>
           </div>
         </div>

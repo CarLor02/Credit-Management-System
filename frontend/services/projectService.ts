@@ -25,7 +25,7 @@ export interface Project {
   dataset_id?: string;
   knowledge_base_name?: string;
   // 报告相关字段
-  report_status?: 'not_generated' | 'generating' | 'generated';
+  report_status?: 'not_generated' | 'generating' | 'generated' | 'cancelled';
   report_path?: string;
 }
 
