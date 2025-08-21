@@ -33,28 +33,32 @@ def token_required(f):
     """JWT token验证装饰器"""
     @wraps(f)
     def decorated(*args, **kwargs):
+        # 对于OPTIONS预检请求，直接放行
+        if request.method == 'OPTIONS':
+            return jsonify({'success': True}), 200
+
         token = request.headers.get('Authorization')
-        
+
         if not token:
             return jsonify({'success': False, 'error': '缺少认证token'}), 401
-        
+
         if token.startswith('Bearer '):
             token = token[7:]
-        
+
         user_id = verify_token(token)
         if not user_id:
             return jsonify({'success': False, 'error': '无效的token'}), 401
-        
+
         # 获取用户信息
         user = User.query.get(user_id)
         if not user or not user.is_active:
             return jsonify({'success': False, 'error': '用户不存在或已禁用'}), 401
-        
+
         # 将用户信息添加到请求上下文
         request.current_user = user
-        
+
         return f(*args, **kwargs)
-    
+
     return decorated
 
 def admin_required(f):
