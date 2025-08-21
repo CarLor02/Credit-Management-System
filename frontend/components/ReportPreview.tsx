@@ -912,8 +912,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                   删除报告
                 </button>
               )}
-              {/* 停止生成按钮 */}
-              {(generating || (streamingEvents.length > 0 && !reportContent)) && (
+              {/* 停止生成按钮 - 只在真正生成过程中显示 */}
+              {generating && (
                 <button
                   onClick={handleStopGeneration}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-orange-600 text-white hover:bg-orange-700`}

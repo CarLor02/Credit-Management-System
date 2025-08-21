@@ -153,13 +153,7 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
           bgColor: 'bg-green-100',
           icon: 'ri-file-check-line'
         };
-      case 'cancelled':
-        return {
-          text: '生成已取消',
-          color: 'text-orange-600',
-          bgColor: 'bg-orange-100',
-          icon: 'ri-close-circle-line'
-        };
+
       case 'not_generated':
       default:
         return {

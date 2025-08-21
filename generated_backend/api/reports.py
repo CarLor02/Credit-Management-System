@@ -187,8 +187,8 @@ def register_report_routes(app):
             if not project:
                 return jsonify({"success": False, "error": "项目不存在"}), 404
 
-            # 更新项目报告状态为已取消
-            project.report_status = ReportStatus.CANCELLED
+            # 更新项目报告状态为已取消（使用NOT_GENERATED作为取消状态）
+            project.report_status = ReportStatus.NOT_GENERATED
             db.session.commit()
 
             # 广播停止事件

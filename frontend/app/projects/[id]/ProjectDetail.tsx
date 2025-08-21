@@ -381,7 +381,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
             return;
           }
 
-          setProject(prev => prev ? {...prev, report_status: 'cancelled'} : prev);
+          setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
           // 更新流式内容服务状态
           if (project?.id) {
             streamingContentService.setGeneratingStatus(project.id, false);
@@ -630,12 +630,26 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           response_error: response.error,
           data_error: response.data?.error
         });
-        // 生成失败，恢复状态
-        setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
-        if (project.id) {
-          streamingContentService.setGeneratingStatus(project.id, false);
+
+        // 检查是否是"报告正在生成中"的错误
+        const errorMessage = response.data?.error || response.error || '';
+        if (errorMessage.includes('报告正在生成中') || errorMessage.includes('正在生成')) {
+          // 如果报告正在生成，也打开弹窗让用户查看进度
+          console.log('🎯 报告正在生成中，打开弹窗查看进度');
+          setShowReportPreview(true);
+          // 确保项目状态为generating
+          setProject(prev => prev ? {...prev, report_status: 'generating'} : prev);
+          if (project.id) {
+            streamingContentService.setGeneratingStatus(project.id, true);
+          }
+        } else {
+          // 其他错误，恢复状态
+          setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
+          if (project.id) {
+            streamingContentService.setGeneratingStatus(project.id, false);
+          }
+          alert(errorMessage || '启动报告生成失败');
         }
-        alert(response.data?.error || response.error || '启动报告生成失败');
       }
     } catch (error) {
       console.error('Generate report error:', error);
@@ -1012,11 +1026,13 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                 编辑项目
               </button>
               <button
-                onClick={handleDownloadReport}
-                disabled={project?.report_status === 'generating'}
+                onClick={project?.report_status === 'generating' ? () => setShowReportPreview(true) : handleDownloadReport}
+                disabled={project?.report_status === 'not_generated'}
                 className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
-                  project?.report_status === 'generating'
+                  (project?.report_status === 'not_generated')
                     ? 'bg-gray-400 cursor-not-allowed'
+                    : project?.report_status === 'generating'
+                    ? 'bg-orange-600 hover:bg-orange-700'
                     : project?.report_status === 'generated'
                     ? 'bg-blue-600 hover:bg-blue-700'
                     : 'bg-green-600 hover:bg-green-700'
@@ -1024,8 +1040,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
               >
                 {project?.report_status === 'generating' ? (
                   <>
-                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                    正在生成...
+                    <i className="ri-eye-line mr-2"></i>
+                    查看生成进度
                   </>
                 ) : project?.report_status === 'generated' ? (
                   <>
@@ -1041,15 +1057,17 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
               </button>
               <button
                 onClick={() => setShowReportPreview(true)}
-                disabled={project?.report_status === 'not_generated' || project?.report_status === 'cancelled'}
+                disabled={project?.report_status === 'not_generated'}
                 className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
-                  (project?.report_status === 'not_generated' || project?.report_status === 'cancelled')
+                  (project?.report_status === 'not_generated')
                     ? 'bg-gray-400 cursor-not-allowed'
+                    : project?.report_status === 'generating'
+                    ? 'bg-orange-600 hover:bg-orange-700'
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                <i className="ri-eye-line mr-2"></i>
-                预览报告及下载
+                <i className={`${project?.report_status === 'generating' ? 'ri-eye-line' : 'ri-eye-line'} mr-2`}></i>
+                {project?.report_status === 'generating' ? '查看生成进度' : '预览报告及下载'}
               </button>
             </div>
           </div>
