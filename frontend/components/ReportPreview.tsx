@@ -820,7 +820,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     return null;
   }
 
-  console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen);
+  console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen, 'projectId:', projectId, 'companyName:', companyName);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

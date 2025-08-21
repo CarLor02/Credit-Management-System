@@ -313,6 +313,11 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   // 报告预览状态
   const [showReportPreview, setShowReportPreview] = useState(false);
 
+  // 调试：监听showReportPreview状态变化
+  useEffect(() => {
+    console.log('🔍 showReportPreview状态变化:', showReportPreview);
+  }, [showReportPreview]);
+
   // 页面加载时建立WebSocket连接，页面卸载时断开
   useEffect(() => {
     if (project?.id) {
@@ -606,6 +611,12 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       });
 
       console.log('Generate report response:', response);
+      console.log('🔍 响应详情:', {
+        response_success: response.success,
+        response_data: response.data,
+        data_success: response.data?.success,
+        condition_result: response.success && response.data?.success
+      });
 
       if (response.success && response.data?.success) {
         // 后端已开始异步生成报告，立即打开预览弹窗
@@ -613,6 +624,12 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         setShowReportPreview(true);
         console.log('报告生成已开始，项目ID:', project.id);
       } else {
+        console.log('❌ 弹窗条件不满足:', {
+          response_success: response.success,
+          data_success: response.data?.success,
+          response_error: response.error,
+          data_error: response.data?.error
+        });
         // 生成失败，恢复状态
         setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
         if (project.id) {
