@@ -104,6 +104,12 @@ class WebSocketService {
       this.emit('workflow_error', data);
     });
 
+    // 监听生成取消事件
+    this.socket.on('generation_cancelled', (data: any) => {
+      console.log('🚫 收到generation_cancelled事件:', data);
+      this.emit('generation_cancelled', data);
+    });
+
     // 监听房间加入成功
     this.socket.on('joined_workflow', (data) => {
       console.log('✅ 成功加入工作流房间:', data);

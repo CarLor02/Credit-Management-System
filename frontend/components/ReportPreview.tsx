@@ -5,16 +5,10 @@ import MarkdownPreview from '@uiw/react-markdown-preview';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
 import PdfViewer from './PDFViewer';
+import { streamingContentService, StreamingEvent, ProjectStreamingData } from '../services/streamingContentService';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 
-interface StreamingEvent {
-  timestamp: string;
-  eventType: string;
-  content: string;
-  color: string;
-  isContent: boolean;
-}
 
 interface ReportPreviewProps {
   isOpen: boolean;
@@ -50,6 +44,198 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const { addNotification } = useNotification();
   const { showConfirm } = useConfirm();
 
+  // 修复标题格式的辅助函数
+  const fixHeadingFormat = (content: string): string => {
+    return content
+      // 修复常见的标题格式问题
+      .replace(/^(#{1,6})\s*第([一二三四五六七八九十\d]+)[节章]\s*(.*)$/gm, '$1 第$2节 $3')
+      .replace(/^(#{1,6})\s*(\d+\.?\d*)\s*(.*)$/gm, '$1 $2 $3')
+      // 确保标题中的特殊字符正确处理
+      .replace(/^(#{1,6})\s*([^#\s].*?)(\s*)$/gm, '$1 $2')
+      // 移除标题末尾的多余空格
+      .replace(/^(#{1,6}\s+.*?)\s+$/gm, '$1');
+  };
+
+  // 预处理Markdown内容，修复格式问题
+  const preprocessMarkdown = (content: string): string => {
+    if (!content) return content;
+
+    let processedContent = content;
+
+    // 0. 清理Markdown代码块标记
+    processedContent = processedContent
+      // 移除```markdown开头和结尾的```
+      .replace(/```markdown\s*\n/gi, '')
+      .replace(/```\s*$/gm, '')
+      // 移除其他代码块标记（如果不需要代码块的话）
+      .replace(/```[\w]*\s*\n/gi, '')
+      .replace(/```\s*\n/gi, '');
+
+    // 1. 首先修复标题格式
+    processedContent = fixHeadingFormat(processedContent);
+
+    // 2. 特殊处理：修复分段生成导致的标题问题
+    // 确保所有标题前都有足够的换行符（针对分段生成的情况）
+    processedContent = processedContent
+      // 在所有标题前强制添加双换行符（除了文档开头）
+      .replace(/([^\n])(#{1,6}\s)/g, '$1\n\n$2')
+      // 处理可能紧跟在文本后的标题
+      .replace(/([^\n\s])(#{1,6}\s)/g, '$1\n\n$2')
+      // 确保标题后也有换行符
+      .replace(/(#{1,6}[^\n]*)\n([^#\n\s])/g, '$1\n\n$2');
+
+    // 2. 强制修复所有可能的标题格式问题
+    processedContent = processedContent
+      // 确保#号后面有空格
+      .replace(/^(#{1,6})([^#\s])/gm, '$1 $2')
+      // 修复"### 第二节 企业基本面分析"等标题（强化版）
+      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+[节章]\s*[^\n]*)/gm, '$1 $2')
+      // 修复可能的标题格式变体
+      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+[节章])\s*([^\n]*)/gm, '$1 $2 $3')
+      // 确保所有以"第"开头的标题都有正确格式
+      .replace(/^(#{1,6})\s*(第[^\n]*)/gm, '$1 $2')
+      // 修复可能的企业分析相关标题
+      .replace(/^(#{1,6})\s*(企业基本面分析|动态财务诊断|风险评估|经营状况分析)/gm, '$1 $2');
+
+    // 3. 处理没有#号的标题行（强制添加）
+    processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/gm, (match, spaces, title) => {
+      // 如果这行看起来像标题但没有#号，添加###
+      if (!title.startsWith('#')) {
+        return `${spaces}### ${title}`;
+      }
+      return match;
+    });
+
+    // 4. 修复企业分析相关的独立标题
+    processedContent = processedContent.replace(/^(\s*)(企业基本面分析|动态财务诊断|风险评估|经营状况分析)(\s*)$/gm, '### $2');
+
+    // 5. 再次确保标题前有空行（双重保险）
+    processedContent = processedContent.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
+
+    // 6. 确保标题后有空行（如果后面不是另一个标题）
+    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n([^#\n])/g, '$1\n\n$2');
+
+    // 7. 修复连续标题之间的间距
+    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n(#{1,6})/g, '$1\n\n$2');
+
+    // 8. 修复列表格式：确保-号后面有空格
+    processedContent = processedContent.replace(/^(\s*)-([^\s])/gm, '$1- $2');
+
+    // 9. 修复数字列表格式：确保数字后面有空格
+    processedContent = processedContent.replace(/^(\s*)(\d+\.)([^\s])/gm, '$1$2 $3');
+
+    // 10. 确保列表前有空行
+    processedContent = processedContent.replace(/([^\n])\n(\s*[-*+\d])/g, '$1\n\n$2');
+
+    // 11. 强化表格格式修复
+    processedContent = processedContent
+      // 修复表格单元格格式
+      .replace(/\|([^|\n]*)\|/g, (_, content) => {
+        return `| ${content.trim()} |`;
+      })
+      // 确保表格分隔行格式正确
+      .replace(/\|\s*[-:]+\s*\|/g, (match) => {
+        // 保持分隔行的格式
+        return match.replace(/\s+/g, ' ');
+      })
+      // 修复可能缺失的表格分隔行
+      .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
+        // 如果表格头后面直接跟数据行，插入分隔行
+        if (!firstRow.includes('---') && !firstRow.includes(':--')) {
+          const columnCount = (header.match(/\|/g) || []).length - 1;
+          const separator = '|' + ' --- |'.repeat(columnCount);
+          return header + '\n' + separator + '\n' + firstRow;
+        }
+        return match;
+      });
+
+    // 12. 确保表格前后有空行
+    processedContent = processedContent.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
+    processedContent = processedContent.replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2');
+
+    // 13. 最后一次强化检查：确保所有标题都被正确处理
+    const lines = processedContent.split('\n');
+    const fixedLines = lines.map((line, index) => {
+      const trimmedLine = line.trim();
+
+      // 检查是否是看起来像标题但没有#号的行
+      if (/^第[一二三四五六七八九十\d]+[节章]/.test(trimmedLine) && !trimmedLine.startsWith('#')) {
+        // 确保标题前有空行（除了第一行）
+        if (index > 0 && lines[index - 1].trim() !== '') {
+          return `\n### ${trimmedLine}`;
+        }
+        return `### ${trimmedLine}`;
+      }
+      if (/^(企业基本面分析|动态财务诊断|风险评估|经营状况分析)$/.test(trimmedLine) && !trimmedLine.startsWith('#')) {
+        // 确保标题前有空行（除了第一行）
+        if (index > 0 && lines[index - 1].trim() !== '') {
+          return `\n### ${trimmedLine}`;
+        }
+        return `### ${trimmedLine}`;
+      }
+      return line;
+    });
+    processedContent = fixedLines.join('\n');
+
+    // 14. 清理多余的空行（超过2个连续空行的情况）
+    processedContent = processedContent.replace(/\n{3,}/g, '\n\n');
+
+    // 15. 确保文档开头和结尾没有多余的空行
+    processedContent = processedContent.trim();
+
+    // 调试：打印处理前后的标题行
+    if (content !== processedContent) {
+      const originalTitles = content.match(/^#{1,6}.*$/gm) || [];
+      const processedTitles = processedContent.match(/^#{1,6}.*$/gm) || [];
+      const allTitleLikeLines = processedContent.match(/^.*第[一二三四五六七八九十\d]+[节章].*$/gm) || [];
+      const unprocessedTitleLike = content.match(/^[^#]*第[一二三四五六七八九十\d]+[节章].*$/gm) || [];
+
+      console.log('📝 Markdown标题预处理 (分段生成优化版):', {
+        原始标题数量: originalTitles.length,
+        处理后标题数量: processedTitles.length,
+        所有标题样式行数量: allTitleLikeLines.length,
+        未处理的标题样式: unprocessedTitleLike.length,
+        原始标题: originalTitles.slice(0, 5),
+        处理后标题: processedTitles.slice(0, 5),
+        标题样式行示例: allTitleLikeLines.slice(0, 5),
+        未处理标题示例: unprocessedTitleLike.slice(0, 3)
+      });
+    }
+
+    return processedContent;
+  };
+
+  // 从流式内容服务加载数据
+  useEffect(() => {
+    if (projectId) {
+      const streamingData = streamingContentService.getProjectData(projectId);
+      if (streamingData) {
+        setStreamingEvents(streamingData.events);
+        setGenerating(streamingData.isGenerating);
+        if (streamingData.reportContent) {
+          setReportContent(streamingData.reportContent);
+        }
+        setHasStreamingContent(streamingData.events.length > 0);
+      }
+
+      // 添加监听器
+      const handleStreamingUpdate = (data: ProjectStreamingData) => {
+        setStreamingEvents(data.events);
+        setGenerating(data.isGenerating);
+        if (data.reportContent) {
+          setReportContent(data.reportContent);
+        }
+        setHasStreamingContent(data.events.length > 0);
+      };
+
+      streamingContentService.addListener(projectId, handleStreamingUpdate);
+
+      return () => {
+        streamingContentService.removeListener(projectId, handleStreamingUpdate);
+      };
+    }
+  }, [projectId]);
+
   // 获取已生成的报告内容
   const fetchReportContent = async () => {
     if (!projectId) return;
@@ -84,8 +270,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         setError(response.error || '获取报告内容失败');
       }
     } catch (err) {
-      console.error('获取报告内容失败:', err);
-      setError('获取报告内容失败，请稍后重试');
+      // 对于404错误（报告不存在），使用info级别日志
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage.includes('该项目尚未生成报告') || errorMessage.includes('404')) {
+        console.info('项目暂无报告:', errorMessage);
+        setError('该项目尚未生成报告');
+      } else {
+        console.error('获取报告内容失败:', err);
+        setError('获取报告内容失败，请稍后重试');
+      }
     } finally {
       setLoading(false);
     }
@@ -107,10 +300,22 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (response.success && response.data) {
         setHtmlContent(response.data.html_content);
       } else {
-        console.error('获取HTML内容失败:', response.error);
+        // 对于404错误（报告不存在），使用info级别日志
+        const errorMessage = response.error || '';
+        if (errorMessage.includes('该项目尚未生成报告') || errorMessage.includes('404')) {
+          console.info('项目暂无HTML报告:', errorMessage);
+        } else {
+          console.error('获取HTML内容失败:', response.error);
+        }
       }
     } catch (err) {
-      console.error('获取HTML内容失败:', err);
+      // 对于404错误（报告不存在），使用info级别日志
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage.includes('该项目尚未生成报告') || errorMessage.includes('404')) {
+        console.info('项目暂无HTML报告:', errorMessage);
+      } else {
+        console.error('获取HTML内容失败:', err);
+      }
     } finally {
       setHtmlLoading(false);
     }
@@ -141,11 +346,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       switch (eventType) {
         case 'node_started':
-          if (eventData?.data?.title) {
-            detailInfo = `[${eventData.data.node_id || '节点'}] ${eventData.data.title}`;
+          // 根据Dify API格式，节点信息在event_data.data中
+          const nodeTitle = eventData?.event_data?.data?.title || eventData?.data?.title;
+          const nodeId = eventData?.event_data?.data?.node_id || eventData?.data?.node_id;
+
+          if (nodeTitle) {
+            detailInfo = `[${nodeId || '节点'}] ${nodeTitle}`;
             eventColor = 'text-blue-400';
-          } else if (eventData?.data?.node_id) {
-            detailInfo = `节点启动: ${eventData.data.node_id}`;
+          } else if (nodeId) {
+            detailInfo = `节点启动: ${nodeId}`;
             eventColor = 'text-blue-400';
           } else {
             detailInfo = '节点启动';
@@ -157,8 +366,20 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           eventColor = 'text-purple-400';
           break;
         case 'node_finished':
-          detailInfo = '节点完成';
-          eventColor = 'text-green-400';
+          // 根据Dify API格式，节点信息在event_data.data中
+          const finishedNodeTitle = eventData?.event_data?.data?.title || eventData?.data?.title;
+          const finishedNodeId = eventData?.event_data?.data?.node_id || eventData?.data?.node_id;
+
+          if (finishedNodeTitle) {
+            detailInfo = `[${finishedNodeId || '节点'}] ${finishedNodeTitle}`;
+            eventColor = 'text-green-400';
+          } else if (finishedNodeId) {
+            detailInfo = `节点完成: ${finishedNodeId}`;
+            eventColor = 'text-green-400';
+          } else {
+            detailInfo = '节点完成';
+            eventColor = 'text-green-400';
+          }
           break;
         case 'workflow_started':
           detailInfo = '工作流开始';
@@ -188,7 +409,28 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (eventType === 'content_generated' || eventType === 'markdown_content') {
         // 内容事件直接更新报告内容，并自动滚动
         setReportContent(prev => {
-          const newContent = prev ? prev + content.replace(/\r?\n/g, '\n') : content.replace(/\r?\n/g, '\n');
+          let processedContent = content.replace(/\r?\n/g, '\n');
+
+          // 特殊处理：如果新内容以标题开始，确保前面有足够的换行符
+          const trimmedContent = processedContent.trim();
+          if (trimmedContent.match(/^#{1,6}\s/) || trimmedContent.match(/^第[一二三四五六七八九十\d]+[节章]/)) {
+            // 如果前面有内容且不是以换行结尾，添加双换行
+            if (prev && !prev.endsWith('\n\n')) {
+              if (prev.endsWith('\n')) {
+                processedContent = '\n' + processedContent;
+              } else {
+                processedContent = '\n\n' + processedContent;
+              }
+            }
+          }
+
+          // 如果内容看起来像标题但没有#号，添加###
+          if (trimmedContent.match(/^第[一二三四五六七八九十\d]+[节章]/) && !trimmedContent.startsWith('#')) {
+            processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/m, '$1### $2');
+          }
+
+          const newContent = prev ? prev + processedContent : processedContent;
+
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
@@ -210,6 +452,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       };
 
       console.log('📝 添加节点事件到界面:', eventEntry);
+
+      // 保存到流式内容服务
+      if (projectId) {
+        streamingContentService.addEvent(projectId, eventEntry);
+      }
+
       setStreamingEvents(prev => [...prev, eventEntry]);
 
       // 自动滚动事件列表
@@ -229,33 +477,77 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     // 添加测试事件验证功能
     addEvent('预览窗口打开', '开始监听流式事件');
 
-    // 接收流式内容但不实时显示，仅记录到事件中
-    const addContent = (content: string) => {
-      console.log('📝 收到内容块，记录到事件中:', content.substring(0, 50) + '...');
-      // 不再实时累积到 reportContent，等待完成事件时一次性加载
-    };
+
 
     // 定义事件处理函数，以便后续清理
     const handleWorkflowEvent = (data: any) => {
       console.log('🎯 收到workflow_event:', data);
+
+      // 调试：打印所有事件的详细信息
+      console.log('📊 收到事件详情:', {
+        event_type: data.event_type,
+        event_data: data.event_data,
+        data: data.data,
+        raw_data: JSON.stringify(data, null, 2)
+      });
+
+      // 特别关注节点事件
+      if (data.event_type === 'node_started' || data.event_type === 'node_finished') {
+        console.log('🎯 节点事件解析:', {
+          title_from_event_data_data: data.event_data?.data?.title,
+          title_from_event_data: data.event_data?.title,
+          title_from_data: data.data?.title,
+          node_id_from_event_data_data: data.event_data?.data?.node_id,
+          node_id_from_event_data: data.event_data?.node_id,
+          node_id_from_data: data.data?.node_id
+        });
+      }
+
       const eventType = data.event_type || '工作流事件';
       addEvent(eventType, '', data);
 
+      // 处理章节完成事件
+      if (projectId) {
+        streamingContentService.handleChapterComplete(projectId, data);
+      }
+
       if (eventType === 'generation_started' || eventType === 'workflow_started') {
         setGenerating(true);
-        console.log('🚀 开始生成报告，设置generating为true');
+        // 清空旧的报告内容，确保显示生成状态
+        setReportContent('');
+        setHasStreamingContent(false);
+        setError(null);
+
+        if (projectId) {
+          streamingContentService.setGeneratingStatus(projectId, true);
+          // 清空流式内容服务中的旧内容
+          streamingContentService.updateReportContent(projectId, '');
+        }
+        console.log('🚀 开始生成报告，设置generating为true，清空旧内容');
       }
     };
 
     const handleWorkflowContent = (data: any) => {
       console.log('📄 收到workflow_content:', data);
       if (data.content_chunk) {
+        // 调试：打印原始内容块
+        console.log('📄 原始content_chunk:', JSON.stringify(data.content_chunk));
+        console.log('📄 content_chunk长度:', data.content_chunk.length);
+
         // 标记已经有流式内容
         setHasStreamingContent(true);
         // 直接更新报告内容到右侧显示区域
         setReportContent(prev => {
-          const newContent = prev ? prev + data.content_chunk.replace(/\r?\n/g, '\n') : data.content_chunk.replace(/\r?\n/g, '\n');
+          // 保持原始内容，不进行任何替换
+          const newContent = prev ? prev + data.content_chunk : data.content_chunk;
           console.log('✅ 更新报告内容，新长度:', newContent.length);
+          console.log('✅ 最新添加的内容:', JSON.stringify(data.content_chunk));
+
+          // 保存到流式内容服务
+          if (projectId) {
+            streamingContentService.updateReportContent(projectId, newContent);
+          }
+
           // 延迟执行滚动以确保DOM更新完成
           setTimeout(() => {
             if (streamingContentRef.current) {
@@ -273,13 +565,30 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     const handleWorkflowComplete = (data: any) => {
       console.log('✅ 收到workflow_complete:', data);
+
+      // 验证事件是否属于当前项目
+      const eventProjectId = data.project_id;
+      if (eventProjectId && eventProjectId !== projectId) {
+        console.log(`🚫 ReportPreview忽略其他项目(${eventProjectId})的workflow_complete事件，当前项目ID: ${projectId}`);
+        return;
+      }
+
       addEvent('报告生成完成', '');
       setWebsocketStatus('生成完成');
       setGenerating(false);
+
+      // 更新流式内容服务状态
+      if (projectId) {
+        streamingContentService.setGeneratingStatus(projectId, false);
+      }
+
       // 优先使用完成事件中的最终内容，否则从文件加载最新内容
       if (data.final_content) {
         console.log('✅ 使用完成事件中的最终内容');
         setReportContent(data.final_content);
+        if (projectId) {
+          streamingContentService.updateReportContent(projectId, data.final_content);
+        }
         // 同时获取HTML内容
         fetchHtmlContent();
       } else {
@@ -291,10 +600,47 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     const handleWorkflowError = (data: any) => {
       console.log('❌ 收到workflow_error:', data);
+
+      // 验证事件是否属于当前项目
+      const eventProjectId = data.project_id;
+      if (eventProjectId && eventProjectId !== projectId) {
+        console.log(`🚫 ReportPreview忽略其他项目(${eventProjectId})的workflow_error事件，当前项目ID: ${projectId}`);
+        return;
+      }
+
       addEvent('错误', data.error_message || '未知错误');
       setError(data.error_message);
       setGenerating(false);
+
+      // 更新流式内容服务状态
+      if (projectId) {
+        streamingContentService.setGeneratingStatus(projectId, false);
+      }
+
       console.log('❌ 报告生成出错，设置generating为false');
+    };
+
+    const handleGenerationCancelled = (data: any) => {
+      console.log('🚫 收到generation_cancelled:', data);
+
+      // 验证事件是否属于当前项目
+      const eventProjectId = data.project_id;
+      if (eventProjectId && eventProjectId !== projectId) {
+        console.log(`🚫 ReportPreview忽略其他项目(${eventProjectId})的generation_cancelled事件，当前项目ID: ${projectId}`);
+        return;
+      }
+
+      addEvent('报告生成已取消', '用户手动停止了报告生成');
+      setGenerating(false);
+      setWebsocketStatus('已取消');
+      setError('报告生成已取消');
+
+      // 更新流式内容服务状态
+      if (projectId) {
+        streamingContentService.setGeneratingStatus(projectId, false);
+      }
+
+      console.log('🚫 报告生成已取消，设置generating为false');
     };
 
     // 监听WebSocket消息 - 详细展示不同类型的事件
@@ -302,6 +648,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     websocketService.on('workflow_content', handleWorkflowContent);
     websocketService.on('workflow_complete', handleWorkflowComplete);
     websocketService.on('workflow_error', handleWorkflowError);
+    websocketService.on('generation_cancelled', handleGenerationCancelled);
 
     // 清理函数 - 移除事件监听器，防止重复注册
     return () => {
@@ -312,6 +659,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       websocketService.off('workflow_content', handleWorkflowContent);
       websocketService.off('workflow_complete', handleWorkflowComplete);
       websocketService.off('workflow_error', handleWorkflowError);
+      websocketService.off('generation_cancelled', handleGenerationCancelled);
 
       // 离开项目房间
       const projectRoom = `project_${projectId}`;
@@ -334,8 +682,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   useEffect(() => {
     if (isGenerating !== generating) {
       setGenerating(isGenerating);
+      // 同时更新流式内容服务状态
+      if (projectId) {
+        streamingContentService.setGeneratingStatus(projectId, isGenerating);
+      }
     }
-  }, [isGenerating]);
+  }, [isGenerating, generating, projectId]);
 
   // 清理PDF URL
   useEffect(() => {
@@ -465,7 +817,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       cancelText: '取消',
       type: 'danger'
     });
-    
+
     if (!confirmed) {
       return;
     }
@@ -491,20 +843,28 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   // 停止报告生成
   const handleStopGeneration = async () => {
     if (!projectId) return;
-    
+
     try {
       // 发送API请求停止生成
-      const apiResponse = await apiClient.post(`/projects/${projectId}/stop-generation`);
-      
+      const apiResponse = await apiClient.post(`/stop_report_generation`, { project_id: projectId });
+
       if (apiResponse.success) {
         setGenerating(false);
-        setStreamingEvents(prev => [...prev, {
+
+        // 更新流式内容服务状态
+        streamingContentService.setGeneratingStatus(projectId, false);
+
+        const stopEvent = {
           timestamp: new Date().toLocaleTimeString(),
           eventType: '报告生成已停止',
           content: '用户手动停止了报告生成',
           color: 'text-red-500',
           isContent: false
-        }]);
+        };
+
+        setStreamingEvents(prev => [...prev, stopEvent]);
+        streamingContentService.addEvent(projectId, stopEvent);
+
         // 强制断开WebSocket连接
         websocketService.disconnect();
         setWebsocketStatus('已断开');
@@ -513,13 +873,17 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       }
     } catch (error) {
       console.error('停止报告生成失败:', error);
-      setStreamingEvents(prev => [...prev, {
+
+      const errorEvent = {
         timestamp: new Date().toLocaleTimeString(),
         eventType: '停止失败',
         content: error instanceof Error ? error.message : '停止报告生成失败',
         color: 'text-red-500',
         isContent: false
-      }]);
+      };
+
+      setStreamingEvents(prev => [...prev, errorEvent]);
+      streamingContentService.addEvent(projectId, errorEvent);
     }
   };
 
@@ -579,7 +943,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     return null;
   }
 
-  console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen);
+  console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen, 'projectId:', projectId, 'companyName:', companyName);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -600,17 +964,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             <p className="text-sm text-gray-500 mt-1">公司：{companyName}</p>
           </div>
           <div className="flex items-center space-x-3">
-            {/* 停止生成按钮 */}
-            {generating && (
-              <button
-                onClick={handleStopGeneration}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-red-600 text-white hover:bg-red-700"
-              >
-                <i className="ri-stop-circle-line mr-2"></i>
-                停止生成
-              </button>
-            )}
-            
             {/* 预览切换和下载按钮 */}
             {reportContent && (
               <>
@@ -682,8 +1035,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                   删除报告
                 </button>
               )}
-              {/* 停止生成按钮 */}
-              {(generating || (streamingEvents.length > 0 && !reportContent)) && (
+              {/* 停止生成按钮 - 只在真正生成过程中显示 */}
+              {generating && (
                 <button
                   onClick={handleStopGeneration}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-orange-600 text-white hover:bg-orange-700`}
@@ -804,7 +1157,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                     <span className="text-xs text-gray-500">• HTML格式</span>
                   </div>
                 </div>
-                <div className="overflow-y-auto px-6 h-full">
+                <div className="overflow-y-auto h-full" style={{ height: 'calc(100% - 50px)' }}>
                   {htmlLoading ? (
                     <div className="text-center py-8">正在转换HTML格式...</div>
                   ) : htmlContent ? (
@@ -814,22 +1167,267 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                       border: 'none',
                       backgroundColor: 'white'
                     }} title="征信报告HTML预览" sandbox="allow-same-origin" />
-                  ) : reportContent ? (
-                    <div className="p-6 bg-white" ref={streamingContentRef}>
-                      <MarkdownPreview
-                        source={reportContent}
-                        className="max-w-none"
-                        style={{
-                          backgroundColor: 'white',
-                          color: 'black'
-                        }}
-                      />
-                      {generating && (
-                        <p className="text-gray-400 mt-4 text-center">报告生成中，内容持续更新...</p>
+                  ) : generating ? (
+                    // 生成过程中，优先显示流式输出
+                    <div className="px-6 py-6 pb-12 bg-white min-h-full" ref={streamingContentRef}>
+                      {reportContent ? (
+                        <div className="report-container" style={{ backgroundColor: 'white', padding: '20px', minHeight: '100%' }}>
+                          <MarkdownPreview
+                            source={preprocessMarkdown(reportContent)}
+                            className="max-w-none markdown-content"
+                            style={{
+                              backgroundColor: 'transparent',
+                              color: '#374151'
+                            }}
+                            data-color-mode="light"
+                            wrapperElement={{
+                              'data-color-mode': 'light'
+                            }}
+                            rehypeRewrite={(node) => {
+                              // 确保标题元素正确渲染
+                              if (node.type === 'element' && /^h[1-6]$/.test(node.tagName)) {
+                                node.properties = {
+                                  ...node.properties,
+                                  style: 'display: block; font-weight: 600;'
+                                };
+                              }
+                              // 确保表格元素正确渲染
+                              if (node.type === 'element' && node.tagName === 'table') {
+                                node.properties = {
+                                  ...node.properties,
+                                  style: 'display: table; width: 100%; border-collapse: collapse;'
+                                };
+                              }
+                            }}
+                          />
+                          <style jsx>{`
+                            .markdown-content h1,
+                            .markdown-content h2,
+                            .markdown-content h3,
+                            .markdown-content h4,
+                            .markdown-content h5,
+                            .markdown-content h6 {
+                              margin-top: 1.5em !important;
+                              margin-bottom: 0.5em !important;
+                              line-height: 1.3 !important;
+                              font-weight: 600 !important;
+                              color: #1f2937 !important;
+                              display: block !important;
+                              border: none !important;
+                              border-bottom: none !important;
+                              padding-bottom: 0 !important;
+                            }
+                            .markdown-content h1 {
+                              font-size: 1.8em !important;
+                            }
+                            .markdown-content h2 {
+                              font-size: 1.5em !important;
+                            }
+                            .markdown-content h3 {
+                              font-size: 1.3em !important;
+                              font-weight: 600 !important;
+                              color: #374151 !important;
+                            }
+                            .markdown-content h4 {
+                              font-size: 1.1em !important;
+                              font-weight: 600 !important;
+                            }
+                            .markdown-content p {
+                              margin-bottom: 1em;
+                              line-height: 1.6;
+                              color: #374151 !important;
+                            }
+                            .markdown-content ul,
+                            .markdown-content ol {
+                              margin-bottom: 1em;
+                              padding-left: 1.5em;
+                            }
+                            .markdown-content li {
+                              margin-bottom: 0.3em;
+                              color: #374151 !important;
+                            }
+                            .markdown-content table {
+                              border-collapse: collapse !important;
+                              width: 100% !important;
+                              margin: 1em 0 !important;
+                              background-color: white !important;
+                              border: 1px solid #d1d5db !important;
+                              display: table !important;
+                            }
+                            .markdown-content thead {
+                              display: table-header-group !important;
+                            }
+                            .markdown-content tbody {
+                              display: table-row-group !important;
+                            }
+                            .markdown-content tr {
+                              display: table-row !important;
+                            }
+                            .markdown-content th,
+                            .markdown-content td {
+                              border: 1px solid #d1d5db !important;
+                              padding: 8px 12px !important;
+                              text-align: left !important;
+                              background-color: white !important;
+                              color: #374151 !important;
+                              display: table-cell !important;
+                              vertical-align: top !important;
+                            }
+                            .markdown-content th {
+                              background-color: #f9fafb !important;
+                              font-weight: 600 !important;
+                              color: #1f2937 !important;
+                            }
+                            .markdown-content tbody tr:nth-child(even) td {
+                              background-color: #f8fafc !important;
+                            }
+                            .markdown-content tbody tr:nth-child(odd) td {
+                              background-color: white !important;
+                            }
+                            .markdown-content pre,
+                            .markdown-content code {
+                              display: none !important;
+                            }
+                            .markdown-content blockquote {
+                              display: none !important;
+                            }
+                          `}</style>
+                          <div className="mt-6 mb-6 text-center">
+                            <p className="text-gray-400">报告生成中，内容持续更新...</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-12">
+                          <div className="animate-spin w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                          <p className="text-gray-600">正在生成报告，请稍候...</p>
+                          <p className="text-sm text-gray-400 mt-2">生成过程将在左侧实时显示</p>
+                        </div>
                       )}
                     </div>
-                  ) : generating ? (
-                    <div className="text-center py-12">正在生成报告，请稍候...</div>
+                  ) : reportContent ? (
+                    // 非生成状态，显示已有报告内容
+                    <div className="px-6 py-6 pb-12 bg-white min-h-full" ref={streamingContentRef}>
+                      <MarkdownPreview
+                        source={preprocessMarkdown(reportContent)}
+                        className="max-w-none markdown-content"
+                        style={{
+                          backgroundColor: 'transparent',
+                          color: '#374151'
+                        }}
+                        data-color-mode="light"
+                        wrapperElement={{
+                          'data-color-mode': 'light'
+                        }}
+                        rehypeRewrite={(node) => {
+                          // 确保标题元素正确渲染
+                          if (node.type === 'element' && /^h[1-6]$/.test(node.tagName)) {
+                            node.properties = {
+                              ...node.properties,
+                              style: 'display: block; font-weight: 600;'
+                            };
+                          }
+                          // 确保表格元素正确渲染
+                          if (node.type === 'element' && node.tagName === 'table') {
+                            node.properties = {
+                              ...node.properties,
+                              style: 'display: table; width: 100%; border-collapse: collapse;'
+                            };
+                          }
+                        }}
+                      />
+                      <style jsx>{`
+                        .markdown-content h1,
+                        .markdown-content h2,
+                        .markdown-content h3,
+                        .markdown-content h4,
+                        .markdown-content h5,
+                        .markdown-content h6 {
+                          margin-top: 1.5em !important;
+                          margin-bottom: 0.5em !important;
+                          line-height: 1.3 !important;
+                          font-weight: 600 !important;
+                          color: #1f2937 !important;
+                          display: block !important;
+                          border: none !important;
+                          border-bottom: none !important;
+                          padding-bottom: 0 !important;
+                        }
+                        .markdown-content h1 {
+                          font-size: 1.8em !important;
+                        }
+                        .markdown-content h2 {
+                          font-size: 1.5em !important;
+                        }
+                        .markdown-content h3 {
+                          font-size: 1.3em !important;
+                          font-weight: 600 !important;
+                          color: #374151 !important;
+                        }
+                        .markdown-content h4 {
+                          font-size: 1.1em !important;
+                          font-weight: 600 !important;
+                        }
+                        .markdown-content p {
+                          margin-bottom: 1em;
+                          line-height: 1.6;
+                          color: #374151 !important;
+                        }
+                        .markdown-content ul,
+                        .markdown-content ol {
+                          margin-bottom: 1em;
+                          padding-left: 1.5em;
+                        }
+                        .markdown-content li {
+                          margin-bottom: 0.3em;
+                          color: #374151 !important;
+                        }
+                        .markdown-content table {
+                          border-collapse: collapse !important;
+                          width: 100% !important;
+                          margin: 1em 0 !important;
+                          background-color: white !important;
+                          border: 1px solid #d1d5db !important;
+                          display: table !important;
+                        }
+                        .markdown-content thead {
+                          display: table-header-group !important;
+                        }
+                        .markdown-content tbody {
+                          display: table-row-group !important;
+                        }
+                        .markdown-content tr {
+                          display: table-row !important;
+                        }
+                        .markdown-content th,
+                        .markdown-content td {
+                          border: 1px solid #d1d5db !important;
+                          padding: 8px 12px !important;
+                          text-align: left !important;
+                          background-color: white !important;
+                          color: #374151 !important;
+                          display: table-cell !important;
+                          vertical-align: top !important;
+                        }
+                        .markdown-content th {
+                          background-color: #f9fafb !important;
+                          font-weight: 600 !important;
+                          color: #1f2937 !important;
+                        }
+                        .markdown-content tbody tr:nth-child(even) td {
+                          background-color: #f8fafc !important;
+                        }
+                        .markdown-content tbody tr:nth-child(odd) td {
+                          background-color: white !important;
+                        }
+                        .markdown-content pre,
+                        .markdown-content code {
+                          display: none !important;
+                        }
+                        .markdown-content blockquote {
+                          display: none !important;
+                        }
+                      `}</style>
+                    </div>
                   ) : (
                     <div className="text-center py-12">暂无报告内容</div>
                   )}

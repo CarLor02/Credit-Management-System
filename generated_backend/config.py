@@ -90,6 +90,10 @@ class Config:
     REPORT_API_URL = os.environ.get('REPORT_API_URL', 'http://172.16.18.157:18080/v1/chat-messages')
     REPORT_API_KEY = os.environ.get('REPORT_API_KEY', 'app-c8cKydhESsFxtG7QZvZkR5YU')
 
+    # Dify API配置
+    DIFY_BASE_URL = os.environ.get('DIFY_BASE_URL', 'http://115.190.121.59')
+    DIFY_API_KEY = os.environ.get('DIFY_API_KEY', 'app-c8cKydhESsFxtG7QZvZkR5YU')  # 使用相同的API密钥
+
     # 文档处理服务API配置
     DOCUMENT_PROCESS_API_URL = os.environ.get('DOCUMENT_PROCESS_API_URL', 'http://localhost:7860/api/process')
 

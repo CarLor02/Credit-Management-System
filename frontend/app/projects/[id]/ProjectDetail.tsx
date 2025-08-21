@@ -15,6 +15,7 @@ import { apiClient } from '@/services/api';
 import { Project } from '@/services/projectService';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { streamingContentService } from '@/services/streamingContentService';
 
 interface ProjectDetailProps {
   projectId: string;
@@ -316,6 +317,11 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   // 报告预览状态
   const [showReportPreview, setShowReportPreview] = useState(false);
 
+  // 调试：监听showReportPreview状态变化
+  useEffect(() => {
+    console.log('🔍 showReportPreview状态变化:', showReportPreview);
+  }, [showReportPreview]);
+
   // 页面加载时建立WebSocket连接，页面卸载时断开
   useEffect(() => {
     if (project?.id) {
@@ -332,15 +338,108 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           websocketService.joinWorkflow(projectRoom);
         }, 1000);
 
-        // 页面卸载时断开连接
+        // 监听报告生成完成事件
+        const handleWorkflowComplete = (data: any) => {
+          console.log('✅ 项目详情页收到workflow_complete:', data);
+
+          // 验证事件是否属于当前项目
+          const eventProjectId = data.project_id || data.event_data?.project_id;
+          if (eventProjectId && eventProjectId !== project.id) {
+            console.log(`🚫 忽略其他项目(${eventProjectId})的workflow_complete事件，当前项目ID: ${project.id}`);
+            return;
+          }
+
+          setProject(prev => prev ? {...prev, report_status: 'generated', progress: 100} : prev);
+          // 更新流式内容服务状态
+          if (project?.id) {
+            streamingContentService.setGeneratingStatus(project.id, false);
+          }
+        };
+
+        // 监听报告生成错误事件
+        const handleWorkflowError = (data: any) => {
+          console.log('❌ 项目详情页收到workflow_error:', data);
+
+          // 验证事件是否属于当前项目
+          const eventProjectId = data.project_id || data.event_data?.project_id;
+          if (eventProjectId && eventProjectId !== project.id) {
+            console.log(`🚫 忽略其他项目(${eventProjectId})的workflow_error事件，当前项目ID: ${project.id}`);
+            return;
+          }
+
+          setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
+          // 更新流式内容服务状态
+          if (project?.id) {
+            streamingContentService.setGeneratingStatus(project.id, false);
+          }
+        };
+
+        // 监听报告生成取消事件
+        const handleGenerationCancelled = (data: any) => {
+          console.log('🚫 项目详情页收到generation_cancelled:', data);
+
+          // 验证事件是否属于当前项目
+          const eventProjectId = data.project_id || data.event_data?.project_id;
+          if (eventProjectId && eventProjectId !== project.id) {
+            console.log(`🚫 忽略其他项目(${eventProjectId})的generation_cancelled事件，当前项目ID: ${project.id}`);
+            return;
+          }
+
+          setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
+          // 更新流式内容服务状态
+          if (project?.id) {
+            streamingContentService.setGeneratingStatus(project.id, false);
+          }
+        };
+
+        // 监听流式内容服务的进度更新
+        const handleProgressUpdate = (data: any) => {
+          if (data.progress !== undefined) {
+            console.log('📊 项目详情页收到进度更新:', data.progress);
+            setProject(prev => prev ? {...prev, progress: data.progress} : prev);
+          }
+        };
+
+        streamingContentService.addListener(project.id, handleProgressUpdate);
+
+        // 添加事件监听器
+        websocketService.on('workflow_complete', handleWorkflowComplete);
+        websocketService.on('workflow_error', handleWorkflowError);
+        websocketService.on('generation_cancelled', handleGenerationCancelled);
+
+        // 页面卸载时断开连接和移除监听器
         return () => {
           console.log('🔌 项目详情页卸载，断开WebSocket连接');
+          websocketService.off('workflow_complete', handleWorkflowComplete);
+          websocketService.off('workflow_error', handleWorkflowError);
+          websocketService.off('generation_cancelled', handleGenerationCancelled);
+          streamingContentService.removeListener(project.id, handleProgressUpdate);
           websocketService.leaveWorkflow(projectRoom);
           websocketService.disconnect();
         };
       });
     }
   }, [project?.id]);
+
+  // 删除已有报告的函数
+  const deleteExistingReport = async () => {
+    if (!project?.id) return false;
+
+    try {
+      const response = await apiClient.delete(`/projects/${project.id}/report`);
+      if (response.success) {
+        // 更新项目状态为未生成
+        setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
+        return true;
+      } else {
+        console.error('删除报告失败:', response.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('删除报告失败:', error);
+      return false;
+    }
+  };
 
   const handleDownloadReport = async () => {
     if (!project) {
@@ -395,7 +494,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         console.error('下载PDF报告失败:', error);
         const errorMessage = error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试';
         addNotification(errorMessage, 'error');
-        
+
         // 如果下载失败，可能是报告文件不存在，将状态重置为未生成
         // 这样用户可以重新生成报告
         if (errorMessage.includes('报告文件不存在') || errorMessage.includes('404')) {
@@ -411,15 +510,94 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       return;
     }
 
-    // 检查是否已有报告，如果有则提示用户
-    // 注意：如果代码执行到这里，说明report_status不是'generated'
-    // 但为了安全起见，仍然检查其他可能的状态
+    // 检查是否正在生成报告
     if (project.report_status === 'generating') {
       addNotification('报告正在生成中，请稍后再试', 'info');
       return;
     }
 
+    // 检查是否已有报告，如果有则提示用户是否覆盖
+    // 注意：cancelled 状态允许重新生成，不需要覆盖提醒
+    console.log('🔍 检查报告状态:', {
+      report_status: project.report_status,
+      project_id: project.id
+    });
+
+    // 无论项目状态如何，都要检查是否真的有报告文件
+    const hasExistingReport = await checkExistingReportForGeneration();
+    console.log('🔍 检查结果:', {
+      hasExistingReport,
+      report_status: project.report_status
+    });
+
+    if (hasExistingReport) {
+      const confirmOverwrite = window.confirm(
+        '该项目已有征信报告，生成新报告将覆盖现有报告。\n\n是否确定要重新生成报告？'
+      );
+
+      if (!confirmOverwrite) {
+        console.log('🚫 用户取消重新生成');
+        return; // 用户取消，不生成报告
+      }
+
+      // 用户确认覆盖，删除现有报告
+      console.log('🗑️ 用户确认覆盖，删除现有报告');
+      const deleteSuccess = await deleteExistingReport();
+      if (!deleteSuccess) {
+        alert('删除现有报告失败，无法生成新报告');
+        return;
+      }
+    }
+
+    // 开始生成报告
+    await startReportGeneration();
+  };
+
+  // 检查是否已有报告（用于生成前的检查）
+  const checkExistingReportForGeneration = async (): Promise<boolean> => {
+    if (!project?.id) return false;
+
     try {
+      console.log('🔍 正在检查项目报告:', project.id);
+      const response = await apiClient.get<{
+        success: boolean;
+        content: string;
+        file_path: string;
+        company_name: string;
+        has_report: boolean;
+        error?: string;
+      }>(`/projects/${project.id}/report`);
+
+      console.log('🔍 检查报告API响应:', {
+        success: response.success,
+        has_report: response.data?.has_report,
+        error: response.data?.error
+      });
+
+      // 修复检查逻辑：检查has_report字段，无论success状态如何
+      const hasReport = response.data?.has_report === true;
+      console.log('🔍 最终检查结果:', hasReport);
+      return hasReport;
+    } catch (error) {
+      console.log('❌ 检查报告时出现错误:', error);
+      return false; // 出错时假设没有报告，允许生成
+    }
+  };
+
+  // 开始报告生成的函数
+  const startReportGeneration = async () => {
+    if (!project) return;
+
+    try {
+      // 更新项目状态为正在生成
+      setProject(prev => prev ? {...prev, report_status: 'generating'} : prev);
+
+      // 更新流式内容服务状态
+      if (project.id) {
+        streamingContentService.setGeneratingStatus(project.id, true);
+        // 清空之前的流式内容
+        streamingContentService.clearProjectData(project.id);
+      }
 
       // 调用后端API生成报告
       const response = await apiClient.post<{
@@ -437,6 +615,12 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       });
 
       console.log('Generate report response:', response);
+      console.log('🔍 响应详情:', {
+        response_success: response.success,
+        response_data: response.data,
+        data_success: response.data?.success,
+        condition_result: response.success && response.data?.success
+      });
 
       if (response.success && response.data?.success) {
         addNotification('报告生成任务已启动', 'success');
@@ -444,14 +628,41 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         console.log('🎯 设置showReportPreview为true');
         setShowReportPreview(true);
         console.log('报告生成已开始，项目ID:', project.id);
-
-        // 不需要刷新页面，WebSocket会实时更新状态
-        // window.location.reload();
       } else {
-        addNotification(response.data?.error || response.error || '启动报告生成失败', 'error');
+        console.log('❌ 弹窗条件不满足:', {
+          response_success: response.success,
+          data_success: response.data?.success,
+          response_error: response.error,
+          data_error: response.data?.error
+        });
+
+        // 检查是否是"报告正在生成中"的错误
+        const errorMessage = response.data?.error || response.error || '';
+        if (errorMessage.includes('报告正在生成中') || errorMessage.includes('正在生成')) {
+          // 如果报告正在生成，也打开弹窗让用户查看进度
+          console.log('🎯 报告正在生成中，打开弹窗查看进度');
+          setShowReportPreview(true);
+          // 确保项目状态为generating
+          setProject(prev => prev ? {...prev, report_status: 'generating'} : prev);
+          if (project.id) {
+            streamingContentService.setGeneratingStatus(project.id, true);
+          }
+        } else {
+          // 其他错误，恢复状态
+          setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
+          if (project.id) {
+            streamingContentService.setGeneratingStatus(project.id, false);
+          }
+          addNotification(errorMessage || '启动报告生成失败', 'error');
+        }
       }
     } catch (error) {
       console.error('Generate report error:', error);
+      // 生成失败，恢复状态
+      setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
+      if (project.id) {
+        streamingContentService.setGeneratingStatus(project.id, false);
+      }
 
       // 根据错误类型提供更具体的错误信息
       let errorMessage = '生成报告失败，请稍后重试';
@@ -709,7 +920,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       cancelText: '取消',
       type: 'warning'
     });
-    
+
     if (!confirmed) {
       return;
     }
@@ -744,7 +955,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       cancelText: '取消',
       type: 'danger'
     });
-    
+
     if (!confirmed) {
       return;
     }
@@ -836,11 +1047,13 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                 编辑项目
               </button>
               <button
-                onClick={handleDownloadReport}
-                disabled={project?.report_status === 'generating'}
+                onClick={project?.report_status === 'generating' ? () => setShowReportPreview(true) : handleDownloadReport}
+                disabled={project?.report_status === 'not_generated'}
                 className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
-                  project?.report_status === 'generating'
+                  (project?.report_status === 'not_generated')
                     ? 'bg-gray-400 cursor-not-allowed'
+                    : project?.report_status === 'generating'
+                    ? 'bg-orange-600 hover:bg-orange-700'
                     : project?.report_status === 'generated'
                     ? 'bg-blue-600 hover:bg-blue-700'
                     : 'bg-green-600 hover:bg-green-700'
@@ -848,8 +1061,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
               >
                 {project?.report_status === 'generating' ? (
                   <>
-                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                    正在生成...
+                    <i className="ri-eye-line mr-2"></i>
+                    查看生成进度
                   </>
                 ) : project?.report_status === 'generated' ? (
                   <>
@@ -867,13 +1080,15 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                 onClick={() => setShowReportPreview(true)}
                 disabled={project?.report_status === 'not_generated'}
                 className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
-                  project?.report_status === 'not_generated'
+                  (project?.report_status === 'not_generated')
                     ? 'bg-gray-400 cursor-not-allowed'
+                    : project?.report_status === 'generating'
+                    ? 'bg-orange-600 hover:bg-orange-700'
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                <i className="ri-eye-line mr-2"></i>
-                预览报告及下载
+                <i className={`${project?.report_status === 'generating' ? 'ri-eye-line' : 'ri-eye-line'} mr-2`}></i>
+                {project?.report_status === 'generating' ? '查看生成进度' : '预览报告及下载'}
               </button>
             </div>
           </div>

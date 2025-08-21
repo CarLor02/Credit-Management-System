@@ -56,6 +56,7 @@ class ReportStatus(enum.Enum):
     NOT_GENERATED = 'not_generated'            # 未生成
     GENERATING = 'generating'                  # 正在生成
     GENERATED = 'generated'                    # 已生成
+    CANCELLED = 'cancelled'                    # 已取消
 
 class ProjectMemberRole(enum.Enum):
     """项目成员角色枚举"""

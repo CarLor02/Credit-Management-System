@@ -27,6 +27,11 @@ from database import db
 # 导入认证装饰器
 from api.auth import token_required
 
+# 全局变量：跟踪正在进行的工作流
+import threading
+active_workflows = {}  # {project_id: {'workflow_run_id': str, 'stop_flag': bool, 'thread': Thread}}
+workflow_lock = threading.Lock()
+
 # 导入配置（如果需要的话）
 # from config import Config
 
@@ -72,9 +77,22 @@ def register_report_routes(app):
                 if not project:
                     return jsonify({"success": False, "error": "项目不存在"}), 404
                 
-                # 检查报告状态，如果正在生成则不允许重复生成
+                # 检查报告状态，如果正在生成则检查是否真的有活跃工作流
                 if project.report_status == ReportStatus.GENERATING:
-                    return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+                    # 检查是否真的有活跃的工作流
+                    with workflow_lock:
+                        if project_id in active_workflows:
+                            return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+                        else:
+                            # 没有活跃工作流，重置状态
+                            current_app.logger.info(f"项目 {project_id} 状态为GENERATING但没有活跃工作流，重置状态")
+                            project.report_status = ReportStatus.NOT_GENERATED
+                            try:
+                                db.session.commit()
+                                current_app.logger.info("已重置项目状态为NOT_GENERATED")
+                            except Exception as e:
+                                current_app.logger.error(f"重置项目状态失败: {str(e)}")
+                                db.session.rollback()
 
                 # 检查报告状态和文件是否存在
                 if project.report_status == ReportStatus.GENERATED:
@@ -170,7 +188,7 @@ def register_report_routes(app):
             current_app.logger.error(f"流式生成报告失败: {str(e)}")
             return jsonify({"success": False, "error": f"流式生成报告失败: {str(e)}"}), 500
 
-    @app.route('/api/stop_report_generation', methods=['POST'])
+    @app.route('/api/stop_report_generation', methods=['POST', 'OPTIONS'])
     @token_required
     def stop_report_generation():
         """
@@ -187,8 +205,29 @@ def register_report_routes(app):
             if not project:
                 return jsonify({"success": False, "error": "项目不存在"}), 404
 
-            # 更新项目报告状态为已取消
-            project.report_status = ReportStatus.CANCELLED
+            # 获取task_id并调用Dify停止接口
+            task_id = None
+            with workflow_lock:
+                if project_id in active_workflows:
+                    active_workflows[project_id]['stop_flag'] = True
+                    task_id = active_workflows[project_id].get('task_id')
+                    current_app.logger.info(f"设置项目 {project_id} 的停止标志，task_id: {task_id}")
+                else:
+                    current_app.logger.warning(f"项目 {project_id} 没有活跃的工作流")
+
+            # 如果有task_id，调用Dify的停止接口
+            if task_id:
+                try:
+                    stop_success = call_dify_stop_api(task_id)
+                    if stop_success:
+                        current_app.logger.info(f"成功调用Dify停止接口，task_id: {task_id}")
+                    else:
+                        current_app.logger.warning(f"调用Dify停止接口失败，task_id: {task_id}")
+                except Exception as stop_error:
+                    current_app.logger.error(f"调用Dify停止接口异常: {stop_error}")
+
+            # 更新项目报告状态为已取消（使用NOT_GENERATED作为取消状态）
+            project.report_status = ReportStatus.NOT_GENERATED
             db.session.commit()
 
             # 广播停止事件
@@ -224,24 +263,52 @@ def register_report_routes(app):
             knowledge_name = data.get('knowledge_name')
             project_id = data.get('project_id')
 
+            current_app.logger.info(f"收到生成报告请求，参数: {data}")
+            current_app.logger.info(f"解析参数: dataset_id={dataset_id}, company_name={company_name}, knowledge_name={knowledge_name}, project_id={project_id}")
+
             # 验证必要参数
             if not company_name:
                 return jsonify({"success": False, "error": "缺少必要参数: company_name"}), 400
 
-            if not dataset_id:
-                return jsonify({"success": False, "error": "缺少必要参数: dataset_id"}), 400
-
             if not project_id:
                 return jsonify({"success": False, "error": "缺少必要参数: project_id"}), 400
+
+            # dataset_id是可选的，如果没有提供，可以使用默认值或从项目中获取
+            if not dataset_id:
+                current_app.logger.info(f"未提供dataset_id，将从项目 {project_id} 中获取")
+                # 这里可以从项目中获取dataset_id，或者使用默认值
 
             # 检查项目是否存在
             project = Project.query.get(project_id)
             if not project:
                 return jsonify({"success": False, "error": "项目不存在"}), 404
 
-            # 检查报告状态，如果正在生成则不允许重复生成
+            # 如果没有提供dataset_id，从项目中获取
+            if not dataset_id:
+                dataset_id = project.dataset_id
+                current_app.logger.info(f"从项目中获取dataset_id: {dataset_id}")
+
+            # 如果没有提供knowledge_name，使用项目的知识库名称
+            if not knowledge_name:
+                knowledge_name = project.knowledge_base_name or company_name
+                current_app.logger.info(f"使用项目知识库名称: {knowledge_name}")
+
+            # 检查报告状态，如果正在生成则检查是否真的有活跃工作流
             if project.report_status == ReportStatus.GENERATING:
-                return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+                # 检查是否真的有活跃的工作流
+                with workflow_lock:
+                    if project_id in active_workflows:
+                        return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+                    else:
+                        # 没有活跃工作流，重置状态
+                        current_app.logger.info(f"项目 {project_id} 状态为GENERATING但没有活跃工作流，重置状态")
+                        project.report_status = ReportStatus.NOT_GENERATED
+                        try:
+                            db.session.commit()
+                            current_app.logger.info("已重置项目状态为NOT_GENERATED")
+                        except Exception as e:
+                            current_app.logger.error(f"重置项目状态失败: {str(e)}")
+                            db.session.rollback()
 
             # 检查报告状态和文件是否存在
             if project.report_status == ReportStatus.GENERATED:
@@ -304,7 +371,7 @@ def register_report_routes(app):
                         # 广播错误事件
                         try:
                             socketio = current_app.socketio
-                            broadcast_workflow_error(socketio, project_room_id, f"报告生成失败: {str(e)}")
+                            broadcast_workflow_error(socketio, project_room_id, f"报告生成失败: {str(e)}", project_id)
                         except Exception as ws_error:
                             current_app.logger.error(f"WebSocket错误广播失败: {ws_error}")
 
@@ -337,7 +404,7 @@ def register_report_routes(app):
                 parsing_complete = check_parsing_status(dataset_id)
                 if not parsing_complete:
                     # 通过WebSocket广播错误
-                    broadcast_workflow_error(socketio, project_room_id, "文档解析尚未完成，请等待解析完成后再生成报告")
+                    broadcast_workflow_error(socketio, project_room_id, "文档解析尚未完成，请等待解析完成后再生成报告", project_id)
                     return
 
             # 对于测试数据，返回模拟响应
@@ -391,11 +458,18 @@ def register_report_routes(app):
                         current_app.logger.error(f"保存报告路径到数据库失败: {db_error}")
 
                 # 通过WebSocket广播测试报告完成
-                broadcast_workflow_complete(socketio, project_room_id, mock_content)
+                broadcast_workflow_complete(socketio, project_room_id, mock_content, project_id)
                 return
 
             # 真实的流式调用报告生成API
             try:
+                # 注册活跃工作流
+                with workflow_lock:
+                    active_workflows[project_id] = {
+                        'workflow_run_id': f"workflow_{int(time.time())}",
+                        'stop_flag': False
+                    }
+
                 # 调用流式报告生成API，传递项目房间ID用于WebSocket广播
                 report_content, workflow_run_id, events = call_report_generation_api_streaming(company_name, knowledge_name, project_id, project_room_id)
 
@@ -424,8 +498,19 @@ def register_report_routes(app):
 
                 # 通过WebSocket广播报告完成
                 broadcast_workflow_complete(socketio, project_room_id, report_content)
+
+                # 清理活跃工作流
+                with workflow_lock:
+                    if project_id in active_workflows:
+                        del active_workflows[project_id]
+
             except Exception as api_error:
                 current_app.logger.error(f"调用外部API失败: {str(api_error)}")
+
+                # 清理活跃工作流
+                with workflow_lock:
+                    if project_id in active_workflows:
+                        del active_workflows[project_id]
 
                 # 通过WebSocket广播错误事件
                 try:
@@ -461,35 +546,44 @@ def register_report_routes(app):
         获取项目的报告内容
         """
         try:
-            project = Project.query.get(project_id)
+            # 使用新的数据库会话查询，避免连接问题
+            project = db.session.get(Project, project_id)
             if not project:
                 return jsonify({
                     "success": False,
                     "error": "项目不存在"
                 }), 404
 
-            # 如果报告路径为空或None，返回成功但无内容的响应
+            # 获取项目名称（在检查报告之前先获取，避免后续数据库连接问题）
+            company_name = project.name
+
+            # 如果报告路径为空或None，返回友好提示
             if not project.report_path or project.report_path.strip() == "":
                 return jsonify({
                     "success": False,
                     "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": project.name
-                }), 200  # 改为200状态码，表示请求成功但无报告
+                    "company_name": company_name
+                }), 404  # 使用404状态码，表示资源不存在
 
             # 检查文件是否存在
             if not os.path.exists(project.report_path):
                 # 文件不存在，清空数据库中的路径
-                project.report_path = None
-                db.session.commit()
-                current_app.logger.warning(f"报告文件不存在，已清空数据库路径: {project.report_path}")
+                try:
+                    project.report_path = None
+                    project.report_status = ReportStatus.NOT_GENERATED
+                    db.session.commit()
+                    current_app.logger.warning(f"报告文件不存在，已清空数据库路径: 项目ID {project_id}")
+                except Exception as db_error:
+                    current_app.logger.error(f"更新数据库失败: {db_error}")
+                    db.session.rollback()
 
                 return jsonify({
                     "success": False,
-                    "error": "报告文件不存在",
+                    "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": project.name
-                }), 200  # 改为200状态码
+                    "company_name": company_name
+                }), 404  # 使用404状态码
 
             # 读取报告内容
             try:
@@ -500,34 +594,42 @@ def register_report_routes(app):
                 if not content or content.strip() == "":
                     return jsonify({
                         "success": False,
-                        "error": "报告内容为空",
+                        "error": "该项目尚未生成报告",
                         "has_report": False,
-                        "company_name": project.name
-                    }), 200
+                        "company_name": company_name
+                    }), 404
 
                 return jsonify({
                     "success": True,
                     "content": content,
                     "file_path": project.report_path,
-                    "company_name": project.name,
+                    "company_name": company_name,
                     "has_report": True
                 })
             except Exception as read_error:
                 current_app.logger.error(f"读取报告文件失败: {read_error}")
                 return jsonify({
                     "success": False,
-                    "error": "读取报告文件失败",
+                    "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": project.name
-                }), 200  # 改为200状态码
+                    "company_name": company_name
+                }), 404
 
         except Exception as e:
             current_app.logger.error(f"获取项目报告失败: {str(e)}")
-            return jsonify({
-                "success": False,
-                "error": f"获取项目报告失败: {str(e)}",
-                "has_report": False
-            }), 500
+            # 对于数据库连接问题，也返回友好的提示
+            if "result object does not return rows" in str(e).lower() or "closed automatically" in str(e).lower():
+                return jsonify({
+                    "success": False,
+                    "error": "该项目尚未生成报告",
+                    "has_report": False
+                }), 404
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "获取报告时发生错误，请稍后重试",
+                    "has_report": False
+                }), 500
 
     @app.route('/api/projects/<int:project_id>/report', methods=['DELETE'])
     def delete_project_report(project_id):
@@ -535,7 +637,8 @@ def register_report_routes(app):
         删除项目的报告文件和相关数据
         """
         try:
-            project = Project.query.get(project_id)
+            # 使用新的数据库会话查询，避免连接问题
+            project = db.session.get(Project, project_id)
             if not project:
                 return jsonify({
                     "success": False,
@@ -544,22 +647,31 @@ def register_report_routes(app):
 
             current_app.logger.info(f"开始删除项目 {project_id} 的报告")
 
+            # 保存报告路径用于删除文件
+            report_path = project.report_path
+
             # 删除报告文件
-            if project.report_path and os.path.exists(project.report_path):
+            if report_path and os.path.exists(report_path):
                 try:
-                    os.remove(project.report_path)
-                    current_app.logger.info(f"已删除报告文件: {project.report_path}")
+                    os.remove(report_path)
+                    current_app.logger.info(f"已删除报告文件: {report_path}")
                 except Exception as file_error:
                     current_app.logger.error(f"删除报告文件失败: {file_error}")
                     # 继续执行，不因为文件删除失败而中断
 
             # 清空数据库中的报告路径
-            project.report_status = ReportStatus.NOT_GENERATED
-            project.report_path = None
-            db.session.commit()
-            current_app.logger.info(f"已清空项目 {project_id} 的报告路径")
-
-
+            try:
+                project.report_status = ReportStatus.NOT_GENERATED
+                project.report_path = None
+                db.session.commit()
+                current_app.logger.info(f"已清空项目 {project_id} 的报告路径")
+            except Exception as db_error:
+                current_app.logger.error(f"更新数据库失败: {db_error}")
+                db.session.rollback()
+                return jsonify({
+                    "success": False,
+                    "error": "删除报告时数据库更新失败"
+                }), 500
 
             return jsonify({
                 "success": True,
@@ -568,6 +680,7 @@ def register_report_routes(app):
 
         except Exception as e:
             current_app.logger.error(f"删除项目报告失败: {str(e)}")
+            db.session.rollback()  # 确保回滚事务
             return jsonify({
                 "success": False,
                 "error": f"删除项目报告失败: {str(e)}"
@@ -698,7 +811,8 @@ def register_report_routes(app):
         获取项目报告的HTML版本
         """
         try:
-            project = Project.query.get(project_id)
+            # 使用新的数据库会话查询，避免连接问题
+            project = db.session.get(Project, project_id)
             if not project:
                 return jsonify({
                     "success": False,
@@ -714,9 +828,19 @@ def register_report_routes(app):
 
             # 检查报告文件是否存在
             if not os.path.exists(project.report_path):
+                # 文件不存在，清空数据库中的路径
+                try:
+                    project.report_path = None
+                    project.report_status = ReportStatus.NOT_GENERATED
+                    db.session.commit()
+                    current_app.logger.warning(f"报告文件不存在，已清空数据库路径: 项目ID {project_id}")
+                except Exception as db_error:
+                    current_app.logger.error(f"更新数据库失败: {db_error}")
+                    db.session.rollback()
+
                 return jsonify({
                     "success": False,
-                    "error": "报告文件不存在"
+                    "error": "该项目尚未生成报告"
                 }), 404
 
             # 读取Markdown报告内容
@@ -727,15 +851,15 @@ def register_report_routes(app):
                 if not md_content or md_content.strip() == "":
                     return jsonify({
                         "success": False,
-                        "error": "报告内容为空"
+                        "error": "该项目尚未生成报告"
                     }), 404
 
             except Exception as read_error:
                 current_app.logger.error(f"读取报告文件失败: {read_error}")
                 return jsonify({
                     "success": False,
-                    "error": "读取报告文件失败"
-                }), 500
+                    "error": "该项目尚未生成报告"
+                }), 404
 
             # 转换为HTML
             try:
@@ -760,10 +884,17 @@ def register_report_routes(app):
 
         except Exception as e:
             current_app.logger.error(f"获取HTML报告失败: {e}")
-            return jsonify({
-                "success": False,
-                "error": f"获取HTML报告失败: {str(e)}"
-            }), 500
+            # 对于数据库连接问题，也返回友好的提示
+            if "result object does not return rows" in str(e).lower() or "closed automatically" in str(e).lower():
+                return jsonify({
+                    "success": False,
+                    "error": "该项目尚未生成报告"
+                }), 404
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "获取报告时发生错误，请稍后重试"
+                }), 500
 
     @app.route('/api/projects/<int:project_id>/report/download-html', methods=['GET'])
     @token_required
@@ -932,9 +1063,9 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
             raise Exception(error_msg)
 
         # 使用解析方法处理流式响应，传递项目房间ID用于WebSocket广播
-        workflow_run_id, full_content, metadata, events = parse_dify_streaming_response(response, company_name, project_id, project_room_id)
+        workflow_run_id, full_content, metadata, events, task_id = parse_dify_streaming_response(response, company_name, project_id, project_room_id)
 
-        current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}")
+        current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}, task_id: {task_id}")
         current_app.logger.info(f"提取到的事件数量: {len(events)}")
         current_app.logger.info(f"内容长度: {len(full_content) if full_content is not None else 0}")
 
@@ -945,7 +1076,8 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
                 'content': full_content,
                 'metadata': metadata,
                 'timestamp': time.time(),
-                'company_name': company_name
+                'company_name': company_name,
+                'task_id': task_id  # 保存task_id
             }
 
         return full_content, workflow_run_id, events
@@ -1084,19 +1216,26 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
         project_id: 项目ID
 
     Returns:
-        tuple: (workflow_run_id, full_content, metadata, events)
+        tuple: (workflow_run_id, full_content, metadata, events, task_id)
     """
     workflow_run_id = f"workflow_{int(time.time())}"  # 新接口没有workflow_run_id，我们自己生成一个
     full_content = ""
     metadata = {}
     events = []
     sequence_number = 0
+    task_id = None  # 用于保存Dify的task_id
 
     print("开始解析流式响应...")
 
     for line in response.iter_lines(decode_unicode=True):
         if not line:
             continue
+
+        # 检查停止标志
+        with workflow_lock:
+            if project_id in active_workflows and active_workflows[project_id].get('stop_flag', False):
+                print(f"检测到停止标志，终止项目 {project_id} 的流式处理")
+                break
 
         # 解析 SSE 格式数据
         line_str = line.decode('utf-8') if isinstance(line, bytes) else line
@@ -1113,6 +1252,16 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                 data = json.loads(data_str)
                 print(f"解析的 JSON 数据: {json.dumps(data, ensure_ascii=False)[:500]}...")
 
+                # 提取task_id（如果存在）
+                if 'task_id' in data and task_id is None:
+                    task_id = data['task_id']
+                    print(f"提取到task_id: {task_id}")
+                    # 保存task_id到活跃工作流中
+                    with workflow_lock:
+                        if project_id in active_workflows:
+                            active_workflows[project_id]['task_id'] = task_id
+                            print(f"已保存task_id到项目 {project_id}")
+
                 # 提取生成的内容
                 content_chunk = None
                 if 'answer' in data:
@@ -1121,17 +1270,19 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                     content_chunk = data['message']
 
                 # 如果找到内容块，累积到完整内容并广播
-                if content_chunk and content_chunk.strip():
+                # 注意：不使用strip()检查，因为空格和换行符也是重要的格式信息
+                if content_chunk is not None and content_chunk != "":
                     # 累积内容
                     full_content += content_chunk
                     print(f"累积内容，当前总长度: {len(full_content)}")
+                    print(f"内容块详情: {repr(content_chunk[:100])}")  # 使用repr显示转义字符
 
                     # 通过WebSocket广播内容到项目房间
                     try:
                         socketio = current_app.socketio
                         if project_room_id:
                             broadcast_workflow_content(socketio, project_room_id, content_chunk)
-                            print(f"已广播内容块到房间 {project_room_id}: {content_chunk[:50]}...")
+                            print(f"已广播内容块到房间 {project_room_id}: {repr(content_chunk[:50])}")
                     except Exception as e:
                         print(f"WebSocket内容广播失败: {e}")
 
@@ -1140,12 +1291,24 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                     event_type = data['event']
                     print(f"提取到事件: {event_type}")
 
+                    # 调试：打印节点事件的详细信息
+                    if event_type in ['node_started', 'node_finished']:
+                        print(f"📊 节点事件详情: {json.dumps(data, ensure_ascii=False, indent=2)}")
+                        if 'data' in data:
+                            print(f"📊 节点数据: title={data['data'].get('title')}, node_id={data['data'].get('node_id')}")
+
                     # 映射事件类型到我们系统的事件
                     mapped_event = {
                         'message': 'content_generated',
                         'message_end': 'workflow_finished',
-                        'error': 'workflow_error'
+                        'error': 'workflow_error',
+                        'node_started': 'node_started',
+                        'node_finished': 'node_finished',
+                        'parallel_branch_started': 'parallel_branch_started',
+                        'parallel_branch_finished': 'parallel_branch_finished'
                     }.get(event_type, event_type)
+
+                    print(f"📤 广播事件: {mapped_event} 到房间: {project_room_id}")
 
                     events.append(mapped_event)
                     sequence_number += 1
@@ -1171,13 +1334,19 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
     try:
         socketio = current_app.socketio
         if project_room_id:
-            broadcast_workflow_complete(socketio, project_room_id, full_content)
+            broadcast_workflow_complete(socketio, project_room_id, full_content, project_id)
             print(f"已广播完成事件到房间 {project_room_id}，最终内容长度: {len(full_content)}")
     except Exception as e:
         print(f"WebSocket完成事件广播失败: {e}")
 
-    print(f"流式解析完成 - workflow_run_id: {workflow_run_id}, 事件数: {len(events)}, 内容长度: {len(full_content)}")
-    return workflow_run_id, full_content, metadata, events
+    # 清理活跃工作流（无论是正常完成还是被停止）
+    with workflow_lock:
+        if project_id in active_workflows:
+            del active_workflows[project_id]
+            print(f"已清理项目 {project_id} 的活跃工作流")
+
+    print(f"流式解析完成 - workflow_run_id: {workflow_run_id}, task_id: {task_id}, 事件数: {len(events)}, 内容长度: {len(full_content)}")
+    return workflow_run_id, full_content, metadata, events, task_id
 
 
 def save_report_to_file(company_name, content, project_id=None):
@@ -1207,3 +1376,65 @@ def save_report_to_file(company_name, content, project_id=None):
     except Exception as e:
         current_app.logger.error(f"保存报告文件失败: {e}")
         raise Exception(f"保存报告文件失败: {str(e)}")
+
+
+def call_dify_stop_api(task_id):
+    """
+    调用Dify的停止接口
+
+    Args:
+        task_id: Dify返回的任务ID
+
+    Returns:
+        bool: 是否成功停止
+    """
+    try:
+        # 从配置中获取Dify API信息
+        from config import Config
+
+        # 构建停止接口URL
+        dify_base_url = getattr(Config, 'DIFY_BASE_URL', 'http://115.190.121.59')
+        stop_url = f"{dify_base_url}/v1/chat-messages/{task_id}/stop"
+
+        # 获取API密钥
+        api_key = getattr(Config, 'DIFY_API_KEY', '')
+        if not api_key:
+            current_app.logger.error("未配置DIFY_API_KEY")
+            return False
+
+        # 构建请求头
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+
+        # 构建请求体
+        payload = {
+            "user": "system-stop"
+        }
+
+        current_app.logger.info(f"调用Dify停止接口: {stop_url}")
+
+        # 发送停止请求
+        response = requests.post(
+            stop_url,
+            headers=headers,
+            json=payload,
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('result') == 'success':
+                current_app.logger.info(f"Dify停止接口调用成功: {result}")
+                return True
+            else:
+                current_app.logger.warning(f"Dify停止接口返回失败: {result}")
+                return False
+        else:
+            current_app.logger.error(f"Dify停止接口HTTP错误: {response.status_code}, {response.text}")
+            return False
+
+    except Exception as e:
+        current_app.logger.error(f"调用Dify停止接口异常: {str(e)}")
+        return False
