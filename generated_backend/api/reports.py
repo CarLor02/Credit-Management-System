@@ -77,9 +77,22 @@ def register_report_routes(app):
                 if not project:
                     return jsonify({"success": False, "error": "项目不存在"}), 404
                 
-                # 检查报告状态，如果正在生成则不允许重复生成
+                # 检查报告状态，如果正在生成则检查是否真的有活跃工作流
                 if project.report_status == ReportStatus.GENERATING:
-                    return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+                    # 检查是否真的有活跃的工作流
+                    with workflow_lock:
+                        if project_id in active_workflows:
+                            return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+                        else:
+                            # 没有活跃工作流，重置状态
+                            current_app.logger.info(f"项目 {project_id} 状态为GENERATING但没有活跃工作流，重置状态")
+                            project.report_status = ReportStatus.NOT_GENERATED
+                            try:
+                                db.session.commit()
+                                current_app.logger.info("已重置项目状态为NOT_GENERATED")
+                            except Exception as e:
+                                current_app.logger.error(f"重置项目状态失败: {str(e)}")
+                                db.session.rollback()
 
                 # 检查报告状态和文件是否存在
                 if project.report_status == ReportStatus.GENERATED:
@@ -250,24 +263,52 @@ def register_report_routes(app):
             knowledge_name = data.get('knowledge_name')
             project_id = data.get('project_id')
 
+            current_app.logger.info(f"收到生成报告请求，参数: {data}")
+            current_app.logger.info(f"解析参数: dataset_id={dataset_id}, company_name={company_name}, knowledge_name={knowledge_name}, project_id={project_id}")
+
             # 验证必要参数
             if not company_name:
                 return jsonify({"success": False, "error": "缺少必要参数: company_name"}), 400
 
-            if not dataset_id:
-                return jsonify({"success": False, "error": "缺少必要参数: dataset_id"}), 400
-
             if not project_id:
                 return jsonify({"success": False, "error": "缺少必要参数: project_id"}), 400
+
+            # dataset_id是可选的，如果没有提供，可以使用默认值或从项目中获取
+            if not dataset_id:
+                current_app.logger.info(f"未提供dataset_id，将从项目 {project_id} 中获取")
+                # 这里可以从项目中获取dataset_id，或者使用默认值
 
             # 检查项目是否存在
             project = Project.query.get(project_id)
             if not project:
                 return jsonify({"success": False, "error": "项目不存在"}), 404
 
-            # 检查报告状态，如果正在生成则不允许重复生成
+            # 如果没有提供dataset_id，从项目中获取
+            if not dataset_id:
+                dataset_id = project.dataset_id
+                current_app.logger.info(f"从项目中获取dataset_id: {dataset_id}")
+
+            # 如果没有提供knowledge_name，使用项目的知识库名称
+            if not knowledge_name:
+                knowledge_name = project.knowledge_base_name or company_name
+                current_app.logger.info(f"使用项目知识库名称: {knowledge_name}")
+
+            # 检查报告状态，如果正在生成则检查是否真的有活跃工作流
             if project.report_status == ReportStatus.GENERATING:
-                return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+                # 检查是否真的有活跃的工作流
+                with workflow_lock:
+                    if project_id in active_workflows:
+                        return jsonify({"success": False, "error": "报告正在生成中，请稍后再试"}), 400
+                    else:
+                        # 没有活跃工作流，重置状态
+                        current_app.logger.info(f"项目 {project_id} 状态为GENERATING但没有活跃工作流，重置状态")
+                        project.report_status = ReportStatus.NOT_GENERATED
+                        try:
+                            db.session.commit()
+                            current_app.logger.info("已重置项目状态为NOT_GENERATED")
+                        except Exception as e:
+                            current_app.logger.error(f"重置项目状态失败: {str(e)}")
+                            db.session.rollback()
 
             # 检查报告状态和文件是否存在
             if project.report_status == ReportStatus.GENERATED:
