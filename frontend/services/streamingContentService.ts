@@ -105,7 +105,8 @@ class StreamingContentService {
     if (!data) return;
 
     // 检查是否是章节完成事件
-    const title = eventData.event_data?.title || eventData.data?.title;
+    // eventData.event_data 是从后端传来的原始Dify数据
+    const title = eventData.event_data?.data?.title || eventData.event_data?.title || eventData.data?.title;
     if (eventData.event_type === 'node_finished' && title) {
       
       // 检查标题是否包含"第X章"和"内容生成"关键字

@@ -170,43 +170,53 @@ def register_report_routes(app):
             current_app.logger.error(f"流式生成报告失败: {str(e)}")
             return jsonify({"success": False, "error": f"流式生成报告失败: {str(e)}"}), 500
 
-    @app.route('/api/stop_report_generation', methods=['POST'])
-    @token_required
+    @app.route('/api/stop_report_generation', methods=['POST', 'OPTIONS'])
     def stop_report_generation():
         """
         停止正在生成的报告
         """
-        try:
-            data = request.get_json()
-            project_id = data.get('project_id')
-            if not project_id:
-                return jsonify({"success": False, "error": "缺少project_id参数"}), 400
+        # 处理OPTIONS预检请求
+        if request.method == 'OPTIONS':
+            return jsonify({"success": True}), 200
 
-            # 获取项目
-            project = Project.query.get(project_id)
-            if not project:
-                return jsonify({"success": False, "error": "项目不存在"}), 404
+        # 对POST请求进行token验证
+        from api.auth import token_required
 
-            # 更新项目报告状态为已取消
-            project.report_status = ReportStatus.CANCELLED
-            db.session.commit()
+        @token_required
+        def _handle_stop_request():
+            try:
+                data = request.get_json()
+                project_id = data.get('project_id')
+                if not project_id:
+                    return jsonify({"success": False, "error": "缺少project_id参数"}), 400
 
-            # 广播停止事件
-            project_room_id = f"project_{project_id}"
-            socketio = current_app.socketio
-            broadcast_workflow_event(socketio, project_room_id, 'generation_cancelled', {
-                'project_id': project_id,
-                'message': '报告生成已取消'
-            })
+                # 获取项目
+                project = Project.query.get(project_id)
+                if not project:
+                    return jsonify({"success": False, "error": "项目不存在"}), 404
 
-            return jsonify({
-                "success": True,
-                "message": "报告生成已停止"
-            })
+                # 更新项目报告状态为已取消
+                project.report_status = ReportStatus.CANCELLED
+                db.session.commit()
 
-        except Exception as e:
-            current_app.logger.error(f"停止报告生成失败: {str(e)}")
-            return jsonify({"success": False, "error": f"停止报告生成失败: {str(e)}"}), 500
+                # 广播停止事件
+                project_room_id = f"project_{project_id}"
+                socketio = current_app.socketio
+                broadcast_workflow_event(socketio, project_room_id, 'generation_cancelled', {
+                    'project_id': project_id,
+                    'message': '报告生成已取消'
+                })
+
+                return jsonify({
+                    "success": True,
+                    "message": "报告生成已停止"
+                })
+
+            except Exception as e:
+                current_app.logger.error(f"停止报告生成失败: {str(e)}")
+                return jsonify({"success": False, "error": f"停止报告生成失败: {str(e)}"}), 500
+
+        return _handle_stop_request()
 
     @app.route('/api/generate_report', methods=['POST'])
     def generate_report():

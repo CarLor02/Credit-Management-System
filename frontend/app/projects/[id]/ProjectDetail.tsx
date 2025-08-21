@@ -509,17 +509,30 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
     // 检查是否已有报告，如果有则提示用户是否覆盖
     // 注意：cancelled 状态允许重新生成，不需要覆盖提醒
-    const hasExistingReport = project.report_status !== 'cancelled' && await checkExistingReportForGeneration();
+    console.log('🔍 检查报告状态:', {
+      report_status: project.report_status,
+      project_id: project.id
+    });
+
+    // 无论项目状态如何，都要检查是否真的有报告文件
+    const hasExistingReport = await checkExistingReportForGeneration();
+    console.log('🔍 检查结果:', {
+      hasExistingReport,
+      report_status: project.report_status
+    });
+
     if (hasExistingReport) {
       const confirmOverwrite = window.confirm(
         '该项目已有征信报告，生成新报告将覆盖现有报告。\n\n是否确定要重新生成报告？'
       );
 
       if (!confirmOverwrite) {
+        console.log('🚫 用户取消重新生成');
         return; // 用户取消，不生成报告
       }
 
       // 用户确认覆盖，删除现有报告
+      console.log('🗑️ 用户确认覆盖，删除现有报告');
       const deleteSuccess = await deleteExistingReport();
       if (!deleteSuccess) {
         alert('删除现有报告失败，无法生成新报告');
@@ -536,6 +549,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     if (!project?.id) return false;
 
     try {
+      console.log('🔍 正在检查项目报告:', project.id);
       const response = await apiClient.get<{
         success: boolean;
         content: string;
@@ -545,9 +559,18 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         error?: string;
       }>(`/projects/${project.id}/report`);
 
-      return response.success && (response.data?.has_report === true);
+      console.log('🔍 检查报告API响应:', {
+        success: response.success,
+        has_report: response.data?.has_report,
+        error: response.data?.error
+      });
+
+      // 修复检查逻辑：检查has_report字段，无论success状态如何
+      const hasReport = response.data?.has_report === true;
+      console.log('🔍 最终检查结果:', hasReport);
+      return hasReport;
     } catch (error) {
-      console.log('检查报告时出现错误:', error);
+      console.log('❌ 检查报告时出现错误:', error);
       return false; // 出错时假设没有报告，允许生成
     }
   };

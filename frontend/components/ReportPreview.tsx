@@ -39,27 +39,100 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
 
+  // 修复标题格式的辅助函数
+  const fixHeadingFormat = (content: string): string => {
+    return content
+      // 修复常见的标题格式问题
+      .replace(/^(#{1,6})\s*第([一二三四五六七八九十\d]+)[节章]\s*(.*)$/gm, '$1 第$2节 $3')
+      .replace(/^(#{1,6})\s*(\d+\.?\d*)\s*(.*)$/gm, '$1 $2 $3')
+      // 确保标题中的特殊字符正确处理
+      .replace(/^(#{1,6})\s*([^#\s].*?)(\s*)$/gm, '$1 $2')
+      // 移除标题末尾的多余空格
+      .replace(/^(#{1,6}\s+.*?)\s+$/gm, '$1');
+  };
+
   // 预处理Markdown内容，修复格式问题
   const preprocessMarkdown = (content: string): string => {
     if (!content) return content;
 
-    return content
-      // 修复标题格式：确保#号后面有空格
-      .replace(/^(#{1,6})([^#\s])/gm, '$1 $2')
-      // 修复列表格式：确保-号后面有空格
-      .replace(/^(\s*)-([^\s])/gm, '$1- $2')
-      // 修复数字列表格式：确保数字后面有空格
-      .replace(/^(\s*)(\d+\.)([^\s])/gm, '$1$2 $3')
-      // 确保段落之间有适当的换行
-      .replace(/([^\n])\n([#])/g, '$1\n\n$2')
-      // 修复连续的标题之间的间距
-      .replace(/(#{1,6}[^\n]*)\n(#{1,6})/g, '$1\n\n$2')
-      // 确保列表项之间的格式正确
-      .replace(/([^\n])\n(\s*[-*+])/g, '$1\n\n$2')
-      // 修复表格格式问题
-      .replace(/\|([^|\n]*)\|/g, (_, content) => {
-        return `| ${content.trim()} |`;
-      });
+    let processedContent = content;
+
+    // 0. 首先修复标题格式
+    processedContent = fixHeadingFormat(processedContent);
+
+    // 1. 修复标题格式：确保#号后面有空格
+    processedContent = processedContent.replace(/^(#{1,6})([^#\s])/gm, '$1 $2');
+
+    // 2. 确保标题前有空行（除了文档开头）
+    processedContent = processedContent.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
+
+    // 3. 确保标题后有空行（如果后面不是另一个标题）
+    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n([^#\n])/g, '$1\n\n$2');
+
+    // 4. 修复连续标题之间的间距
+    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n(#{1,6})/g, '$1\n\n$2');
+
+    // 5. 特殊处理：修复具体的问题标题
+    processedContent = processedContent
+      // 修复"### 第二节 企业基本面分析"类型的标题
+      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+节\s*[^\n]*)/gm, '$1 $2')
+      // 修复"### 第三节 动态财务诊断"类型的标题
+      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+章\s*[^\n]*)/gm, '$1 $2')
+      // 确保所有以"第"开头的标题都有正确格式
+      .replace(/^(#{1,6})\s*(第[^\n]*)/gm, '$1 $2');
+
+    // 6. 修复列表格式：确保-号后面有空格
+    processedContent = processedContent.replace(/^(\s*)-([^\s])/gm, '$1- $2');
+
+    // 7. 修复数字列表格式：确保数字后面有空格
+    processedContent = processedContent.replace(/^(\s*)(\d+\.)([^\s])/gm, '$1$2 $3');
+
+    // 8. 确保列表前有空行
+    processedContent = processedContent.replace(/([^\n])\n(\s*[-*+\d])/g, '$1\n\n$2');
+
+    // 9. 修复表格格式问题
+    processedContent = processedContent.replace(/\|([^|\n]*)\|/g, (_, content) => {
+      return `| ${content.trim()} |`;
+    });
+
+    // 10. 确保表格前后有空行
+    processedContent = processedContent.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
+    processedContent = processedContent.replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2');
+
+    // 11. 强制修复可能的标题行（最后一道防线）
+    processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/gm, (match, spaces, title) => {
+      // 如果这行看起来像标题但没有#号，添加###
+      if (!title.startsWith('#')) {
+        return `${spaces}### ${title}`;
+      }
+      return match;
+    });
+
+    // 12. 修复可能遗漏的企业分析相关标题
+    processedContent = processedContent.replace(/^(\s*)(企业基本面分析|动态财务诊断|风险评估|经营状况分析)/gm, '### $2');
+
+    // 13. 清理多余的空行（超过2个连续空行的情况）
+    processedContent = processedContent.replace(/\n{3,}/g, '\n\n');
+
+    // 14. 确保文档开头和结尾没有多余的空行
+    processedContent = processedContent.trim();
+
+    // 调试：打印处理前后的标题行
+    if (content !== processedContent) {
+      const originalTitles = content.match(/^#{1,6}.*$/gm) || [];
+      const processedTitles = processedContent.match(/^#{1,6}.*$/gm) || [];
+
+      if (originalTitles.length > 0) {
+        console.log('📝 Markdown标题预处理:', {
+          原始标题数量: originalTitles.length,
+          处理后标题数量: processedTitles.length,
+          原始标题: originalTitles.slice(0, 5), // 只显示前5个
+          处理后标题: processedTitles.slice(0, 5)
+        });
+      }
+    }
+
+    return processedContent;
   };
 
   // 从流式内容服务加载数据
@@ -185,8 +258,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       switch (eventType) {
         case 'node_started':
           // 尝试从不同的数据结构中获取title信息
-          const nodeTitle = eventData?.event_data?.title || eventData?.data?.title;
-          const nodeId = eventData?.event_data?.node_id || eventData?.data?.node_id;
+          // eventData.event_data 是从后端传来的原始Dify数据
+          const nodeTitle = eventData?.event_data?.data?.title || eventData?.event_data?.title || eventData?.data?.title;
+          const nodeId = eventData?.event_data?.data?.node_id || eventData?.event_data?.node_id || eventData?.data?.node_id;
 
           if (nodeTitle) {
             detailInfo = `[${nodeId || '节点'}] ${nodeTitle}`;
@@ -205,8 +279,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           break;
         case 'node_finished':
           // 尝试从不同的数据结构中获取title信息
-          const finishedNodeTitle = eventData?.event_data?.title || eventData?.data?.title;
-          const finishedNodeId = eventData?.event_data?.node_id || eventData?.data?.node_id;
+          // eventData.event_data 是从后端传来的原始Dify数据
+          const finishedNodeTitle = eventData?.event_data?.data?.title || eventData?.event_data?.title || eventData?.data?.title;
+          const finishedNodeId = eventData?.event_data?.data?.node_id || eventData?.event_data?.node_id || eventData?.data?.node_id;
 
           if (finishedNodeTitle) {
             detailInfo = `[${finishedNodeId || '节点'}] ${finishedNodeTitle}`;
@@ -306,10 +381,13 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           event_type: data.event_type,
           event_data: data.event_data,
           data: data.data,
+          title_from_event_data_data: data.event_data?.data?.title,
           title_from_event_data: data.event_data?.title,
           title_from_data: data.data?.title,
+          node_id_from_event_data_data: data.event_data?.data?.node_id,
           node_id_from_event_data: data.event_data?.node_id,
-          node_id_from_data: data.data?.node_id
+          node_id_from_data: data.data?.node_id,
+          raw_data: JSON.stringify(data, null, 2)
         });
       }
 
@@ -1026,16 +1104,26 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                               border-collapse: collapse;
                               width: 100%;
                               margin-bottom: 1em;
+                              background-color: white !important;
                             }
                             .markdown-content th,
                             .markdown-content td {
                               border: 1px solid #d1d5db;
                               padding: 0.5em;
                               text-align: left;
+                              background-color: white !important;
+                              color: black !important;
                             }
                             .markdown-content th {
-                              background-color: #f9fafb;
+                              background-color: #f9fafb !important;
                               font-weight: 600;
+                              color: black !important;
+                            }
+                            .markdown-content tbody tr:nth-child(even) td {
+                              background-color: #f8fafc !important;
+                            }
+                            .markdown-content tbody tr:nth-child(odd) td {
+                              background-color: white !important;
                             }
                           `}</style>
                           <div className="mt-6 mb-6 text-center">
@@ -1065,6 +1153,33 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                           'data-color-mode': 'light'
                         }}
                       />
+                      <style jsx>{`
+                        .markdown-content table {
+                          border-collapse: collapse;
+                          width: 100%;
+                          margin-bottom: 1em;
+                          background-color: white !important;
+                        }
+                        .markdown-content th,
+                        .markdown-content td {
+                          border: 1px solid #d1d5db;
+                          padding: 0.5em;
+                          text-align: left;
+                          background-color: white !important;
+                          color: black !important;
+                        }
+                        .markdown-content th {
+                          background-color: #f9fafb !important;
+                          font-weight: 600;
+                          color: black !important;
+                        }
+                        .markdown-content tbody tr:nth-child(even) td {
+                          background-color: #f8fafc !important;
+                        }
+                        .markdown-content tbody tr:nth-child(odd) td {
+                          background-color: white !important;
+                        }
+                      `}</style>
                     </div>
                   ) : (
                     <div className="text-center py-12">暂无报告内容</div>
