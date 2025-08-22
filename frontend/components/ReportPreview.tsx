@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import MarkdownPreview from '@uiw/react-markdown-preview';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
@@ -39,6 +39,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   // hasStreamingContent 已删除，我们只依据 generating 状态
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
+  // 用于防止重复添加初始事件
+  const hasAddedInitialEventRef = useRef(false);
+  // 用于防止重复获取HTML内容
+  const hasLoadedHtmlContentRef = useRef(false);
   const { addNotification } = useNotification();
   const { showConfirm } = useConfirm();
 
@@ -150,8 +154,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   }, [projectId]);
 
-  // 防抖和缓存相关状态
-  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+  // 防抖和缓存相关状态 - 使用 ref 避免依赖项问题
+  const lastFetchTimeRef = useRef<number>(0);
   const fetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const FETCH_COOLDOWN = 2000; // 2秒冷却时间，防止频繁请求
 
@@ -170,15 +174,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     // 缓存机制：2秒内不重复请求（除非强制刷新）
     const now = Date.now();
-    if (!force && (now - lastFetchTime) < FETCH_COOLDOWN) {
-      console.log('📄 跳过频繁请求，距离上次请求:', now - lastFetchTime, 'ms');
+    if (!force && (now - lastFetchTimeRef.current) < FETCH_COOLDOWN) {
+      console.log('📄 跳过频繁请求，距离上次请求:', now - lastFetchTimeRef.current, 'ms');
       return;
     }
 
     fetchDebounceRef.current = setTimeout(async () => {
       setLoading(true);
       setError(null);
-      setLastFetchTime(Date.now());
+      lastFetchTimeRef.current = Date.now();
 
       try {
         const response = await apiClient.get<{
@@ -238,11 +242,17 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         setLoading(false);
       }
     }, 300); // 300ms防抖延迟
-  }, [projectId, generating, lastFetchTime]);
+  }, [projectId, generating]);
 
   // 获取HTML格式的报告内容
   const fetchHtmlContent = useCallback(async () => {
     if (!projectId) return;
+
+    // 如果已经有HTML内容，则跳过重复获取
+    if (htmlContent && hasLoadedHtmlContentRef.current) {
+      console.log('📄 HTML内容已存在，跳过重复获取');
+      return;
+    }
 
     setHtmlLoading(true);
 
@@ -255,6 +265,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       if (response.success && response.data) {
         setHtmlContent(response.data.html_content);
+        hasLoadedHtmlContentRef.current = true; // 标记已获取
+        console.log('📄 HTML内容获取成功');
       } else {
         // 对于404错误（报告不存在），使用info级别日志
         const errorMessage = response.error || '';
@@ -275,7 +287,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     } finally {
       setHtmlLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, htmlContent]);
 
 
 
@@ -416,19 +428,17 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       console.log('📝 添加节点事件到界面:', eventEntry);
 
-      // 保存到流式内容服务
+      // 只保存到流式内容服务，通过监听器自动更新界面
       if (projectId) {
         streamingContentService.addEvent(projectId, eventEntry);
+        
+        // 自动滚动事件列表
+        setTimeout(() => {
+          if (eventsRef.current) {
+            eventsRef.current.scrollTop = eventsRef.current.scrollHeight;
+          }
+        }, 100);
       }
-
-      setStreamingEvents(prev => [...prev, eventEntry]);
-
-      // 自动滚动事件列表
-      setTimeout(() => {
-        if (eventsRef.current) {
-          eventsRef.current.scrollTop = eventsRef.current.scrollHeight;
-        }
-      }, 100);
     };
 
     // WebSocket已在项目详情页连接，这里需要加入项目房间并设置监听器
@@ -437,8 +447,11 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     websocketService.joinWorkflow(projectRoom);
     setWebsocketStatus(`监听房间: ${projectRoom}`);
 
-    // 添加测试事件验证功能
-    addEvent('预览窗口打开', '开始监听流式事件');
+    // 添加初始事件 - 使用 ref 确保每个组件实例只添加一次
+    if (!hasAddedInitialEventRef.current) {
+      addEvent('预览窗口打开', '开始监听流式事件');
+      hasAddedInitialEventRef.current = true;
+    }
 
 
 
@@ -559,11 +572,14 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         if (projectId) {
           streamingContentService.updateReportContent(projectId, data.final_content);
         }
-        // 同时获取HTML内容
+        // 报告内容已更新，强制重新获取HTML内容
+        hasLoadedHtmlContentRef.current = false;
         fetchHtmlContent();
       } else {
         console.log('✅ 从文件加载最终报告内容');
         fetchReportContent(true); // 强制刷新，获取最新内容
+        // 报告内容已更新，强制重新获取HTML内容
+        hasLoadedHtmlContentRef.current = false;
         fetchHtmlContent();
       }
     };
@@ -695,6 +711,25 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       setWebsocketStatus('未连接');
     };
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 清理缓存标记 - 当组件关闭时重置HTML获取标记并清除HTML内容
+  useEffect(() => {
+    if (!isOpen) {
+      // 清除HTML内容缓存
+      setHtmlContent('');
+      // 清除报告内容缓存
+      setReportContent('');
+      // 清除流式内容服务中的报告内容，但保留事件历史
+      if (projectId) {
+        streamingContentService.updateReportContent(projectId, '');
+      }
+      // 重置HTML内容获取标记，下次打开时重新获取
+      hasLoadedHtmlContentRef.current = false;
+      // 重置初始事件添加标记
+      hasAddedInitialEventRef.current = false;
+      console.log('🧹 清除HTML和报告内容缓存并重置标记');
+    }
+  }, [isOpen, projectId]);
 
   // 统一的报告获取逻辑：避免多重触发和同时请求
   useEffect(() => {
@@ -904,7 +939,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           isContent: false
         };
 
-        setStreamingEvents(prev => [...prev, stopEvent]);
+        // 只通过 streamingContentService 添加事件，避免重复
         streamingContentService.addEvent(projectId, stopEvent);
 
         // 不要强制断开WebSocket连接，让后端处理停止逻辑
@@ -924,7 +959,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         isContent: false
       };
 
-      setStreamingEvents(prev => [...prev, errorEvent]);
+      // 只通过 streamingContentService 添加事件，避免重复
       streamingContentService.addEvent(projectId, errorEvent);
     }
   };
@@ -979,13 +1014,28 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   };
 
   // 不再需要自定义格式化函数，使用MarkdownPreview组件
+  
+  // 使用 ref 来跟踪组件的渲染状态，避免重复日志
+  const renderCountRef = useRef(0);
+  const lastLoggedStateRef = useRef({ isOpen: false, projectId: 0 });
+  
+  // 只在状态真正变化时才输出日志
+  const shouldLogRender = isOpen !== lastLoggedStateRef.current.isOpen || 
+                         projectId !== lastLoggedStateRef.current.projectId;
 
   if (!isOpen) {
-    console.log('🚫 ReportPreview: isOpen为false，不渲染弹窗');
+    if (shouldLogRender) {
+      console.log('🚫 ReportPreview: isOpen为false，不渲染弹窗');
+      lastLoggedStateRef.current = { isOpen, projectId };
+    }
     return null;
   }
 
-  console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen, 'projectId:', projectId, 'companyName:', companyName);
+  if (shouldLogRender) {
+    renderCountRef.current++;
+    console.log('✅ ReportPreview: 渲染弹窗，isOpen:', isOpen, 'projectId:', projectId, 'companyName:', companyName, 'renderCount:', renderCountRef.current);
+    lastLoggedStateRef.current = { isOpen, projectId };
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1208,7 +1258,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                       height: '100%',
                       border: 'none',
                       backgroundColor: 'white'
-                    }} title="征信报告HTML预览" sandbox="allow-same-origin" />
+                    }} title="征信报告HTML预览" sandbox="allow-same-origin allow-scripts allow-forms" />
                   ) : generating ? (
                     // 生成过程中，优先显示流式输出
                     <div className="px-6 py-6 pb-12 bg-white min-h-full" ref={streamingContentRef}>
@@ -1533,4 +1583,24 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   );
 };
 
-export default ReportPreview;
+// 使用 React.memo 来防止不必要的重新渲染
+export default memo(ReportPreview, (prevProps, nextProps) => {
+  // 深度比较关键 props，只有在真正改变时才重新渲染
+  const propsAreEqual = (
+    prevProps.isOpen === nextProps.isOpen &&
+    prevProps.projectId === nextProps.projectId &&
+    prevProps.companyName === nextProps.companyName
+    // 函数props检查引用相等即可，因为我们在父组件中使用了useCallback
+  );
+  
+  // 只在props真正变化时输出调试信息
+  if (!propsAreEqual) {
+    console.log('🔄 ReportPreview props changed:', {
+      isOpen: { prev: prevProps.isOpen, next: nextProps.isOpen },
+      projectId: { prev: prevProps.projectId, next: nextProps.projectId },
+      companyName: { prev: prevProps.companyName, next: nextProps.companyName }
+    });
+  }
+  
+  return propsAreEqual;
+});

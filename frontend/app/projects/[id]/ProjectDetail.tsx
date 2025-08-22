@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import CreateProjectModal from '../CreateProjectModal';
@@ -371,9 +371,23 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   // 报告预览状态
   const [showReportPreview, setShowReportPreview] = useState(false);
 
-  // 调试：监听showReportPreview状态变化
+  // 优化回调函数，防止不必要的重新渲染
+  const handleCloseReportPreview = useCallback(() => {
+    setShowReportPreview(false);
+  }, []);
+
+  const handleReportDeleted = useCallback(() => {
+    // 报告删除后的回调，刷新页面以更新项目数据
+    window.location.reload();
+  }, []);
+
+  // 减少日志输出频率，避免在控制台看到重复信息
+  const lastLoggedStateRef = useRef({ showReportPreview: false });
   useEffect(() => {
-    console.log('🔍 showReportPreview状态变化:', showReportPreview);
+    if (showReportPreview !== lastLoggedStateRef.current.showReportPreview) {
+      console.log('🔍 showReportPreview状态变化:', showReportPreview);
+      lastLoggedStateRef.current.showReportPreview = showReportPreview;
+    }
   }, [showReportPreview]);
 
   // 页面加载时建立WebSocket连接，页面卸载时断开
@@ -1904,13 +1918,10 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       {/* 报告预览模态框 */}
       <ReportPreview
         isOpen={showReportPreview}
-        onClose={() => setShowReportPreview(false)}
+        onClose={handleCloseReportPreview}
         companyName={project?.name || ''}
         projectId={project?.id || 0}
-        onReportDeleted={() => {
-          // 报告删除后的回调，刷新页面以更新项目数据
-          window.location.reload();
-        }}
+        onReportDeleted={handleReportDeleted}
       />
     </div>
   );
