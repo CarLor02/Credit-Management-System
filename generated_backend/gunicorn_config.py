@@ -17,8 +17,8 @@ cpu_count = multiprocessing.cpu_count()
 workers = min(max(2, cpu_count // 2), 4)  # 2-4个worker，根据CPU核心数调整
 worker_class = "eventlet"  # 使用eventlet支持WebSocket长连接
 worker_connections = 1000  # 减少连接数避免内存压力
-max_requests = 500  # 降低请求重启阈值，及时释放内存
-max_requests_jitter = 50  # 添加随机性避免同时重启
+max_requests = 2000  # 增加请求重启阈值，减少频繁重启
+max_requests_jitter = 200  # 添加随机性避免同时重启
 
 # 超时配置 - 为长时间流式处理优化
 timeout = 0  # 设置为0表示无超时限制，适用于长时间流式处理
@@ -61,72 +61,110 @@ pidfile = "/tmp/gunicorn.pid"
 # 自定义钩子函数
 def when_ready(server):
     """服务器准备就绪时的回调"""
-    server.log.info("征信管理系统后端服务已准备就绪")
-    server.log.info(f"Worker数量: {workers}")
-    server.log.info(f"超时时间: {timeout}秒")
-    server.log.info(f"最大请求数: {max_requests}")
+    try:
+        server.log.info("征信管理系统后端服务已准备就绪")
+        server.log.info(f"Worker数量: {workers}")
+        server.log.info(f"超时时间: {timeout}秒")
+        server.log.info(f"最大请求数: {max_requests}")
+    except Exception as e:
+        server.log.error(f"When-ready回调异常: {e}")
 
 def worker_int(worker):
     """Worker收到SIGINT信号时的回调"""
-    worker.log.critical(f"Worker {worker.pid} 收到中断信号 SIGINT")
-    worker.log.critical(f"Worker {worker.pid} 当前内存使用情况: {_get_worker_memory_usage(worker.pid)} MB")
-    worker.log.critical(f"Worker {worker.pid} 活动连接数: {getattr(worker, 'connections', 'unknown')}")
-    
-    # 记录更多调试信息
-    worker.log.critical(f"Worker {worker.pid} 当前处理的请求数: {getattr(worker, 'nr', 'unknown')}")
-    worker.log.critical(f"Worker {worker.pid} 运行时长: {getattr(worker, 'age', 'unknown')}秒")
-    worker.log.critical(f"Worker {worker.pid} 系统内存状态: {_get_system_memory()}")
-    
-    # 强制进行垃圾回收
     try:
-        import gc
-        gc.collect()
-        worker.log.info(f"Worker {worker.pid} 执行垃圾回收完成")
+        worker.log.critical(f"Worker {worker.pid} 收到中断信号 SIGINT")
+        worker.log.critical(f"Worker {worker.pid} 当前内存使用情况: {_get_worker_memory_usage(worker.pid)} MB")
+        worker.log.critical(f"Worker {worker.pid} 活动连接数: {getattr(worker, 'connections', 'unknown')}")
+        
+        # 记录更多调试信息
+        worker.log.critical(f"Worker {worker.pid} 当前处理的请求数: {getattr(worker, 'nr', 'unknown')}")
+        worker.log.critical(f"Worker {worker.pid} 运行时长: {getattr(worker, 'age', 'unknown')}秒")
+        worker.log.critical(f"Worker {worker.pid} 系统内存状态: {_get_system_memory()}")
+        
+        # 强制进行垃圾回收
+        try:
+            import gc
+            gc.collect()
+            worker.log.info(f"Worker {worker.pid} 执行垃圾回收完成")
+        except Exception as gc_error:
+            worker.log.error(f"Worker {worker.pid} 垃圾回收失败: {gc_error}")
     except Exception as e:
-        worker.log.error(f"Worker {worker.pid} 垃圾回收失败: {e}")
+        try:
+            worker.log.error(f"Worker interrupt回调异常: {e}")
+        except:
+            pass  # 如果连日志都无法记录，则静默失败
 
 def pre_fork(server, worker):
     """Worker fork之前的回调"""
-    server.log.info(f"启动Worker {worker.age} - 系统内存状态: {_get_system_memory()}")
+    try:
+        server.log.info(f"启动Worker {worker.age} - 系统内存状态: {_get_system_memory()}")
+    except Exception as e:
+        server.log.error(f"Pre-fork回调异常: {e}")
 
 def post_fork(server, worker):
     """Worker fork之后的回调"""
-    server.log.info(f"Worker {worker.pid} 已启动 - 初始内存: {_get_worker_memory_usage(worker.pid)} MB")
+    try:
+        server.log.info(f"Worker {worker.pid} 已启动 - 初始内存: {_get_worker_memory_usage(worker.pid)} MB")
+    except Exception as e:
+        server.log.error(f"Post-fork回调异常: {e}")
     
 def pre_exec(server):
     """重新加载应用前的回调"""
-    server.log.info("准备重新加载应用")
+    try:
+        server.log.info("准备重新加载应用")
+    except Exception as e:
+        server.log.error(f"Pre-exec回调异常: {e}")
 
 def on_exit(server):
     """服务器退出时的回调"""
-    server.log.info("征信管理系统后端服务正在退出")
+    try:
+        server.log.info("征信管理系统后端服务正在退出")
+    except Exception as e:
+        server.log.error(f"On-exit回调异常: {e}")
 
 def worker_abort(worker):
     """Worker异常退出时的回调"""
-    worker.log.error(f"Worker {worker.pid} 异常退出")
-    worker.log.error(f"退出时内存使用: {_get_worker_memory_usage(worker.pid)} MB")
-    worker.log.error(f"退出时系统内存: {_get_system_memory()}")
-    worker.log.error(f"Worker处理的最后请求数: {getattr(worker, 'requests_count', 'unknown')}")
+    try:
+        worker.log.error(f"Worker {worker.pid} 异常退出")
+        worker.log.error(f"退出时内存使用: {_get_worker_memory_usage(worker.pid)} MB")
+        worker.log.error(f"退出时系统内存: {_get_system_memory()}")
+        worker.log.error(f"Worker处理的最后请求数: {getattr(worker, 'requests_count', 'unknown')}")
+    except Exception as e:
+        try:
+            worker.log.error(f"Worker abort回调异常: {e}")
+        except:
+            pass  # 如果连日志都无法记录，则静默失败
 
 def child_exit(server, worker):
     """Worker子进程退出时的回调"""
-    server.log.warning(f"Worker {worker.pid} 子进程退出，退出码: {worker.exitcode}")
+    # EventletWorker 可能没有 exitcode 属性，需要安全获取
+    exit_code = getattr(worker, 'exitcode', 'unknown')
+    server.log.warning(f"Worker {worker.pid} 子进程退出，退出码: {exit_code}")
     server.log.warning(f"Worker {worker.pid} 总处理请求数: {worker.nr}")
     server.log.warning(f"Worker {worker.pid} 运行时长: {worker.age}秒")
 
 def worker_exit(server, worker):
     """Worker正常退出时的回调"""
-    server.log.info(f"Worker {worker.pid} 正常退出")
-    server.log.info(f"Worker {worker.pid} 最终内存使用: {_get_worker_memory_usage(worker.pid)} MB")
-    server.log.info(f"Worker {worker.pid} 处理的请求总数: {worker.nr}")
+    try:
+        server.log.info(f"Worker {worker.pid} 正常退出")
+        server.log.info(f"Worker {worker.pid} 最终内存使用: {_get_worker_memory_usage(worker.pid)} MB")
+        server.log.info(f"Worker {worker.pid} 处理的请求总数: {worker.nr}")
+    except Exception as e:
+        server.log.error(f"Worker退出回调异常: {e}")
 
 def nworkers_changed(server, new_value, old_value):
     """Worker数量变化时的回调"""
-    server.log.info(f"Worker数量从 {old_value} 变更为 {new_value}")
+    try:
+        server.log.info(f"Worker数量从 {old_value} 变更为 {new_value}")
+    except Exception as e:
+        server.log.error(f"Worker数量变化回调异常: {e}")
 
 def worker_connections_changed(server, worker, new_value, old_value):
     """Worker连接数变化时的回调"""
-    server.log.debug(f"Worker {worker.pid} 连接数从 {old_value} 变更为 {new_value}")
+    try:
+        server.log.debug(f"Worker {worker.pid} 连接数从 {old_value} 变更为 {new_value}")
+    except Exception as e:
+        server.log.error(f"Worker连接数变化回调异常: {e}")
 
 def _get_worker_memory_usage(pid):
     """获取worker内存使用情况"""
