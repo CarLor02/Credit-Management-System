@@ -17,7 +17,7 @@ cpu_count = multiprocessing.cpu_count()
 workers = min(max(2, cpu_count // 2), 4)  # 2-4个worker，根据CPU核心数调整
 worker_class = "eventlet"  # 使用eventlet支持WebSocket长连接
 worker_connections = 1000  # 减少连接数避免内存压力
-max_requests = 2000  # 增加请求重启阈值，减少频繁重启
+max_requests = 5000  # 增加请求重启阈值，减少频繁重启
 max_requests_jitter = 200  # 添加随机性避免同时重启
 
 # 超时配置 - 为长时间流式处理优化
