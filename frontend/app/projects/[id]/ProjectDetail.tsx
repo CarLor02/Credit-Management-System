@@ -65,6 +65,22 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         
         if (response.success && response.data) {
           setProject(response.data);
+          
+          // 🔧 修复：根据项目的实际状态同步流式内容服务
+          console.log('🔄 同步流式内容服务状态，项目状态:', response.data.report_status);
+          
+          // 如果报告已生成完成，确保流式内容服务不处于生成状态
+          if (response.data.report_status === 'generated') {
+            streamingContentService.setGeneratingStatus(parseInt(projectId), false);
+            console.log('✅ 报告已完成，设置流式内容服务为非生成状态');
+          } else if (response.data.report_status === 'generating') {
+            streamingContentService.setGeneratingStatus(parseInt(projectId), true);
+            console.log('🔄 报告正在生成，设置流式内容服务为生成状态');
+          } else {
+            // 其他状态（如 not_generated, cancelled, error）都设置为非生成状态
+            streamingContentService.setGeneratingStatus(parseInt(projectId), false);
+            console.log('⏹️ 报告未生成或已取消，设置流式内容服务为非生成状态');
+          }
         } else {
           setError(response.error || '加载项目失败');
         }

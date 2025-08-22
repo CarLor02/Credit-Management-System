@@ -36,7 +36,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [htmlLoading, setHtmlLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [hasStreamingContent, setHasStreamingContent] = useState(false);
+  // hasStreamingContent 已删除，我们只依据 generating 状态
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
   const { addNotification } = useNotification();
@@ -129,7 +129,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         if (streamingData.reportContent) {
           setReportContent(streamingData.reportContent);
         }
-        setHasStreamingContent(streamingData.events.length > 0);
+        // hasStreamingContent 已删除，不再使用
       }
 
       // 添加监听器
@@ -139,7 +139,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         if (data.reportContent) {
           setReportContent(data.reportContent);
         }
-        setHasStreamingContent(data.events.length > 0);
+        // hasStreamingContent 已删除，不再使用
       };
 
       streamingContentService.addListener(projectId, handleStreamingUpdate);
@@ -158,8 +158,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   // 使用useCallback稳定函数引用，避免useEffect过度触发
   const fetchReportContent = useCallback(async (force: boolean = false) => {
     if (!projectId) return;
-    // 如果正在生成中，直接返回，避免404请求
-    if (generating || hasStreamingContent) {
+    // 🔧 修复：只有在真正生成中时才跳过获取报告内容，不应该因为有历史流式内容就跳过
+    if (generating) {
       console.log('📄 跳过获取报告内容，正在生成中');
       return;
     }
@@ -220,7 +220,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         setLoading(false);
       }
     }, 300); // 300ms防抖延迟
-  }, [projectId, generating, hasStreamingContent, lastFetchTime]);
+  }, [projectId, generating, lastFetchTime]);
 
   // 获取HTML格式的报告内容
   const fetchHtmlContent = useCallback(async () => {
@@ -480,8 +480,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         console.log('📄 原始content_chunk:', JSON.stringify(data.content_chunk));
         console.log('📄 content_chunk长度:', data.content_chunk.length);
 
-        // 标记已经有流式内容
-        setHasStreamingContent(true);
+        // hasStreamingContent 已删除，不再使用
         // 直接更新报告内容到右侧显示区域
         setReportContent(prev => {
           // 保持原始内容，不进行任何替换
@@ -691,12 +690,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
     // 使用单一定时器，避免状态变化时多次触发
     const timer = setTimeout(() => {
-      const shouldFetch = !generating && !hasStreamingContent;
+      // 🔧 修复：只有在真正生成中时才不获取报告内容
+      const shouldFetch = !generating;
       
       console.log('📄 统一报告获取检查:', {
         isOpen,
         generating,
-        hasStreamingContent,
         shouldFetch,
         projectId
       });
@@ -712,7 +711,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }, 200); // 200ms延迟避免状态快速变化
     
     return () => clearTimeout(timer);
-  }, [isOpen, projectId, generating, hasStreamingContent, fetchReportContent, fetchHtmlContent]);
+  }, [isOpen, projectId, generating, fetchReportContent, fetchHtmlContent]);
 
   // 清理PDF URL
   useEffect(() => {

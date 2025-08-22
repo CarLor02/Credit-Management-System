@@ -114,25 +114,8 @@ def register_project_routes(app):
                 if project.created_by != current_user.id and project.assigned_to != current_user.id:
                     return jsonify({'error': '您没有权限访问此项目'}), 403
 
-            # 使用完整的格式，包含扩展信息
-            project_data = {
-                'id': project.id,
-                'name': project.name,
-                'type': project.type.value.lower(),
-                'status': project.status.value.lower(),
-                'score': project.score,
-                'riskLevel': project.risk_level.value.lower(),
-                'lastUpdate': project.updated_at.strftime('%Y-%m-%d'),
-                'documents': len(list(project.documents)),
-                'progress': project.progress,
-                # 知识库相关字段
-                'dataset_id': project.dataset_id,
-                'knowledge_base_name': project.knowledge_base_name,
-                # 添加扩展信息
-                'companyInfo': project.company_info,
-                'personalInfo': project.personal_info,
-                'financialData': project.financial_data
-            }
+            # 使用模型的to_dict方法，确保包含所有字段
+            project_data = project.to_dict()
 
             # 直接返回项目数据
             return jsonify(project_data)
