@@ -25,18 +25,35 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
         setCurrentProgress(data.progress);
       }
       if (data.isGenerating !== undefined) {
-        setReportStatus(data.isGenerating ? 'generating' : 'generated');
+        // 根据生成状态和进度确定报告状态
+        if (data.isGenerating) {
+          setReportStatus('generating');
+        } else {
+          // 如果不在生成中，根据进度判断状态
+          setReportStatus(data.progress === 100 ? 'generated' : 'not_generated');
+        }
       }
     };
 
     // 添加监听器
     streamingContentService.addListener(project.id, handleProgressUpdate);
 
-    // 获取当前状态
+    // 获取当前状态并初始化
     const streamingData = streamingContentService.getProjectData(project.id);
     if (streamingData) {
       setCurrentProgress(streamingData.progress || project.progress || 0);
-      setReportStatus(streamingData.isGenerating ? 'generating' : (project.report_status || 'not_generated'));
+      if (streamingData.isGenerating) {
+        setReportStatus('generating');
+      } else {
+        // 优先使用项目的报告状态，如果没有则根据进度判断
+        const finalStatus = project.report_status ||
+          (streamingData.progress === 100 ? 'generated' : 'not_generated');
+        setReportStatus(finalStatus);
+      }
+    } else {
+      // 没有流式数据时，使用项目的状态
+      setCurrentProgress(project.progress || 0);
+      setReportStatus(project.report_status || 'not_generated');
     }
 
     return () => {

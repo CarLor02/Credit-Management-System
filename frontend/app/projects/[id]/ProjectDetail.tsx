@@ -292,7 +292,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   useEffect(() => {
     if (project?.id) {
       console.log('🔍 首次加载项目，检查报告状态:', project.id);
-      
+
       // 直接在这里进行报告检查，避免函数依赖问题
       const checkReportOnce = async () => {
         try {
@@ -301,20 +301,53 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
             content: string;
             file_path: string;
             company_name: string;
+            has_report: boolean;
             error?: string;
           }>(`/projects/${project.id}/report`);
 
-          if (response.success && response.data?.success && response.data?.content) {
-            console.log('发现已存在的报告，预览按钮可用');
+          if (response.success && response.data?.has_report && response.data?.content) {
+            console.log('✅ 发现已存在的报告，更新项目状态');
+            // 更新项目状态为已生成
+            setProject(prev => prev ? {
+              ...prev,
+              report_status: 'generated',
+              progress: 100
+            } : prev);
+
+            // 同步更新流式内容服务状态
+            streamingContentService.setGeneratingStatus(project.id, false);
+            streamingContentService.setProjectData(project.id, {
+              progress: 100,
+              isGenerating: false
+            });
           } else {
-            console.log('项目暂无报告');
+            console.log('❌ 项目暂无报告，确保状态为未生成');
+            // 确保状态为未生成
+            setProject(prev => prev ? {
+              ...prev,
+              report_status: 'not_generated',
+              progress: 0
+            } : prev);
+
+            // 同步更新流式内容服务状态
+            streamingContentService.setGeneratingStatus(project.id, false);
+            streamingContentService.setProjectData(project.id, {
+              progress: 0,
+              isGenerating: false
+            });
           }
         } catch (error: any) {
           // 静默处理错误，不显示错误信息
           console.log('检查报告时出现错误:', error?.message || error);
+          // 出错时设置为未生成状态
+          setProject(prev => prev ? {
+            ...prev,
+            report_status: 'not_generated',
+            progress: 0
+          } : prev);
         }
       };
-      
+
       checkReportOnce();
     }
   }, [project?.id]); // 只在项目ID变化时执行一次

@@ -193,11 +193,29 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           if (response.data?.has_report) {
             setReportContent(response.data.content || '');
             setError(null); // 清除错误状态
+
+            // 通知流式内容服务更新状态
+            if (projectId) {
+              streamingContentService.setProjectData(projectId, {
+                progress: 100,
+                isGenerating: false,
+                reportContent: response.data.content || ''
+              });
+            }
           } else {
             // 只有在报告不在生成过程中时才清空内容和显示错误信息
             if (!generating) {
               setReportContent('');
               setError('该项目尚未生成报告');
+
+              // 通知流式内容服务更新状态
+              if (projectId) {
+                streamingContentService.setProjectData(projectId, {
+                  progress: 0,
+                  isGenerating: false,
+                  reportContent: ''
+                });
+              }
             } else {
               // 生成过程中不清空内容，保持流式内容
               setError(null); // 生成过程中不显示错误
