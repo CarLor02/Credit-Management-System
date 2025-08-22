@@ -595,7 +595,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           try {
             // 检查后端是否还有活跃的工作流
             const response = await apiClient.get(`/projects/${projectId}/generation_status`);
-            if (response.success && response.data?.isGenerating) {
+
+            if (response.success && (response as any).data?.isGenerating) {
               console.log('✅ 后端确认生成仍在进行，保持生成状态');
               setGenerating(true);
               setWebsocketStatus('生成中(已恢复)');
