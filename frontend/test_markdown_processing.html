@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown处理测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .input-section, .output-section {
+            flex: 1;
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        textarea {
+            width: 100%;
+            height: 300px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .output {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            min-height: 300px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .debug {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Markdown预处理测试</h1>
+    <p>测试前端的preprocessMarkdown函数是否正确保留换行符和空格</p>
+    
+    <div class="container">
+        <div class="input-section">
+            <h3>输入内容</h3>
+            <textarea id="input" placeholder="输入要测试的Markdown内容...">尊贵的西安市新希望医疗器械有限公司：
+    为解决贵司融资难、融资贵的实际问题，我司专业融资顾问基于贵司提供的资料及面谈所了解的情况，从企业基本面分析、动态财务诊断、信用风险、大数据分析、场景化数据验证、风险缓释等多个维度，为贵司量身定制了本份融资分析报告。</textarea>
+            <button onclick="processMarkdown()">处理Markdown</button>
+        </div>
+        
+        <div class="output-section">
+            <h3>处理后内容</h3>
+            <div class="output" id="output"></div>
+        </div>
+    </div>
+    
+    <div class="debug" id="debug"></div>
+
+    <script>
+        // 复制前端的preprocessMarkdown函数
+        function preprocessMarkdown(content) {
+            if (!content) return content;
+
+            let processedContent = content;
+
+            // 1. 清理Markdown代码块标记
+            processedContent = processedContent
+                .replace(/```markdown\s*\n/gi, '')
+                .replace(/```\s*$/gm, '')
+                .replace(/```[\w]*\s*\n/gi, '')
+                .replace(/```\s*\n/gi, '');
+
+            // 2. 确保标题前有换行符（核心修复）
+            processedContent = processedContent
+                // 在标题前添加双换行符（除了文档开头）
+                .replace(/([^\n])(#{1,6}\s)/g, '$1\n\n$2')
+                // 确保#号后面有空格
+                .replace(/^(#{1,6})([^#\s])/gm, '$1 $2');
+
+            // 3. 处理没有#号的标题行
+            processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/gm, (match, spaces, title) => {
+                if (!title.startsWith('#')) {
+                    return `${spaces}\n\n### ${title}`;
+                }
+                return match;
+            });
+
+            // 4. 强化表格格式修复
+            processedContent = processedContent
+                // 修复表格单元格格式
+                .replace(/\|([^|\n]*)\|/g, (_, content) => `| ${content.trim()} |`)
+                // 确保表格前后有空行
+                .replace(/([^\n])\n(\|)/g, '$1\n\n$2')
+                .replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2')
+                // 修复可能缺失的表格分隔行
+                .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
+                    // 如果表格头后面直接跟数据行，插入分隔行
+                    if (!firstRow.includes('---') && !firstRow.includes(':--') && !header.includes('---')) {
+                        const columnCount = (header.match(/\|/g) || []).length - 1;
+                        if (columnCount > 0) {
+                            const separator = '|' + ' --- |'.repeat(columnCount);
+                            return header + '\n' + separator + '\n' + firstRow;
+                        }
+                    }
+                    return match;
+                });
+
+            // 5. 清理过多的连续空行
+            processedContent = processedContent.replace(/\n{4,}/g, '\n\n\n');
+
+            // 注意：不使用 .trim() 以保留重要的换行符和空格
+            return processedContent;
+        }
+
+        function processMarkdown() {
+            const input = document.getElementById('input').value;
+            const output = document.getElementById('output');
+            const debug = document.getElementById('debug');
+            
+            console.log('原始输入:', JSON.stringify(input));
+            
+            const processed = preprocessMarkdown(input);
+            
+            console.log('处理后输出:', JSON.stringify(processed));
+            
+            output.textContent = processed;
+            
+            // 显示调试信息
+            debug.innerHTML = `
+                <strong>调试信息:</strong><br>
+                原始长度: ${input.length}<br>
+                处理后长度: ${processed.length}<br>
+                原始内容 (JSON): ${JSON.stringify(input)}<br>
+                处理后内容 (JSON): ${JSON.stringify(processed)}<br>
+                <br>
+                <strong>换行符分析:</strong><br>
+                原始换行符数量: ${(input.match(/\n/g) || []).length}<br>
+                处理后换行符数量: ${(processed.match(/\n/g) || []).length}<br>
+                <br>
+                <strong>空格分析:</strong><br>
+                原始开头空格: "${input.match(/^\s*/)[0]}"<br>
+                处理后开头空格: "${processed.match(/^\s*/)[0]}"<br>
+            `;
+        }
+        
+        // 页面加载时自动处理一次
+        window.onload = function() {
+            processMarkdown();
+        };
+    </script>
+</body>
+</html>
