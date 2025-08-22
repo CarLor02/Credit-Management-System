@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MarkdownPreview from '@uiw/react-markdown-preview';
 import { apiClient } from '../services/api';
 import websocketService from '../services/websocketService';
@@ -16,7 +16,6 @@ interface ReportPreviewProps {
   projectId: number;
   companyName: string;
   onReportDeleted?: () => void;
-  isGenerating?: boolean;
 }
 
 const ReportPreview: React.FC<ReportPreviewProps> = ({
@@ -24,8 +23,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   onClose,
   projectId,
   companyName,
-  onReportDeleted,
-  isGenerating = false
+  onReportDeleted
 }) => {
   const [reportContent, setReportContent] = useState<string>('');
   const [htmlContent, setHtmlContent] = useState<string>('');
@@ -157,11 +155,11 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const fetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const FETCH_COOLDOWN = 2000; // 2秒冷却时间，防止频繁请求
 
-  // 获取已生成的报告内容 - 增加防抖和缓存机制
-  const fetchReportContent = async (force: boolean = false) => {
+  // 使用useCallback稳定函数引用，避免useEffect过度触发
+  const fetchReportContent = useCallback(async (force: boolean = false) => {
     if (!projectId) return;
     // 如果正在生成中，直接返回，避免404请求
-    if (generating || isGenerating || hasStreamingContent) {
+    if (generating || hasStreamingContent) {
       console.log('📄 跳过获取报告内容，正在生成中');
       return;
     }
@@ -222,10 +220,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         setLoading(false);
       }
     }, 300); // 300ms防抖延迟
-  };
+  }, [projectId, generating, hasStreamingContent, lastFetchTime]);
 
   // 获取HTML格式的报告内容
-  const fetchHtmlContent = async () => {
+  const fetchHtmlContent = useCallback(async () => {
     if (!projectId) return;
 
     setHtmlLoading(true);
@@ -259,7 +257,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     } finally {
       setHtmlLoading(false);
     }
-  };
+  }, [projectId]);
 
 
 
@@ -614,7 +612,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         websocketService.joinWorkflow(projectRoom);
 
         // 检查是否有正在进行的生成任务需要恢复
-        if (generating || isGenerating) {
+        if (generating) {
           console.log('🔄 检测到生成任务，尝试恢复状态');
           try {
             // 检查后端是否还有活跃的工作流
@@ -681,42 +679,40 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     };
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 获取报告内容（只在弹窗打开、不在生成过程中且没有流式内容时加载）
+  // 统一的报告获取逻辑：避免多重触发和同时请求
   useEffect(() => {
-    // 添加更严格的条件检查，避免在生成过程中请求报告
-    if (isOpen && !generating && !isGenerating && !hasStreamingContent) {
-      console.log('📄 获取已有报告内容，条件检查:', {
-        isOpen,
-        generating,
-        isGenerating,
-        hasStreamingContent
-      });
-      fetchReportContent();
-      fetchHtmlContent(); // 同时获取HTML内容
-    } else {
-      console.log('📄 跳过报告内容获取，条件检查:', {
-        isOpen,
-        generating,
-        isGenerating,
-        hasStreamingContent
-      });
+    if (!isOpen) {
       // 清理防抖定时器
       if (fetchDebounceRef.current) {
         clearTimeout(fetchDebounceRef.current);
       }
-    };
-  }, [isOpen, projectId, generating, isGenerating, hasStreamingContent]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // 同步外部isGenerating prop到内部generating状态
-  useEffect(() => {
-    if (isGenerating !== generating) {
-      setGenerating(isGenerating);
-      // 同时更新流式内容服务状态
-      if (projectId) {
-        streamingContentService.setGeneratingStatus(projectId, isGenerating);
-      }
+      return;
     }
-  }, [isGenerating, generating, projectId]);
+
+    // 使用单一定时器，避免状态变化时多次触发
+    const timer = setTimeout(() => {
+      const shouldFetch = !generating && !hasStreamingContent;
+      
+      console.log('📄 统一报告获取检查:', {
+        isOpen,
+        generating,
+        hasStreamingContent,
+        shouldFetch,
+        projectId
+      });
+
+      if (shouldFetch) {
+        console.log('📄 开始获取报告内容');
+        fetchReportContent();
+        // 延迟获取HTML内容，避免同时请求造成负载
+        setTimeout(() => {
+          fetchHtmlContent();
+        }, 500); // 500ms间隔
+      }
+    }, 200); // 200ms延迟避免状态快速变化
+    
+    return () => clearTimeout(timer);
+  }, [isOpen, projectId, generating, hasStreamingContent, fetchReportContent, fetchHtmlContent]);
 
   // 清理PDF URL
   useEffect(() => {
