@@ -14,15 +14,15 @@ backlog = 2048
 # Worker 配置 - 针对文档处理和WebSocket通信优化
 # 动态调整worker数量以平衡WebSocket支持和性能
 cpu_count = multiprocessing.cpu_count()
-workers = min(max(2, cpu_count // 2), 4)  # 2-4个worker，根据CPU核心数调整
+workers = min(max(4, cpu_count), 8)  # 4-8个worker，增加并发处理能力
 worker_class = "eventlet"  # 使用eventlet支持WebSocket长连接
 worker_connections = 1000  # 减少连接数避免内存压力
-max_requests = 5000  # 增加请求重启阈值，减少频繁重启
-max_requests_jitter = 200  # 添加随机性避免同时重启
+max_requests = 10000  # 大幅增加请求重启阈值，适应高频报告查询
+max_requests_jitter = 1000  # 增加随机性避免同时重启
 
 # 超时配置 - 为长时间流式处理优化
 timeout = 0  # 设置为0表示无超时限制，适用于长时间流式处理
-keepalive = 2  # 缩短保持连接时间
+keepalive = 5  # 增加保持连接时间，减少频繁建连开销
 graceful_timeout = 120  # 增加优雅关闭超时，给流式处理足够时间完成
 
 # 内存和进程管理 - 增强监控

@@ -152,63 +152,81 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     }
   }, [projectId]);
 
-  // 获取已生成的报告内容
-  const fetchReportContent = async () => {
-    if (!projectId) return;
+  // 防抖和缓存相关状态
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+  const fetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const FETCH_COOLDOWN = 2000; // 2秒冷却时间，防止频繁请求
 
+  // 获取已生成的报告内容 - 增加防抖和缓存机制
+  const fetchReportContent = async (force: boolean = false) => {
+    if (!projectId) return;
     // 如果正在生成中，直接返回，避免404请求
     if (generating || isGenerating || hasStreamingContent) {
       console.log('📄 跳过获取报告内容，正在生成中');
       return;
     }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await apiClient.get<{
-        success: boolean;
-        content: string;
-        file_path: string;
-        company_name: string;
-        has_report: boolean;
-      }>(`/projects/${projectId}/report`);
-
-      if (response.success) {
-        if (response.data?.has_report) {
-          setReportContent(response.data.content || '');
-          setError(null); // 清除错误状态
-        } else {
-          setReportContent('');
-          setError('该项目尚未生成报告');
-        }
-      } else {
-        setError(response.error || '获取报告内容失败');
-      }
-    } catch (err) {
-      // 对于404错误（报告不存在），使用info级别日志
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      if (errorMessage.includes('该项目尚未生成报告') || errorMessage.includes('404')) {
-        console.info('项目暂无报告:', errorMessage);
-        setError('该项目尚未生成报告');
-      } else {
-        console.error('获取报告内容失败:', err);
-        setError('获取报告内容失败，请稍后重试');
-      }
-    } finally {
-      setLoading(false);
+    // 防抖机制：短时间内的重复调用只执行最后一次
+    if (fetchDebounceRef.current) {
+      clearTimeout(fetchDebounceRef.current);
     }
+
+    // 缓存机制：2秒内不重复请求（除非强制刷新）
+    const now = Date.now();
+    if (!force && (now - lastFetchTime) < FETCH_COOLDOWN) {
+      console.log('📄 跳过频繁请求，距离上次请求:', now - lastFetchTime, 'ms');
+      return;
+    }
+
+    fetchDebounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      setLastFetchTime(Date.now());
+
+      try {
+        const response = await apiClient.get<{
+          success: boolean;
+          content: string;
+          file_path: string;
+          company_name: string;
+          has_report: boolean;
+        }>(`/projects/${projectId}/report`);
+
+        if (response.success) {
+          if (response.data?.has_report) {
+            setReportContent(response.data.content || '');
+            setError(null); // 清除错误状态
+          } else {
+            // 只有在报告不在生成过程中时才清空内容和显示错误信息
+            if (!generating) {
+              setReportContent('');
+              setError('该项目尚未生成报告');
+            } else {
+              // 生成过程中不清空内容，保持流式内容
+              setError(null); // 生成过程中不显示错误
+            }
+          }
+        } else {
+          setError(response.error || '获取报告内容失败');
+        }
+      } catch (err) {
+        // 对于404错误（报告不存在），使用info级别日志
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        if (errorMessage.includes('该项目尚未生成报告') || errorMessage.includes('404')) {
+          console.info('项目暂无报告:', errorMessage);
+          setError('该项目尚未生成报告');
+        } else {
+          console.error('获取报告内容失败:', err);
+          setError('获取报告内容失败，请稍后重试');
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, 300); // 300ms防抖延迟
   };
 
   // 获取HTML格式的报告内容
   const fetchHtmlContent = async () => {
     if (!projectId) return;
-
-    // 如果正在生成中，直接返回，避免404请求
-    if (generating || isGenerating || hasStreamingContent) {
-      console.log('📄 跳过获取HTML内容，正在生成中');
-      return;
-    }
 
     setHtmlLoading(true);
 
@@ -530,7 +548,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         fetchHtmlContent();
       } else {
         console.log('✅ 从文件加载最终报告内容');
-        fetchReportContent();
+        fetchReportContent(true); // 强制刷新，获取最新内容
         fetchHtmlContent();
       }
     };
@@ -663,21 +681,31 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     };
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 获取报告内容（只在弹窗打开时加载一次，避免在生成过程中重复请求）
+  // 获取报告内容（只在弹窗打开、不在生成过程中且没有流式内容时加载）
   useEffect(() => {
-    // 只在弹窗打开且项目ID存在时获取一次报告内容
-    if (isOpen && projectId) {
-      console.log('📄 获取已有报告内容，项目ID:', projectId);
-
-      // 检查是否正在生成中，如果是则跳过
-      if (!generating && !isGenerating && !hasStreamingContent) {
-        fetchReportContent();
-        fetchHtmlContent(); // 同时获取HTML内容
-      } else {
-        console.log('📄 跳过报告内容获取，正在生成中');
+    // 添加更严格的条件检查，避免在生成过程中请求报告
+    if (isOpen && !generating && !isGenerating && !hasStreamingContent) {
+      console.log('📄 获取已有报告内容，条件检查:', {
+        isOpen,
+        generating,
+        isGenerating,
+        hasStreamingContent
+      });
+      fetchReportContent();
+      fetchHtmlContent(); // 同时获取HTML内容
+    } else {
+      console.log('📄 跳过报告内容获取，条件检查:', {
+        isOpen,
+        generating,
+        isGenerating,
+        hasStreamingContent
+      });
+      // 清理防抖定时器
+      if (fetchDebounceRef.current) {
+        clearTimeout(fetchDebounceRef.current);
       }
-    }
-  }, [isOpen, projectId]); // 只依赖isOpen和projectId，避免生成状态变化时重复触发
+    };
+  }, [isOpen, projectId, generating, isGenerating, hasStreamingContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 同步外部isGenerating prop到内部generating状态
   useEffect(() => {

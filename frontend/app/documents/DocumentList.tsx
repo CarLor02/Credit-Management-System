@@ -158,7 +158,7 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
     }
   }, [refreshTrigger, loadDocuments]);
 
-  // 轮询正在处理的文档状态
+  // 智能轮询正在处理的文档状态
   useEffect(() => {
     const processingDocs = documents.filter(doc => 
       doc.status === 'uploading' || 
@@ -171,12 +171,18 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
       return;
     }
 
+    const POLL_INTERVAL = 3000;
+    console.log(`📋 开始轮询文档状态，有 ${processingDocs.length} 个文档正在处理中，轮询间隔: ${POLL_INTERVAL}ms`);
+
     const intervalId = setInterval(() => {
       // 静默刷新文档列表以获取最新状态
       loadDocuments(false);
-    }, 2000); // 每2秒检查一次
+    }, POLL_INTERVAL);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      console.log('📋 停止轮询文档状态');
+      clearInterval(intervalId);
+    };
   }, [documents, loadDocuments]);
 
   // 删除文档
