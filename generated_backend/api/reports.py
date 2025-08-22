@@ -22,6 +22,7 @@ from db_models import Project, AnalysisReport, ReportType, ReportStatus
 # 导入PDF转换服务
 from services.pdf_converter import convert_report_to_pdf, is_pdf_conversion_available
 from services.md_to_pdf_converter import MarkdownToPDFConverter
+from services.markdown_postprocessor import process_markdown_content
 from database import db
 
 # 导入认证装饰器
@@ -629,9 +630,17 @@ def register_report_routes(app):
                         "company_name": company_name
                     }), 404
 
+                # 对内容进行后处理，修复表格等格式问题
+                try:
+                    processed_content = process_markdown_content(content)
+                    current_app.logger.info("报告内容后处理完成")
+                except Exception as process_error:
+                    current_app.logger.warning(f"报告内容后处理失败，使用原内容: {process_error}")
+                    processed_content = content
+
                 return jsonify({
                     "success": True,
-                    "content": content,
+                    "content": processed_content,
                     "file_path": project.report_path,
                     "company_name": company_name,
                     "has_report": True
@@ -770,7 +779,16 @@ def register_report_routes(app):
 
             # 转换为PDF
             current_app.logger.info(f"开始将项目 {project_id} 的报告转换为PDF")
-            success, message, pdf_path = convert_report_to_pdf(md_content, project.name, project.report_path)
+
+            # 对Markdown内容进行后处理
+            try:
+                processed_md_content = process_markdown_content(md_content)
+                current_app.logger.info("PDF转换前的Markdown后处理完成")
+            except Exception as process_error:
+                current_app.logger.warning(f"Markdown后处理失败，使用原内容: {process_error}")
+                processed_md_content = md_content
+
+            success, message, pdf_path = convert_report_to_pdf(processed_md_content, project.name, project.report_path)
 
             if not success or not pdf_path:
                 current_app.logger.error(f"PDF转换失败: {message}")
@@ -893,8 +911,16 @@ def register_report_routes(app):
 
             # 转换为HTML
             try:
+                # 对Markdown内容进行后处理
+                try:
+                    processed_md_content = process_markdown_content(md_content)
+                    current_app.logger.info("HTML转换前的Markdown后处理完成")
+                except Exception as process_error:
+                    current_app.logger.warning(f"Markdown后处理失败，使用原内容: {process_error}")
+                    processed_md_content = md_content
+
                 converter = MarkdownToPDFConverter()
-                html_content = converter.convert_markdown_to_html(md_content, project.report_path)
+                html_content = converter.convert_markdown_to_html(processed_md_content, project.report_path)
 
                 return jsonify({
                     "success": True,
@@ -974,8 +1000,16 @@ def register_report_routes(app):
 
             # 转换为HTML
             try:
+                # 对Markdown内容进行后处理
+                try:
+                    processed_md_content = process_markdown_content(md_content)
+                    current_app.logger.info("HTML下载前的Markdown后处理完成")
+                except Exception as process_error:
+                    current_app.logger.warning(f"Markdown后处理失败，使用原内容: {process_error}")
+                    processed_md_content = md_content
+
                 converter = MarkdownToPDFConverter()
-                html_content = converter.convert_markdown_to_html(md_content, project.report_path)
+                html_content = converter.convert_markdown_to_html(processed_md_content, project.report_path)
 
                 # 创建HTML文件的响应
                 from flask import Response
@@ -1382,6 +1416,11 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
 def save_report_to_file(company_name, content, project_id=None):
     """保存报告内容到本地文件"""
     try:
+        # 对内容进行后处理，修复表格等格式问题
+        current_app.logger.info("开始对报告内容进行后处理...")
+        processed_content = process_markdown_content(content)
+        current_app.logger.info("报告内容后处理完成")
+
         # 如果有项目ID，按项目组织文件结构
         if project_id:
             output_dir = os.path.join("output", str(project_id), "reports")
@@ -1396,9 +1435,9 @@ def save_report_to_file(company_name, content, project_id=None):
         filename = f"征信分析报告-{timestamp}.md"
         file_path = os.path.join(output_dir, filename)
 
-        # 写入文件
+        # 写入处理后的内容
         with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
+            f.write(processed_content)
 
         current_app.logger.info(f"报告已保存到文件: {file_path}")
         return file_path
