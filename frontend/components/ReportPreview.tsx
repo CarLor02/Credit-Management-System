@@ -74,10 +74,25 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       return match;
     });
 
-    // 4. 简单的表格格式修复
+    // 4. 强化表格格式修复
     processedContent = processedContent
+      // 修复表格单元格格式
       .replace(/\|([^|\n]*)\|/g, (_, content) => `| ${content.trim()} |`)
-      .replace(/([^\n])\n(\|)/g, '$1\n\n$2');
+      // 确保表格前后有空行
+      .replace(/([^\n])\n(\|)/g, '$1\n\n$2')
+      .replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2')
+      // 修复可能缺失的表格分隔行
+      .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
+        // 如果表格头后面直接跟数据行，插入分隔行
+        if (!firstRow.includes('---') && !firstRow.includes(':--') && !header.includes('---')) {
+          const columnCount = (header.match(/\|/g) || []).length - 1;
+          if (columnCount > 0) {
+            const separator = '|' + ' --- |'.repeat(columnCount);
+            return header + '\n' + separator + '\n' + firstRow;
+          }
+        }
+        return match;
+      });
 
     // 5. 清理过多的连续空行
     processedContent = processedContent.replace(/\n{4,}/g, '\n\n\n');
@@ -423,7 +438,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         setGenerating(true);
         // 清空旧的报告内容，确保显示生成状态
         setReportContent('');
-        setHasStreamingContent(false);
+        // 不要立即设置hasStreamingContent为false，避免触发报告获取
+        // setHasStreamingContent(false);
         setError(null);
 
         if (projectId) {
@@ -564,13 +580,39 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       setWebsocketStatus('连接断开');
     };
 
-    const handleWebSocketReconnected = (data: any) => {
+    const handleWebSocketReconnected = async (data: any) => {
       console.log('WebSocket重连成功，尝试次数:', data.attemptNumber);
       setWebsocketStatus('已重连');
+
       // 重新加入项目房间
       if (projectId) {
         const projectRoom = `project_${projectId}`;
         websocketService.joinWorkflow(projectRoom);
+
+        // 检查是否有正在进行的生成任务需要恢复
+        if (generating || isGenerating) {
+          console.log('🔄 检测到生成任务，尝试恢复状态');
+          try {
+            // 检查后端是否还有活跃的工作流
+            const response = await apiClient.get(`/projects/${projectId}/generation_status`);
+            if (response.success && response.data?.isGenerating) {
+              console.log('✅ 后端确认生成仍在进行，保持生成状态');
+              setGenerating(true);
+              setWebsocketStatus('生成中(已恢复)');
+            } else {
+              console.log('❌ 后端确认生成已停止，更新前端状态');
+              setGenerating(false);
+              setWebsocketStatus('已重连');
+              // 更新流式内容服务状态
+              if (projectId) {
+                streamingContentService.setGeneratingStatus(projectId, false);
+              }
+            }
+          } catch (error) {
+            console.error('检查生成状态失败:', error);
+            // 如果检查失败，保持当前状态
+          }
+        }
       }
     };
 
@@ -616,11 +658,25 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
   // 获取报告内容（只在弹窗打开、不在生成过程中且没有流式内容时加载）
   useEffect(() => {
-    if (isOpen && !generating && !hasStreamingContent) {
+    // 添加更严格的条件检查，避免在生成过程中请求报告
+    if (isOpen && !generating && !isGenerating && !hasStreamingContent) {
+      console.log('📄 获取已有报告内容，条件检查:', {
+        isOpen,
+        generating,
+        isGenerating,
+        hasStreamingContent
+      });
       fetchReportContent();
       fetchHtmlContent(); // 同时获取HTML内容
+    } else {
+      console.log('📄 跳过报告内容获取，条件检查:', {
+        isOpen,
+        generating,
+        isGenerating,
+        hasStreamingContent
+      });
     }
-  }, [isOpen, projectId, generating, hasStreamingContent]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, projectId, generating, isGenerating, hasStreamingContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 同步外部isGenerating prop到内部generating状态
   useEffect(() => {
@@ -1190,6 +1246,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                               margin-bottom: 0.3em;
                               color: #374151 !important;
                             }
+                            /* 强制表格渲染 */
                             .markdown-content table {
                               border-collapse: collapse !important;
                               width: 100% !important;
@@ -1197,6 +1254,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                               background-color: white !important;
                               border: 1px solid #d1d5db !important;
                               display: table !important;
+                              font-family: inherit !important;
                             }
                             .markdown-content thead {
                               display: table-header-group !important;
@@ -1216,6 +1274,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                               color: #374151 !important;
                               display: table-cell !important;
                               vertical-align: top !important;
+                              word-wrap: break-word !important;
+                              max-width: none !important;
                             }
                             .markdown-content th {
                               background-color: #f9fafb !important;
@@ -1228,12 +1288,33 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                             .markdown-content tbody tr:nth-child(odd) td {
                               background-color: white !important;
                             }
+
+                            /* 隐藏代码块和引用块 */
                             .markdown-content pre,
                             .markdown-content code {
                               display: none !important;
                             }
                             .markdown-content blockquote {
                               display: none !important;
+                            }
+
+                            /* 确保所有内容在同一个白色背景上 */
+                            .markdown-content {
+                              background-color: white !important;
+                              color: #374151 !important;
+                            }
+
+                            /* 移除任何可能的框架样式 */
+                            .markdown-content > * {
+                              border: none !important;
+                              box-shadow: none !important;
+                              background-color: transparent !important;
+                            }
+
+                            /* 特殊处理：确保表格不被包裹在框中 */
+                            .markdown-content table {
+                              box-shadow: none !important;
+                              border-radius: 0 !important;
                             }
                           `}</style>
                           <div className="mt-6 mb-6 text-center">
@@ -1325,6 +1406,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                           margin-bottom: 0.3em;
                           color: #374151 !important;
                         }
+                        /* 强制表格渲染 */
                         .markdown-content table {
                           border-collapse: collapse !important;
                           width: 100% !important;
@@ -1332,6 +1414,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                           background-color: white !important;
                           border: 1px solid #d1d5db !important;
                           display: table !important;
+                          font-family: inherit !important;
                         }
                         .markdown-content thead {
                           display: table-header-group !important;
@@ -1351,6 +1434,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                           color: #374151 !important;
                           display: table-cell !important;
                           vertical-align: top !important;
+                          word-wrap: break-word !important;
+                          max-width: none !important;
                         }
                         .markdown-content th {
                           background-color: #f9fafb !important;
@@ -1363,12 +1448,33 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                         .markdown-content tbody tr:nth-child(odd) td {
                           background-color: white !important;
                         }
+
+                        /* 隐藏代码块和引用块 */
                         .markdown-content pre,
                         .markdown-content code {
                           display: none !important;
                         }
                         .markdown-content blockquote {
                           display: none !important;
+                        }
+
+                        /* 确保所有内容在同一个白色背景上 */
+                        .markdown-content {
+                          background-color: white !important;
+                          color: #374151 !important;
+                        }
+
+                        /* 移除任何可能的框架样式 */
+                        .markdown-content > * {
+                          border: none !important;
+                          box-shadow: none !important;
+                          background-color: transparent !important;
+                        }
+
+                        /* 特殊处理：确保表格不被包裹在框中 */
+                        .markdown-content table {
+                          box-shadow: none !important;
+                          border-radius: 0 !important;
                         }
                       `}</style>
                     </div>

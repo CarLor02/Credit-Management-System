@@ -247,6 +247,36 @@ def register_report_routes(app):
             current_app.logger.error(f"停止报告生成失败: {str(e)}")
             return jsonify({"success": False, "error": f"停止报告生成失败: {str(e)}"}), 500
 
+    @app.route('/api/projects/<int:project_id>/generation_status', methods=['GET'])
+    @token_required
+    def get_generation_status(project_id):
+        """
+        检查项目的报告生成状态
+        """
+        try:
+            # 检查项目是否存在
+            project = Project.query.get(project_id)
+            if not project:
+                return jsonify({"success": False, "error": "项目不存在"}), 404
+
+            # 检查是否有活跃的工作流
+            with workflow_lock:
+                is_generating = project_id in active_workflows
+                workflow_info = active_workflows.get(project_id, {})
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "isGenerating": is_generating,
+                    "reportStatus": project.report_status.value if project.report_status else "not_generated",
+                    "workflowInfo": workflow_info if is_generating else None
+                }
+            })
+
+        except Exception as e:
+            current_app.logger.error(f"获取生成状态失败: {str(e)}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
     @app.route('/api/generate_report', methods=['POST'])
     def generate_report():
         """
