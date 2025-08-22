@@ -56,132 +56,43 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       .replace(/^(#{1,6}\s+.*?)\s+$/gm, '$1');
   };
 
-  // 预处理Markdown内容，修复格式问题
+  // 简化的Markdown预处理，只处理关键问题
   const preprocessMarkdown = (content: string): string => {
     if (!content) return content;
 
     let processedContent = content;
 
-    // 0. 清理Markdown代码块标记
+    // 1. 清理Markdown代码块标记
     processedContent = processedContent
-      // 移除```markdown开头和结尾的```
       .replace(/```markdown\s*\n/gi, '')
       .replace(/```\s*$/gm, '')
-      // 移除其他代码块标记（如果不需要代码块的话）
       .replace(/```[\w]*\s*\n/gi, '')
       .replace(/```\s*\n/gi, '');
 
-    // 1. 首先修复标题格式
-    processedContent = fixHeadingFormat(processedContent);
-
-    // 2. 特殊处理：修复分段生成导致的标题问题
-    // 确保所有标题前都有足够的换行符（针对分段生成的情况）
+    // 2. 确保标题前有换行符（核心修复）
     processedContent = processedContent
-      // 在所有标题前强制添加双换行符（除了文档开头）
+      // 在标题前添加双换行符（除了文档开头）
       .replace(/([^\n])(#{1,6}\s)/g, '$1\n\n$2')
-      // 处理可能紧跟在文本后的标题
-      .replace(/([^\n\s])(#{1,6}\s)/g, '$1\n\n$2')
-      // 确保标题后也有换行符
-      .replace(/(#{1,6}[^\n]*)\n([^#\n\s])/g, '$1\n\n$2');
-
-    // 2. 强制修复所有可能的标题格式问题
-    processedContent = processedContent
       // 确保#号后面有空格
-      .replace(/^(#{1,6})([^#\s])/gm, '$1 $2')
-      // 修复"### 第二节 企业基本面分析"等标题（强化版）
-      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+[节章]\s*[^\n]*)/gm, '$1 $2')
-      // 修复可能的标题格式变体
-      .replace(/^(#{1,6})\s*(第[一二三四五六七八九十\d]+[节章])\s*([^\n]*)/gm, '$1 $2 $3')
-      // 确保所有以"第"开头的标题都有正确格式
-      .replace(/^(#{1,6})\s*(第[^\n]*)/gm, '$1 $2')
-      // 修复可能的企业分析相关标题
-      .replace(/^(#{1,6})\s*(企业基本面分析|动态财务诊断|风险评估|经营状况分析)/gm, '$1 $2');
+      .replace(/^(#{1,6})([^#\s])/gm, '$1 $2');
 
-    // 3. 处理没有#号的标题行（强制添加）
+    // 3. 处理没有#号的标题行
     processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/gm, (match, spaces, title) => {
-      // 如果这行看起来像标题但没有#号，添加###
       if (!title.startsWith('#')) {
-        return `${spaces}### ${title}`;
+        return `${spaces}\n\n### ${title}`;
       }
       return match;
     });
 
-    // 4. 修复企业分析相关的独立标题
-    processedContent = processedContent.replace(/^(\s*)(企业基本面分析|动态财务诊断|风险评估|经营状况分析)(\s*)$/gm, '### $2');
-
-    // 5. 再次确保标题前有空行（双重保险）
-    processedContent = processedContent.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
-
-    // 6. 确保标题后有空行（如果后面不是另一个标题）
-    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n([^#\n])/g, '$1\n\n$2');
-
-    // 7. 修复连续标题之间的间距
-    processedContent = processedContent.replace(/(#{1,6}[^\n]*)\n(#{1,6})/g, '$1\n\n$2');
-
-    // 8. 修复列表格式：确保-号后面有空格
-    processedContent = processedContent.replace(/^(\s*)-([^\s])/gm, '$1- $2');
-
-    // 9. 修复数字列表格式：确保数字后面有空格
-    processedContent = processedContent.replace(/^(\s*)(\d+\.)([^\s])/gm, '$1$2 $3');
-
-    // 10. 确保列表前有空行
-    processedContent = processedContent.replace(/([^\n])\n(\s*[-*+\d])/g, '$1\n\n$2');
-
-    // 11. 强化表格格式修复
+    // 4. 简单的表格格式修复
     processedContent = processedContent
-      // 修复表格单元格格式
-      .replace(/\|([^|\n]*)\|/g, (_, content) => {
-        return `| ${content.trim()} |`;
-      })
-      // 确保表格分隔行格式正确
-      .replace(/\|\s*[-:]+\s*\|/g, (match) => {
-        // 保持分隔行的格式
-        return match.replace(/\s+/g, ' ');
-      })
-      // 修复可能缺失的表格分隔行
-      .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
-        // 如果表格头后面直接跟数据行，插入分隔行
-        if (!firstRow.includes('---') && !firstRow.includes(':--')) {
-          const columnCount = (header.match(/\|/g) || []).length - 1;
-          const separator = '|' + ' --- |'.repeat(columnCount);
-          return header + '\n' + separator + '\n' + firstRow;
-        }
-        return match;
-      });
+      .replace(/\|([^|\n]*)\|/g, (_, content) => `| ${content.trim()} |`)
+      .replace(/([^\n])\n(\|)/g, '$1\n\n$2');
 
-    // 12. 确保表格前后有空行
-    processedContent = processedContent.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
-    processedContent = processedContent.replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2');
+    // 5. 清理过多的连续空行
+    processedContent = processedContent.replace(/\n{4,}/g, '\n\n\n');
 
-    // 13. 最后一次强化检查：确保所有标题都被正确处理
-    const lines = processedContent.split('\n');
-    const fixedLines = lines.map((line, index) => {
-      const trimmedLine = line.trim();
-
-      // 检查是否是看起来像标题但没有#号的行
-      if (/^第[一二三四五六七八九十\d]+[节章]/.test(trimmedLine) && !trimmedLine.startsWith('#')) {
-        // 确保标题前有空行（除了第一行）
-        if (index > 0 && lines[index - 1].trim() !== '') {
-          return `\n### ${trimmedLine}`;
-        }
-        return `### ${trimmedLine}`;
-      }
-      if (/^(企业基本面分析|动态财务诊断|风险评估|经营状况分析)$/.test(trimmedLine) && !trimmedLine.startsWith('#')) {
-        // 确保标题前有空行（除了第一行）
-        if (index > 0 && lines[index - 1].trim() !== '') {
-          return `\n### ${trimmedLine}`;
-        }
-        return `### ${trimmedLine}`;
-      }
-      return line;
-    });
-    processedContent = fixedLines.join('\n');
-
-    // 14. 清理多余的空行（超过2个连续空行的情况）
-    processedContent = processedContent.replace(/\n{3,}/g, '\n\n');
-
-    // 15. 确保文档开头和结尾没有多余的空行
-    processedContent = processedContent.trim();
+    return processedContent.trim();
 
     // 调试：打印处理前后的标题行
     if (content !== processedContent) {
@@ -431,12 +342,19 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
           const newContent = prev ? prev + processedContent : processedContent;
 
-          // 延迟执行滚动以确保DOM更新完成
-          setTimeout(() => {
+          // 立即滚动，然后再延迟滚动确保DOM更新完成
+          const scrollToBottom = () => {
             if (streamingContentRef.current) {
               streamingContentRef.current.scrollTop = streamingContentRef.current.scrollHeight;
             }
-          }, 50);
+          };
+
+          // 立即执行一次
+          scrollToBottom();
+
+          // 延迟执行确保DOM完全更新
+          setTimeout(scrollToBottom, 10);
+          setTimeout(scrollToBottom, 100);
           return newContent;
         });
         return;
@@ -548,12 +466,19 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             streamingContentService.updateReportContent(projectId, newContent);
           }
 
-          // 延迟执行滚动以确保DOM更新完成
-          setTimeout(() => {
+          // 立即滚动，然后再延迟滚动确保DOM更新完成
+          const scrollToBottom = () => {
             if (streamingContentRef.current) {
               streamingContentRef.current.scrollTop = streamingContentRef.current.scrollHeight;
             }
-          }, 50);
+          };
+
+          // 立即执行一次
+          scrollToBottom();
+
+          // 延迟执行确保DOM完全更新
+          setTimeout(scrollToBottom, 10);
+          setTimeout(scrollToBottom, 100);
           return newContent;
         });
         // 清除错误状态，确保内容能够显示
@@ -643,12 +568,37 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       console.log('🚫 报告生成已取消，设置generating为false');
     };
 
+    // 监听WebSocket连接状态
+    const handleWebSocketDisconnected = (data: any) => {
+      console.log('WebSocket连接断开，原因:', data.reason);
+      setWebsocketStatus('连接断开');
+    };
+
+    const handleWebSocketReconnected = (data: any) => {
+      console.log('WebSocket重连成功，尝试次数:', data.attemptNumber);
+      setWebsocketStatus('已重连');
+      // 重新加入项目房间
+      if (projectId) {
+        websocketService.joinProjectRoom(projectId);
+      }
+    };
+
+    const handleReconnectAttempt = (data: any) => {
+      console.log('WebSocket重连尝试:', data.attemptNumber);
+      setWebsocketStatus(`重连中(${data.attemptNumber})`);
+    };
+
     // 监听WebSocket消息 - 详细展示不同类型的事件
     websocketService.on('workflow_event', handleWorkflowEvent);
     websocketService.on('workflow_content', handleWorkflowContent);
     websocketService.on('workflow_complete', handleWorkflowComplete);
     websocketService.on('workflow_error', handleWorkflowError);
     websocketService.on('generation_cancelled', handleGenerationCancelled);
+
+    // 监听连接状态事件
+    websocketService.on('disconnected', handleWebSocketDisconnected);
+    websocketService.on('reconnected', handleWebSocketReconnected);
+    websocketService.on('reconnect_attempt', handleReconnectAttempt);
 
     // 清理函数 - 移除事件监听器，防止重复注册
     return () => {
@@ -660,6 +610,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       websocketService.off('workflow_complete', handleWorkflowComplete);
       websocketService.off('workflow_error', handleWorkflowError);
       websocketService.off('generation_cancelled', handleGenerationCancelled);
+      websocketService.off('disconnected', handleWebSocketDisconnected);
+      websocketService.off('reconnected', handleWebSocketReconnected);
+      websocketService.off('reconnect_attempt', handleReconnectAttempt);
 
       // 离开项目房间
       const projectRoom = `project_${projectId}`;
@@ -865,9 +818,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         setStreamingEvents(prev => [...prev, stopEvent]);
         streamingContentService.addEvent(projectId, stopEvent);
 
-        // 强制断开WebSocket连接
-        websocketService.disconnect();
-        setWebsocketStatus('已断开');
+        // 不要强制断开WebSocket连接，让后端处理停止逻辑
+        // websocketService.disconnect();
+        setWebsocketStatus('已停止');
       } else {
         throw new Error(apiResponse.error || '停止请求失败');
       }

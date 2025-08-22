@@ -61,6 +61,11 @@ class WebSocketService {
       transports: ['websocket', 'polling'],
       timeout: 20000,
       forceNew: true,
+      // 添加自动重连配置
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
 
     this.socket.on('connect', () => {
@@ -69,10 +74,31 @@ class WebSocketService {
       this.emit('connected', { connected: true });
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('WebSocket连接断开');
+    this.socket.on('disconnect', (reason) => {
+      console.log('WebSocket连接断开，原因:', reason);
       this.isConnected = false;
-      this.emit('disconnected', { connected: false });
+      this.emit('disconnected', { connected: false, reason });
+    });
+
+    this.socket.on('reconnect', (attemptNumber) => {
+      console.log('WebSocket重连成功，尝试次数:', attemptNumber);
+      this.isConnected = true;
+      this.emit('reconnected', { connected: true, attemptNumber });
+    });
+
+    this.socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('WebSocket重连尝试:', attemptNumber);
+      this.emit('reconnect_attempt', { attemptNumber });
+    });
+
+    this.socket.on('reconnect_error', (error) => {
+      console.error('WebSocket重连错误:', error);
+      this.emit('reconnect_error', { error: error.message });
+    });
+
+    this.socket.on('reconnect_failed', () => {
+      console.error('WebSocket重连失败');
+      this.emit('reconnect_failed', {});
     });
 
     this.socket.on('connect_error', (error) => {
