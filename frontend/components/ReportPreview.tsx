@@ -156,6 +156,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const fetchReportContent = async () => {
     if (!projectId) return;
 
+    // 如果正在生成中，直接返回，避免404请求
+    if (generating || isGenerating || hasStreamingContent) {
+      console.log('📄 跳过获取报告内容，正在生成中');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -173,14 +179,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           setReportContent(response.data.content || '');
           setError(null); // 清除错误状态
         } else {
-          // 只有在报告不在生成过程中时才清空内容和显示错误信息
-          if (!generating) {
-            setReportContent('');
-            setError('该项目尚未生成报告');
-          } else {
-            // 生成过程中不清空内容，保持流式内容
-            setError(null); // 生成过程中不显示错误
-          }
+          setReportContent('');
+          setError('该项目尚未生成报告');
         }
       } else {
         setError(response.error || '获取报告内容失败');
@@ -203,6 +203,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   // 获取HTML格式的报告内容
   const fetchHtmlContent = async () => {
     if (!projectId) return;
+
+    // 如果正在生成中，直接返回，避免404请求
+    if (generating || isGenerating || hasStreamingContent) {
+      console.log('📄 跳过获取HTML内容，正在生成中');
+      return;
+    }
 
     setHtmlLoading(true);
 
@@ -657,27 +663,21 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     };
   }, [isOpen, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 获取报告内容（只在弹窗打开、不在生成过程中且没有流式内容时加载）
+  // 获取报告内容（只在弹窗打开时加载一次，避免在生成过程中重复请求）
   useEffect(() => {
-    // 添加更严格的条件检查，避免在生成过程中请求报告
-    if (isOpen && !generating && !isGenerating && !hasStreamingContent) {
-      console.log('📄 获取已有报告内容，条件检查:', {
-        isOpen,
-        generating,
-        isGenerating,
-        hasStreamingContent
-      });
-      fetchReportContent();
-      fetchHtmlContent(); // 同时获取HTML内容
-    } else {
-      console.log('📄 跳过报告内容获取，条件检查:', {
-        isOpen,
-        generating,
-        isGenerating,
-        hasStreamingContent
-      });
+    // 只在弹窗打开且项目ID存在时获取一次报告内容
+    if (isOpen && projectId) {
+      console.log('📄 获取已有报告内容，项目ID:', projectId);
+
+      // 检查是否正在生成中，如果是则跳过
+      if (!generating && !isGenerating && !hasStreamingContent) {
+        fetchReportContent();
+        fetchHtmlContent(); // 同时获取HTML内容
+      } else {
+        console.log('📄 跳过报告内容获取，正在生成中');
+      }
     }
-  }, [isOpen, projectId, generating, isGenerating, hasStreamingContent]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, projectId]); // 只依赖isOpen和projectId，避免生成状态变化时重复触发
 
   // 同步外部isGenerating prop到内部generating状态
   useEffect(() => {
