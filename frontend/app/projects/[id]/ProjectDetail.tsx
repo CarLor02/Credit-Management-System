@@ -261,42 +261,47 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     }
   };
 
-  // 检查项目是否已有报告
-  const checkExistingReport = async () => {
-    if (!project?.id) return;
-
-    try {
-      const response = await apiClient.get<{
-        success: boolean;
-        content: string;
-        file_path: string;
-        company_name: string;
-        error?: string;
-      }>(`/projects/${project.id}/report`);
-
-      if (response.success && response.data?.success && response.data?.content) {
-        console.log('发现已存在的报告，预览按钮可用');
-      } else {
-        console.log('项目暂无报告');
-      }
-    } catch (error: any) {
-      // 静默处理错误，不显示错误信息
-      console.log('检查报告时出现错误:', error?.message || error);
-
-      // 不要显示错误提示，因为这是正常的检查流程
-      // 项目没有报告是正常情况，不应该报错
-    }
-  };
-
   // 当项目数据加载完成后，加载详情数据
   useEffect(() => {
     if (project) {
       loadFinancialData();
       loadBusinessStatus();
       loadTimelineData();
-      checkExistingReport(); // 检查是否已有报告
+      // 移除此处的 checkExistingReport 调用，避免频繁检查
+      // checkExistingReport(); // 检查是否已有报告
     }
   }, [project]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 单独的 useEffect 只在项目ID首次加载时检查报告状态
+  useEffect(() => {
+    if (project?.id) {
+      console.log('🔍 首次加载项目，检查报告状态:', project.id);
+      
+      // 直接在这里进行报告检查，避免函数依赖问题
+      const checkReportOnce = async () => {
+        try {
+          const response = await apiClient.get<{
+            success: boolean;
+            content: string;
+            file_path: string;
+            company_name: string;
+            error?: string;
+          }>(`/projects/${project.id}/report`);
+
+          if (response.success && response.data?.success && response.data?.content) {
+            console.log('发现已存在的报告，预览按钮可用');
+          } else {
+            console.log('项目暂无报告');
+          }
+        } catch (error: any) {
+          // 静默处理错误，不显示错误信息
+          console.log('检查报告时出现错误:', error?.message || error);
+        }
+      };
+      
+      checkReportOnce();
+    }
+  }, [project?.id]); // 只在项目ID变化时执行一次
 
   // 获取编辑数据
   const getEditData = () => {
