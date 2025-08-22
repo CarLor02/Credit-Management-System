@@ -16,23 +16,23 @@ backlog = 2048
 cpu_count = multiprocessing.cpu_count()
 workers = min(max(2, cpu_count // 2), 4)  # 2-4个worker，根据CPU核心数调整
 worker_class = "eventlet"  # 使用eventlet支持WebSocket长连接
-worker_connections = 2000  # 增加每个worker的最大连接数
-max_requests = 1000  # 适度的请求重启，平衡内存和连接稳定性
-max_requests_jitter = 100  # 添加随机性避免同时重启
+worker_connections = 1000  # 减少连接数避免内存压力
+max_requests = 500  # 降低请求重启阈值，及时释放内存
+max_requests_jitter = 50  # 添加随机性避免同时重启
 
-# 超时配置 - 为长时间文档处理和WebSocket连接优化
-timeout = 300  # 设置为5分钟，平衡长连接和资源释放
-keepalive = 5  # 保持连接时间
-graceful_timeout = 60  # 优雅关闭超时
+# 超时配置 - 为长时间流式处理优化
+timeout = 0  # 设置为0表示无超时限制，适用于长时间流式处理
+keepalive = 2  # 缩短保持连接时间
+graceful_timeout = 120  # 增加优雅关闭超时，给流式处理足够时间完成
 
 # 内存和进程管理 - 增强监控
 worker_tmp_dir = "/dev/shm"  # 使用内存文件系统
-max_worker_memory = 2048  # 单个worker最大内存(MB)
-worker_memory_high_watermark = 0.8  # 内存高水位线
-worker_memory_check_interval = 10  # 内存检查间隔(秒)
+max_worker_memory = 1024  # 降低单个worker最大内存(MB)限制
+worker_memory_high_watermark = 0.7  # 降低内存高水位线
+worker_memory_check_interval = 5  # 缩短内存检查间隔(秒)
 
-# 预加载应用
-preload_app = True  # 预加载应用，减少内存占用
+# 预加载应用 - 在流式处理场景下关闭预加载
+preload_app = False  # 关闭预加载，减少内存占用和进程间冲突
 
 # 日志配置 - 增强调试信息
 accesslog = "-"  # 访问日志输出到stdout
@@ -71,6 +71,19 @@ def worker_int(worker):
     worker.log.critical(f"Worker {worker.pid} 收到中断信号 SIGINT")
     worker.log.critical(f"Worker {worker.pid} 当前内存使用情况: {_get_worker_memory_usage(worker.pid)} MB")
     worker.log.critical(f"Worker {worker.pid} 活动连接数: {getattr(worker, 'connections', 'unknown')}")
+    
+    # 记录更多调试信息
+    worker.log.critical(f"Worker {worker.pid} 当前处理的请求数: {getattr(worker, 'nr', 'unknown')}")
+    worker.log.critical(f"Worker {worker.pid} 运行时长: {getattr(worker, 'age', 'unknown')}秒")
+    worker.log.critical(f"Worker {worker.pid} 系统内存状态: {_get_system_memory()}")
+    
+    # 强制进行垃圾回收
+    try:
+        import gc
+        gc.collect()
+        worker.log.info(f"Worker {worker.pid} 执行垃圾回收完成")
+    except Exception as e:
+        worker.log.error(f"Worker {worker.pid} 垃圾回收失败: {e}")
 
 def pre_fork(server, worker):
     """Worker fork之前的回调"""
@@ -101,6 +114,20 @@ def child_exit(server, worker):
     server.log.warning(f"Worker {worker.pid} 总处理请求数: {worker.nr}")
     server.log.warning(f"Worker {worker.pid} 运行时长: {worker.age}秒")
 
+def worker_exit(server, worker):
+    """Worker正常退出时的回调"""
+    server.log.info(f"Worker {worker.pid} 正常退出")
+    server.log.info(f"Worker {worker.pid} 最终内存使用: {_get_worker_memory_usage(worker.pid)} MB")
+    server.log.info(f"Worker {worker.pid} 处理的请求总数: {worker.nr}")
+
+def nworkers_changed(server, new_value, old_value):
+    """Worker数量变化时的回调"""
+    server.log.info(f"Worker数量从 {old_value} 变更为 {new_value}")
+
+def worker_connections_changed(server, worker, new_value, old_value):
+    """Worker连接数变化时的回调"""
+    server.log.debug(f"Worker {worker.pid} 连接数从 {old_value} 变更为 {new_value}")
+
 def _get_worker_memory_usage(pid):
     """获取worker内存使用情况"""
     try:
@@ -126,15 +153,18 @@ def _get_system_memory():
     except:
         return "unknown"
 
-# 环境变量优化 - 增强调试和监控
+# 环境变量优化 - 增强调试和监控，优化内存管理
 raw_env = [
     'PYTHONUNBUFFERED=1',
     'PYTHONDONTWRITEBYTECODE=1', 
-    'MALLOC_TRIM_THRESHOLD_=100000',  # 内存管理优化
+    'MALLOC_TRIM_THRESHOLD_=50000',  # 降低内存管理阈值
     'PYTHONHASHSEED=random',  # 随机化哈希种子
     'EVENTLET_HUB=poll',  # 优化eventlet性能
-    'PYTHONMALLOC=debug',  # 开启Python内存调试
-    'PYTHONASYNCIODEBUG=1',  # 开启asyncio调试
+    'EVENTLET_NOPATCH=1',  # 防止eventlet过度patch
+    'PYTHONGC=1',  # 启用垃圾回收
+    'PYTHONASYNCIODEBUG=0',  # 在生产环境关闭asyncio调试
+    'EVENTLET_THREADPOOL_SIZE=20',  # 限制eventlet线程池大小
+    'PYTHONMALLOC=malloc',  # 使用系统malloc而不是Python的调试malloc
 ]
 
 # 根据环境变量和CPU数量动态调整worker数量
@@ -155,16 +185,22 @@ if os.environ.get('FLASK_ENV') == 'development':
 else:
     reload = False
 
-# WebSocket 多Worker配置说明:
-# - 使用 eventlet worker 类支持 WebSocket 长连接
-# - 多worker模式通过Redis/消息队列实现WebSocket状态共享
-# - timeout=300 平衡长连接和资源管理
-# - max_requests=1000 适度重启worker，避免内存泄漏
-# - Flask-SocketIO 应用需要使用 async_mode='eventlet'
-# - 需要配置Redis作为消息代理以支持多worker WebSocket通信
+# WebSocket 流式处理优化配置说明:
+# - timeout=0: 取消超时限制，避免长时间流式处理被中断
+# - max_requests=500: 降低请求重启阈值，及时释放内存避免累积
+# - worker_connections=1000: 适度的连接数，平衡性能和内存使用
+# - graceful_timeout=120: 给流式处理足够时间完成
+# - preload_app=False: 避免预加载应用导致的进程间冲突
+# - EVENTLET_NOPATCH=1: 防止eventlet过度patch导致的异常
+# - MALLOC_TRIM_THRESHOLD_=50000: 更积极的内存回收
 
-# 性能优化建议:
-# 1. 设置 GUNICORN_AUTO_WORKERS=true 启用自动worker调整
-# 2. 配置Redis消息队列支持多worker WebSocket
-# 3. 使用负载均衡器分发HTTP和WebSocket请求
-# 4. 监控worker内存使用情况，适时调整max_requests
+# 内存管理策略:
+# 1. 降低单worker内存限制到1GB，及时重启高内存worker
+# 2. 缩短内存检查间隔到5秒，快速响应内存压力
+# 3. 使用系统malloc而不是Python调试malloc，减少内存开销
+# 4. 在worker退出时强制垃圾回收
+
+# 流式处理监控:
+# 1. 增强worker退出时的日志记录，便于诊断
+# 2. 监控worker连接数和处理请求数变化
+# 3. 记录详细的内存使用情况和系统状态
