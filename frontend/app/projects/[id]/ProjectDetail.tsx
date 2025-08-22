@@ -536,9 +536,13 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     });
 
     if (hasExistingReport) {
-      const confirmOverwrite = window.confirm(
-        '该项目已有征信报告，生成新报告将覆盖现有报告。\n\n是否确定要重新生成报告？'
-      );
+      const confirmOverwrite = await showConfirm({
+        title: '确认重新生成报告',
+        message: '该项目已有征信报告，生成新报告将覆盖现有报告。是否确定要重新生成报告？',
+        type: 'warning',
+        confirmText: '确认生成',
+        cancelText: '取消'
+      });
 
       if (!confirmOverwrite) {
         console.log('🚫 用户取消重新生成');
@@ -549,7 +553,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       console.log('🗑️ 用户确认覆盖，删除现有报告');
       const deleteSuccess = await deleteExistingReport();
       if (!deleteSuccess) {
-        alert('删除现有报告失败，无法生成新报告');
+        addNotification('删除现有报告失败，无法生成新报告', 'error');
         return;
       }
     }
