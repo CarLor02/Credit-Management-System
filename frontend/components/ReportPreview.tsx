@@ -99,7 +99,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     // 5. 清理过多的连续空行
     processedContent = processedContent.replace(/\n{4,}/g, '\n\n\n');
 
-    return processedContent.trim();
+    // 注意：不使用 .trim() 以保留重要的换行符和空格
+    return processedContent;
 
     // 调试：打印处理前后的标题行
     if (content !== processedContent) {

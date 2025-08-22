@@ -376,11 +376,6 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     setShowReportPreview(false);
   }, []);
 
-  const handleReportDeleted = useCallback(() => {
-    // 报告删除后的回调，刷新页面以更新项目数据
-    window.location.reload();
-  }, []);
-
   // 减少日志输出频率，避免在控制台看到重复信息
   const lastLoggedStateRef = useRef({ showReportPreview: false });
   useEffect(() => {
@@ -1119,16 +1114,18 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                 编辑项目
               </button>
               <button
-                onClick={project?.report_status === 'generating' ? () => setShowReportPreview(true) : handleDownloadReport}
-                disabled={project?.report_status === 'not_generated'}
+                onClick={
+                  project?.report_status === 'generating'
+                    ? () => setShowReportPreview(true)
+                    : handleDownloadReport  // 生成或下载报告
+                }
+                disabled={false}  // 所有状态下都可以点击
                 className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
-                  (project?.report_status === 'not_generated')
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : project?.report_status === 'generating'
+                  project?.report_status === 'generating'
                     ? 'bg-orange-600 hover:bg-orange-700'
                     : project?.report_status === 'generated'
                     ? 'bg-blue-600 hover:bg-blue-700'
-                    : 'bg-green-600 hover:bg-green-700'
+                    : 'bg-green-600 hover:bg-green-700'  // 未生成时显示绿色
                 }`}
               >
                 {project?.report_status === 'generating' ? (
@@ -1148,20 +1145,21 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                   </>
                 )}
               </button>
-              <button
-                onClick={() => setShowReportPreview(true)}
-                disabled={project?.report_status === 'not_generated'}
-                className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
-                  (project?.report_status === 'not_generated')
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : project?.report_status === 'generating'
-                    ? 'bg-orange-600 hover:bg-orange-700'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                <i className={`${project?.report_status === 'generating' ? 'ri-eye-line' : 'ri-eye-line'} mr-2`}></i>
-                {project?.report_status === 'generating' ? '查看生成进度' : '预览报告及下载'}
-              </button>
+              {/* 只在有报告或正在生成时显示预览按钮 */}
+              {(project?.report_status === 'generating' || project?.report_status === 'generated') && (
+                <button
+                  onClick={() => setShowReportPreview(true)}
+                  disabled={false}
+                  className={`px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium whitespace-nowrap ${
+                    project?.report_status === 'generating'
+                      ? 'bg-orange-600 hover:bg-orange-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  <i className="ri-eye-line mr-2"></i>
+                  {project?.report_status === 'generating' ? '查看生成进度' : '预览报告及下载'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -1921,7 +1919,25 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         onClose={handleCloseReportPreview}
         companyName={project?.name || ''}
         projectId={project?.id || 0}
-        onReportDeleted={handleReportDeleted}
+        onReportDeleted={() => {
+          // 报告删除后的回调，更新项目状态
+          console.log('📄 报告删除回调，更新项目状态');
+          setProject(prev => prev ? {
+            ...prev,
+            report_status: 'not_generated',
+            progress: 0
+          } : prev);
+
+          // 同步更新流式内容服务状态
+          if (project?.id) {
+            streamingContentService.setGeneratingStatus(project.id, false);
+            streamingContentService.setProjectData(project.id, {
+              progress: 0,
+              isGenerating: false,
+              reportContent: ''
+            });
+          }
+        }}
       />
     </div>
   );
