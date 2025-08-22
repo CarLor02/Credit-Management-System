@@ -44,17 +44,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const { addNotification } = useNotification();
   const { showConfirm } = useConfirm();
 
-  // 修复标题格式的辅助函数
-  const fixHeadingFormat = (content: string): string => {
-    return content
-      // 修复常见的标题格式问题
-      .replace(/^(#{1,6})\s*第([一二三四五六七八九十\d]+)[节章]\s*(.*)$/gm, '$1 第$2节 $3')
-      .replace(/^(#{1,6})\s*(\d+\.?\d*)\s*(.*)$/gm, '$1 $2 $3')
-      // 确保标题中的特殊字符正确处理
-      .replace(/^(#{1,6})\s*([^#\s].*?)(\s*)$/gm, '$1 $2')
-      // 移除标题末尾的多余空格
-      .replace(/^(#{1,6}\s+.*?)\s+$/gm, '$1');
-  };
+  // 注意：fixHeadingFormat 函数已被移除，因为预处理逻辑已简化
 
   // 简化的Markdown预处理，只处理关键问题
   const preprocessMarkdown = (content: string): string => {
@@ -579,7 +569,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       setWebsocketStatus('已重连');
       // 重新加入项目房间
       if (projectId) {
-        websocketService.joinProjectRoom(projectId);
+        const projectRoom = `project_${projectId}`;
+        websocketService.joinWorkflow(projectRoom);
       }
     };
 
