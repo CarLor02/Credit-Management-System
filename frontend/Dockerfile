@@ -13,11 +13,15 @@ COPY package.json pnpm-lock.yaml ./
 # 安装依赖（使用缓存）
 RUN pnpm install
 
-# 拷贝源代码
-COPY . .
+# 注意：不复制源代码，因为部署时会通过挂载方式提供
+# 这样可以实现代码热更新和实时同步
 
-# 构建项目（next.js）
-RUN pnpm build
+# 创建public目录，确保静态资源目录结构存在
+RUN mkdir -p public
+
+# 预先复制logo文件到public目录（作为备用）
+# 实际运行时可能会被挂载的代码覆盖
+COPY logo.jpg ./public/logo.jpg
 
 EXPOSE 3000
 

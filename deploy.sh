@@ -200,50 +200,27 @@ build_backend_base() {
         fi
     fi
 
-    print_message $YELLOW "正在构建后端基础镜像（仅依赖）..."
+    print_message $YELLOW "正在构建后端基础镜像（使用Dockerfile.backend）..."
 
-    # 创建临时 Dockerfile
-    cat > Dockerfile.backend.base << 'EOF'
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+    # 检查 Dockerfile.backend 是否存在
+    if [ ! -f "Dockerfile.backend" ]; then
+        print_message $RED "❌ Dockerfile.backend 文件不存在"
+        exit 1
+    fi
 
-RUN apt-get update && apt-get install -y python3 python3-pip && \
-    ln -sf /usr/bin/python3 /usr/bin/python && \
-    ln -sf /usr/bin/pip3 /usr/bin/pip
+    print_message $BLUE "  - 使用文件: Dockerfile.backend"
+    print_message $BLUE "  - 镜像标签: ${PROJECT_NAME}-backend-base:latest"
+    print_message $BLUE "  - 包含功能: 中文字体支持、logo文件、PDF生成"
 
-RUN apt-get install -y \
-    libglib2.0-0 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libgdk-pixbuf-2.0-0 \
-    libffi-dev \
-    shared-mime-info \
-    libcairo2 \
-    libcairo-gobject2
-
-WORKDIR /app
-
-COPY generated_backend/requirements.txt ./generated_backend/requirements.txt
-COPY OCR/requirements.txt ./OCR/requirements.txt
-
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r generated_backend/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install --no-cache-dir -r OCR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-
-# 复制 Gunicorn 配置文件
-COPY generated_backend/gunicorn_config.py ./generated_backend/gunicorn_config.py
-
-# 设置环境变量
-ENV FLASK_ENV=production
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-
-WORKDIR /app/generated_backend
-EOF
-
-    docker build -f Dockerfile.backend.base -t ${PROJECT_NAME}-backend-base:latest .
-    rm -f Dockerfile.backend.base
-    print_message $GREEN "✓ 后端基础镜像构建完成"
+    # 使用现有的 Dockerfile.backend 构建镜像
+    docker build -f Dockerfile.backend -t ${PROJECT_NAME}-backend-base:latest .
+    
+    if [ $? -eq 0 ]; then
+        print_message $GREEN "✓ 后端基础镜像构建完成"
+    else
+        print_message $RED "❌ 后端基础镜像构建失败"
+        exit 1
+    fi
 }
 
 # 构建前端基础镜像（仅包含依赖）
@@ -258,31 +235,27 @@ build_frontend_base() {
         fi
     fi
 
-    print_message $YELLOW "正在构建前端基础镜像（仅依赖）..."
+    print_message $YELLOW "正在构建前端基础镜像（使用frontend/Dockerfile）..."
 
-    # 创建临时 Dockerfile
-    cat > frontend/Dockerfile.base << 'EOF'
-FROM node:22.17.0
+    # 检查 frontend/Dockerfile 是否存在
+    if [ ! -f "frontend/Dockerfile" ]; then
+        print_message $RED "❌ frontend/Dockerfile 文件不存在"
+        exit 1
+    fi
 
-# 设置工作目录
-WORKDIR /app
+    print_message $BLUE "  - 使用文件: frontend/Dockerfile"
+    print_message $BLUE "  - 镜像标签: ${PROJECT_NAME}-frontend-base:latest"
+    print_message $BLUE "  - 包含功能: Next.js应用、logo静态资源"
 
-# 使用国内镜像加速依赖下载（可选）
-RUN npm install -g pnpm && \
-    npm config set registry https://registry.npmmirror.com
-
-# 拷贝依赖描述文件
-COPY package.json pnpm-lock.yaml ./
-
-# 安装依赖（使用缓存）
-RUN pnpm install
-
-EXPOSE 3000
-EOF
-
-    docker build -f frontend/Dockerfile.base -t ${PROJECT_NAME}-frontend-base:latest ./frontend
-    rm -f frontend/Dockerfile.base
-    print_message $GREEN "✓ 前端基础镜像构建完成"
+    # 使用现有的 frontend/Dockerfile 构建镜像
+    docker build -f frontend/Dockerfile -t ${PROJECT_NAME}-frontend-base:latest ./frontend
+    
+    if [ $? -eq 0 ]; then
+        print_message $GREEN "✓ 前端基础镜像构建完成"
+    else
+        print_message $RED "❌ 前端基础镜像构建失败"
+        exit 1
+    fi
 }
 
 # 启动Redis服务（高性能模式需要）

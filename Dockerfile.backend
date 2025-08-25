@@ -31,17 +31,21 @@ RUN apt-get install -y \
     fonts-wqy-microhei \
     fontconfig
 
-COPY generated_backend ./generated_backend
-COPY OCR ./OCR
-
-# 复制前端logo文件到容器中，解决HTML和PDF预览中logo无法显示的问题
-COPY frontend/logo.jpg ./frontend/logo.jpg
-
-# 确保环境配置文件被复制
-COPY generated_backend/.env.production ./generated_backend/.env.production
-
 # 更新字体缓存，确保中文字体正确加载
 RUN fc-cache -f -v
+
+# 创建必要的目录结构，为挂载做准备
+RUN mkdir -p /app/generated_backend /app/OCR /app/uploads /app/frontend
+
+# 复制前端logo文件到容器中（作为备用），解决HTML和PDF预览中logo无法显示的问题
+# 注意：实际运行时会通过挂载覆盖，这里只是确保容器结构完整
+COPY frontend/logo.jpg ./frontend/logo.jpg
+
+# 复制gunicorn配置文件，确保启动时可用
+COPY generated_backend/gunicorn_config.py ./generated_backend/gunicorn_config.py
+
+# 注意：不复制.env.production文件，因为它会通过挂载方式在运行时提供
+# 这样可以实现配置的动态更新
 
 WORKDIR /app/generated_backend
 
