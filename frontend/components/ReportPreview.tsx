@@ -36,6 +36,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [htmlLoading, setHtmlLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingHtml, setDownloadingHtml] = useState(false);
+  const [deletingReport, setDeletingReport] = useState(false);
   // hasStreamingContent 已删除，我们只依据 generating 状态
   const streamingContentRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
@@ -778,10 +781,10 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
   // 下载报告（HTML格式）
   const handleDownloadReport = async () => {
-    if (!projectId || loading) return;
+    if (!projectId || downloadingHtml) return;
 
     try {
-      setLoading(true);
+      setDownloadingHtml(true);
 
       const token = localStorage.getItem('auth_token');
       if (!token) {
@@ -826,16 +829,16 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       console.error('下载HTML报告失败:', error);
       addNotification(error instanceof Error ? error.message : '下载HTML报告失败，请稍后重试', 'error');
     } finally {
-      setLoading(false);
+      setDownloadingHtml(false);
     }
   };
 
   // 下载PDF报告
   const handleDownloadPDF = async () => {
-    if (!projectId || loading) return;
+    if (!projectId || downloadingPdf) return;
 
     try {
-      setLoading(true);
+      setDownloadingPdf(true);
 
       const token = localStorage.getItem('auth_token');
       if (!token) {
@@ -880,13 +883,13 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       console.error('下载PDF报告失败:', error);
       addNotification(error instanceof Error ? error.message : '下载PDF报告失败，请稍后重试', 'error');
     } finally {
-      setLoading(false);
+      setDownloadingPdf(false);
     }
   };
 
   // 删除报告
   const handleDeleteReport = async () => {
-    if (!projectId || loading) return;
+    if (!projectId || deletingReport) return;
 
     const confirmed = await showConfirm({
       title: '确认删除报告',
@@ -900,7 +903,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       return;
     }
 
-    setLoading(true);
+    setDeletingReport(true);
     try {
       const response = await apiClient.delete(`/projects/${projectId}/report`);
       if (response.success) {
@@ -914,7 +917,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       console.error('删除报告失败:', error);
       addNotification('删除报告失败，请稍后重试', 'error');
     } finally {
-      setLoading(false);
+      setDeletingReport(false);
     }
   };
 
@@ -1086,27 +1089,27 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
                 <button
                   onClick={handleDownloadPDF}
-                  disabled={loading}
+                  disabled={downloadingPdf}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    loading
+                    downloadingPdf
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}
                 >
                   <i className="ri-file-pdf-line mr-2"></i>
-                  下载PDF
+                  {downloadingPdf ? '下载中...' : '下载PDF'}
                 </button>
                 <button
                   onClick={handleDownloadReport}
-                  disabled={loading}
+                  disabled={downloadingHtml}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    loading
+                    downloadingHtml
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}
                 >
                   <i className="ri-download-line mr-2"></i>
-                  下载HTML
+                  {downloadingHtml ? '下载中...' : '下载HTML'}
                 </button>
               </>
             )}
@@ -1117,15 +1120,15 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
               {reportContent && (
                 <button
                   onClick={handleDeleteReport}
-                  disabled={loading}
+                  disabled={deletingReport}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    loading
+                    deletingReport
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-red-600 text-white hover:bg-red-700'
                   }`}
                 >
                   <i className="ri-delete-bin-line mr-2"></i>
-                  删除报告
+                  {deletingReport ? '删除中...' : '删除报告'}
                 </button>
               )}
               {/* 停止生成按钮 - 只在真正生成过程中显示 */}
