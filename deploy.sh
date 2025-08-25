@@ -330,6 +330,7 @@ start_backend() {
         -v $(pwd)/generated_backend:/app/generated_backend \
         -v $(pwd)/OCR:/app/OCR \
         -v $(pwd)/uploads:/app/uploads \
+        -v $(pwd)/frontend:/app/frontend \
         ${PROJECT_NAME}-backend-base:latest \
         gunicorn --config gunicorn_config.py app:app
 

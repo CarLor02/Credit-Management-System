@@ -13,6 +13,10 @@ PAGE_CONFIG = {
 # 字体设置
 FONT_CONFIG = {
     'primary_fonts': [
+        "Noto Sans CJK SC",
+        "Noto Serif CJK SC", 
+        "WenQuanYi Zen Hei",
+        "WenQuanYi Micro Hei",
         "PingFang SC",
         "Microsoft YaHei", 
         "SimHei",
@@ -20,6 +24,8 @@ FONT_CONFIG = {
         "sans-serif"
     ],
     'code_fonts': [
+        "Noto Sans Mono CJK SC",
+        "WenQuanYi Zen Hei Mono",
         "Consolas",
         "Monaco", 
         "Courier New",

@@ -23,11 +23,25 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r generated_backend/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     pip install --no-cache-dir -r OCR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
+# 安装中文字体支持，解决PDF乱码问题
+RUN apt-get install -y \
+    fonts-noto-cjk \
+    fonts-noto-cjk-extra \
+    fonts-wqy-zenhei \
+    fonts-wqy-microhei \
+    fontconfig
+
 COPY generated_backend ./generated_backend
 COPY OCR ./OCR
 
+# 复制前端logo文件到容器中，解决HTML和PDF预览中logo无法显示的问题
+COPY frontend/logo.jpg ./frontend/logo.jpg
+
 # 确保环境配置文件被复制
 COPY generated_backend/.env.production ./generated_backend/.env.production
+
+# 更新字体缓存，确保中文字体正确加载
+RUN fc-cache -f -v
 
 WORKDIR /app/generated_backend
 

@@ -55,6 +55,43 @@ class MarkdownToPDFConverter:
     def __init__(self):
         self.font_config = FontConfiguration()
         
+        # 初始化时尝试加载系统字体
+        self._ensure_fonts_available()
+        
+    def _ensure_fonts_available(self):
+        """确保中文字体可用"""
+        try:
+            import subprocess
+            import sys
+            
+            # 更新字体缓存
+            try:
+                subprocess.run(['fc-cache', '-f'], check=False, capture_output=True)
+                print("字体缓存已更新")
+            except Exception as e:
+                print(f"更新字体缓存失败: {e}")
+                
+            # 检查可用字体
+            try:
+                result = subprocess.run(['fc-list', ':lang=zh'], 
+                                      capture_output=True, text=True, check=False)
+                available_fonts = result.stdout
+                print(f"检测到中文字体: {len(available_fonts.splitlines())} 个")
+                
+                # 检查关键字体是否可用
+                key_fonts = ['Noto Sans CJK', 'WenQuanYi', 'Microsoft YaHei']
+                for font in key_fonts:
+                    if font in available_fonts:
+                        print(f"✓ 找到字体: {font}")
+                    else:
+                        print(f"✗ 缺少字体: {font}")
+                        
+            except Exception as e:
+                print(f"检查字体失败: {e}")
+                
+        except ImportError:
+            pass
+        
     def get_css_styles(self):
         """获取CSS样式，包含中文字体支持"""
         primary_fonts = ', '.join(f'"{font}"' for font in FONT_CONFIG['primary_fonts'])
@@ -262,22 +299,48 @@ class MarkdownToPDFConverter:
     def get_logo_base64(self):
         """获取logo的base64编码"""
         try:
-            # 查找logo文件的路径
+            # 查找logo文件的路径，优先查找容器中的路径
             logo_paths = [
-                'logo.jpg',
+                # Docker容器中的路径（通过COPY或挂载）
+                '/app/frontend/logo.jpg',
+                # 相对路径查找
                 'frontend/logo.jpg',
-                '../frontend/logo.jpg',
+                '../frontend/logo.jpg', 
+                'logo.jpg',
+                # 基于当前文件位置的路径
                 os.path.join(os.path.dirname(__file__), '../../frontend/logo.jpg'),
-                os.path.join(os.path.dirname(__file__), '../../../frontend/logo.jpg')
+                os.path.join(os.path.dirname(__file__), '../../../frontend/logo.jpg'),
+                # 绝对路径查找
+                '/app/logo.jpg'
             ]
 
             for logo_path in logo_paths:
                 if os.path.exists(logo_path):
+                    print(f"✓ 找到logo文件: {logo_path}")
                     with open(logo_path, 'rb') as f:
                         logo_data = f.read()
                         return base64.b64encode(logo_data).decode('utf-8')
 
-            # 如果找不到logo文件，返回空字符串
+            # 如果找不到logo文件，输出调试信息
+            print("✗ 未找到logo文件，尝试的路径:")
+            for path in logo_paths:
+                print(f"  - {path} (存在: {os.path.exists(path)})")
+            
+            # 列出当前工作目录和相关目录的内容
+            current_dir = os.getcwd()
+            print(f"当前工作目录: {current_dir}")
+            
+            # 检查相关目录
+            for check_dir in ['/app', '/app/frontend', current_dir, '../frontend']:
+                if os.path.exists(check_dir):
+                    try:
+                        files = os.listdir(check_dir)
+                        jpg_files = [f for f in files if f.endswith('.jpg') or f.endswith('.png')]
+                        if jpg_files:
+                            print(f"目录 {check_dir} 中的图片文件: {jpg_files}")
+                    except Exception as e:
+                        print(f"无法列出目录 {check_dir}: {e}")
+            
             return ""
         except Exception as e:
             print(f"获取logo失败: {e}")
