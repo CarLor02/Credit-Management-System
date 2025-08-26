@@ -41,6 +41,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   const [deletingReport, setDeletingReport] = useState(false);
   // hasStreamingContent 已删除，我们只依据 generating 状态
   const streamingContentRef = useRef<HTMLDivElement>(null);
+  const reportScrollContainerRef = useRef<HTMLDivElement>(null); // 添加正确的滚动容器引用
   const eventsRef = useRef<HTMLDivElement>(null);
   // 用于防止重复添加初始事件
   const hasAddedInitialEventRef = useRef(false);
@@ -403,19 +404,30 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
           const newContent = prev ? prev + processedContent : processedContent;
 
-          // 立即滚动，然后再延迟滚动确保DOM更新完成
-          const scrollToBottom = () => {
-            if (streamingContentRef.current) {
-              streamingContentRef.current.scrollTop = streamingContentRef.current.scrollHeight;
-            }
-          };
+          // 只在正在生成且有内容时才自动滚动（不检查htmlLoading和htmlContent，因为这些状态可能被闭包捕获）
+          const shouldAutoScroll = generating;
 
-          // 立即执行一次
-          scrollToBottom();
+          if (shouldAutoScroll) {
+            // 立即滚动，然后再延迟滚动确保DOM更新完成
+            const scrollToBottom = () => {
+              // 使用正确的滚动容器进行自动滚动
+              if (reportScrollContainerRef.current) {
+                reportScrollContainerRef.current.scrollTop = reportScrollContainerRef.current.scrollHeight;
+                console.log('📜 内容更新自动滚动到底部，scrollTop:', reportScrollContainerRef.current.scrollTop, 'scrollHeight:', reportScrollContainerRef.current.scrollHeight);
+              }
+            };
 
-          // 延迟执行确保DOM完全更新
-          setTimeout(scrollToBottom, 10);
-          setTimeout(scrollToBottom, 100);
+            // 立即执行一次
+            scrollToBottom();
+
+            // 延迟执行确保DOM完全更新
+            setTimeout(scrollToBottom, 10);
+            setTimeout(scrollToBottom, 100);
+            setTimeout(scrollToBottom, 200);
+          } else {
+            console.log('📜 非生成状态，跳过自动滚动');
+          }
+          
           return newContent;
         });
         return;
@@ -528,19 +540,30 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             streamingContentService.updateReportContent(projectId, newContent);
           }
 
-          // 立即滚动，然后再延迟滚动确保DOM更新完成
-          const scrollToBottom = () => {
-            if (streamingContentRef.current) {
-              streamingContentRef.current.scrollTop = streamingContentRef.current.scrollHeight;
-            }
-          };
+          // 只在正在生成且有内容时才自动滚动（不检查htmlLoading和htmlContent，因为这些状态可能被闭包捕获）
+          const shouldAutoScroll = generating;
 
-          // 立即执行一次
-          scrollToBottom();
+          if (shouldAutoScroll) {
+            // 立即滚动，然后再延迟滚动确保DOM更新完成
+            const scrollToBottom = () => {
+              // 使用正确的滚动容器进行自动滚动
+              if (reportScrollContainerRef.current) {
+                reportScrollContainerRef.current.scrollTop = reportScrollContainerRef.current.scrollHeight;
+                console.log('📜 工作流内容自动滚动到底部，scrollTop:', reportScrollContainerRef.current.scrollTop, 'scrollHeight:', reportScrollContainerRef.current.scrollHeight);
+              }
+            };
 
-          // 延迟执行确保DOM完全更新
-          setTimeout(scrollToBottom, 10);
-          setTimeout(scrollToBottom, 100);
+            // 立即执行一次
+            scrollToBottom();
+
+            // 延迟执行确保DOM完全更新
+            setTimeout(scrollToBottom, 10);
+            setTimeout(scrollToBottom, 100);
+            setTimeout(scrollToBottom, 200);
+          } else {
+            console.log('📜 非生成状态，跳过工作流内容自动滚动');
+          }
+          
           return newContent;
         });
         // 清除错误状态，确保内容能够显示
@@ -769,6 +792,34 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     
     return () => clearTimeout(timer);
   }, [isOpen, projectId, generating, fetchReportContent, fetchHtmlContent]);
+
+  // 自动滚动到底部 - 仅当显示"报告生成中，内容持续更新"时
+  useEffect(() => {
+    // 精确匹配显示"报告生成中，内容持续更新"的条件
+    const shouldShowGeneratingMessage = generating && reportContent && !htmlLoading && !htmlContent;
+    
+    if (shouldShowGeneratingMessage && reportScrollContainerRef.current) {
+      const scrollToBottom = () => {
+        if (reportScrollContainerRef.current) {
+          const container = reportScrollContainerRef.current;
+          container.scrollTop = container.scrollHeight;
+          console.log('📜 生成中自动滚动到底部，scrollTop:', container.scrollTop, 'scrollHeight:', container.scrollHeight);
+        }
+      };
+
+      // 多次延迟滚动，确保DOM完全更新后能正确滚动
+      const timeouts = [
+        setTimeout(scrollToBottom, 10),
+        setTimeout(scrollToBottom, 50),
+        setTimeout(scrollToBottom, 100),
+        setTimeout(scrollToBottom, 200)
+      ];
+      
+      return () => {
+        timeouts.forEach(id => clearTimeout(id));
+      };
+    }
+  }, [reportContent, generating, htmlLoading, htmlContent]);
 
   // 清理PDF URL
   useEffect(() => {
@@ -1253,7 +1304,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
                     <span className="text-xs text-gray-500">• HTML格式</span>
                   </div>
                 </div>
-                <div className="overflow-y-auto h-full" style={{ height: 'calc(100% - 50px)' }}>
+                <div className="overflow-y-auto h-full" style={{ height: 'calc(100% - 50px)' }} ref={reportScrollContainerRef}>
                   {htmlLoading ? (
                     <div className="text-center py-8">正在转换HTML格式...</div>
                   ) : htmlContent ? (
