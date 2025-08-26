@@ -22,7 +22,7 @@ interface ProjectDetailProps {
 }
 
 export default function ProjectDetail({ projectId }: ProjectDetailProps) {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('documents');
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
@@ -767,7 +767,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         
         {/* 头部面包屑 */}
         <div className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="max-w-7xl mx-auto px-6 py-3">
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <Link href="/projects" className="hover:text-blue-600">
                 项目管理
@@ -798,7 +798,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         
         {/* 头部面包屑 */}
         <div className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="max-w-7xl mx-auto px-6 py-3">
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <Link href="/projects" className="hover:text-blue-600">
                 项目管理
@@ -840,22 +840,10 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     );
   }
 
-  // 定义标签页
-  const tabs = project.type === 'enterprise'
-    ? [
-        { id: 'overview', name: '企业概览', icon: 'ri-building-line' },
-        { id: 'financial', name: '财务分析', icon: 'ri-bar-chart-line' },
-        { id: 'business', name: '经营状况', icon: 'ri-briefcase-line' },
-        { id: 'documents', name: '相关文档', icon: 'ri-file-list-line' },
-        { id: 'timeline', name: '时间轴', icon: 'ri-time-line' }
-      ]
-    : [
-        { id: 'overview', name: '个人概览', icon: 'ri-user-line' },
-        { id: 'credit', name: '信用记录', icon: 'ri-credit-card-line' },
-        { id: 'income', name: '收入分析', icon: 'ri-money-dollar-circle-line' },
-        { id: 'documents', name: '相关文档', icon: 'ri-file-list-line' },
-        { id: 'timeline', name: '时间轴', icon: 'ri-time-line' }
-      ];
+  // 定义标签页 - 只显示相关文档
+  const tabs = [
+    { id: 'documents', name: '相关文档', icon: 'ri-file-list-line' }
+  ];
 
 
 
@@ -1067,43 +1055,49 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Header />
       
       {/* 头部面包屑 */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-6 py-3">
           <div className="flex items-center space-x-2 text-sm text-gray-600">
             <Link href="/projects" className="hover:text-blue-600">
               项目管理
             </Link>
             <i className="ri-arrow-right-s-line"></i>
-            <span className="text-gray-900 font-medium">{project.name}</span>
+            <span className="text-gray-900 font-medium">{project?.name || '加载中...'}</span>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 animate-fadeIn">
+      <div className="max-w-7xl mx-auto px-6 py-6 animate-fadeIn flex-1 flex flex-col overflow-hidden">
         {/* 项目标题区域 */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-8">
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6 flex-shrink-0">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center space-x-3 mb-4">
-                <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(project.status)}`}>
-                  {getStatusText(project.status)}
-                </span>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getRiskColor(project.riskLevel)}`}>
-                  {getRiskText(project.riskLevel)}
-                </span>
+                <h1 className="text-2xl font-bold text-gray-900">{project?.name || '加载中...'}</h1>
+                {project && (
+                  <>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(project.status)}`}>
+                      {getStatusText(project.status)}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getRiskColor(project.riskLevel)}`}>
+                      {getRiskText(project.riskLevel)}
+                    </span>
+                  </>
+                )}
               </div>
               <p className="text-gray-600 mb-4">项目描述</p>
-              <div className="flex items-center space-x-6 text-sm text-gray-500">
-                <span>类型：{project.type === 'enterprise' ? '企业征信' : '个人征信'}</span>
-                <span>创建时间：{project.lastUpdate}</span>
-                <span>更新时间：{project.lastUpdate}</span>
-                <span>信用评分：<span className="font-semibold text-blue-600">{project.score}</span></span>
-              </div>
+              {project && (
+                <div className="flex items-center space-x-6 text-sm text-gray-500">
+                  <span>类型：{project.type === 'enterprise' ? '企业征信' : '个人征信'}</span>
+                  <span>创建时间：{project.lastUpdate}</span>
+                  <span>更新时间：{project.lastUpdate}</span>
+                  <span>信用评分：<span className="font-semibold text-blue-600">{project.score}</span></span>
+                </div>
+              )}
             </div>
             <div className="flex space-x-3 ml-6">
               <button
@@ -1167,19 +1161,19 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           <div className="mt-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-700">项目进度</span>
-              <span className="text-sm text-gray-500">{project.progress}%</span>
+              <span className="text-sm text-gray-500">{project?.progress || 0}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${project.progress}%` }}
+                style={{ width: `${project?.progress || 0}%` }}
               ></div>
             </div>
           </div>
         </div>
 
         {/* 标签页导航 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 flex flex-col overflow-hidden">
           <div className="border-b border-gray-200">
             <nav className="flex space-x-8 px-6">
               {tabs.map((tab) => (
@@ -1200,7 +1194,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           </div>
 
           {/* 标签页内容 */}
-          <div className="p-6">
+          <div className="p-6 flex-1 overflow-hidden">
             {activeTab === 'overview' && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
@@ -1625,8 +1619,9 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
             {/* 通用标签页 */}
             {activeTab === 'documents' && (
-              <div>
-                <div className="flex items-center justify-between mb-6">
+              <div className="h-full flex flex-col">
+                {/* 固定的头部区域 - 包含标题和上传按钮 */}
+                <div className="flex items-center justify-between mb-4 flex-shrink-0">
                   <h3 className="text-lg font-semibold text-gray-900">项目文档</h3>
                   <button 
                     onClick={handleAddDocument}
@@ -1636,96 +1631,100 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                     上传文档
                   </button>
                 </div>
-                {documentsLoading ? (
-                  <div className="flex items-center justify-center h-32">
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                      <p className="text-gray-600 text-sm">加载文档列表...</p>
+                
+                {/* 可滚动的文档列表区域 */}
+                <div className="flex-1 overflow-hidden">
+                  {documentsLoading ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                        <p className="text-gray-600 text-sm">加载文档列表...</p>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {documents.length > 0 ? documents.map((doc) => (
-                      <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-all duration-200 ease-in-out transform hover:scale-[1.01] hover:shadow-md">
-                        <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
-                          <i className={`${getFileIcon(doc.type)} text-lg`}></i>
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <h4 className="font-medium text-gray-800 truncate">{doc.name}</h4>
-                          </div>
-                          <div className="flex items-center text-sm text-gray-600 space-x-4">
-                            <span>{doc.project}</span>
-                            <span>•</span>
-                            <span>{doc.size}</span>
-                            <span>•</span>
-                            <span>{doc.uploadTime}</span>
+                  ) : (
+                    <div className="h-full overflow-y-auto pr-2 space-y-4">
+                      {documents.length > 0 ? documents.map((doc) => (
+                        <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-all duration-200 ease-in-out transform hover:scale-[1.01] hover:shadow-md">
+                          <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
+                            <i className={`${getFileIcon(doc.type)} text-lg`}></i>
                           </div>
                           
-                          {(doc.status === 'uploading' || doc.status === 'processing' || doc.status === 'uploading_to_kb' || doc.status === 'parsing_kb') && (
-                            <div className="mt-2 flex items-center space-x-2">
-                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600"></div>
-                              <span className="text-xs text-gray-600">
-                                {doc.status === 'uploading' && '正在上传...'}
-                                {doc.status === 'processing' && '正在处理文件...'}
-                                {doc.status === 'uploading_to_kb' && '正在上传到知识库...'}
-                                {doc.status === 'parsing_kb' && '正在知识库中解析...'}
-                              </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <h4 className="font-medium text-gray-800 truncate">{doc.name}</h4>
                             </div>
-                          )}
+                            <div className="flex items-center text-sm text-gray-600 space-x-4">
+                              <span>{doc.project}</span>
+                              <span>•</span>
+                              <span>{doc.size}</span>
+                              <span>•</span>
+                              <span>{doc.uploadTime}</span>
+                            </div>
+                            
+                            {(doc.status === 'uploading' || doc.status === 'processing' || doc.status === 'uploading_to_kb' || doc.status === 'parsing_kb') && (
+                              <div className="mt-2 flex items-center space-x-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600"></div>
+                                <span className="text-xs text-gray-600">
+                                  {doc.status === 'uploading' && '正在上传...'}
+                                  {doc.status === 'processing' && '正在处理文件...'}
+                                  {doc.status === 'uploading_to_kb' && '正在上传到知识库...'}
+                                  {doc.status === 'parsing_kb' && '正在知识库中解析...'}
+                                </span>
+                              </div>
+                            )}
+                            
+                            {(doc.status === 'failed' || doc.status === 'kb_parse_failed') && (
+                              <div className="mt-2 flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleRetryDocument(doc.id, doc.name)}
+                                  className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 transition-colors"
+                                >
+                                  重试处理
+                                </button>
+                              </div>
+                            )}
+                          </div>
                           
-                          {(doc.status === 'failed' || doc.status === 'kb_parse_failed') && (
-                            <div className="mt-2 flex items-center space-x-2">
+                          <div className="flex items-center space-x-3">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDocumentStatusColor(doc.status)}`}>
+                              {getDocumentStatusText(doc.status)}
+                            </span>
+                            <div className="flex items-center space-x-2">
                               <button
-                                onClick={() => handleRetryDocument(doc.id, doc.name)}
-                                className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 transition-colors"
+                                onClick={() => handleDownloadDocument(doc.id, doc.name)}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
+                                title="下载文档"
                               >
-                                重试处理
+                                <i className="ri-download-line text-gray-600"></i>
+                              </button>
+                              <button
+                                onClick={() => handlePreviewDocument(doc.id, doc.name)}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-100 transition-all duration-200 btn-hover-scale"
+                                title="预览文档"
+                                disabled={doc.status !== 'completed'}
+                              >
+                                <i className={`ri-eye-line ${doc.status === 'completed' ? 'text-blue-600' : 'text-gray-400'}`}></i>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDocument(doc.id)}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-100 transition-all duration-200 btn-hover-scale"
+                                title="删除文档"
+                              >
+                                <i className="ri-delete-bin-line text-red-600"></i>
                               </button>
                             </div>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center space-x-3">
-                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDocumentStatusColor(doc.status)}`}>
-                            {getDocumentStatusText(doc.status)}
-                          </span>
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleDownloadDocument(doc.id, doc.name)}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-all duration-200 btn-hover-scale"
-                              title="下载文档"
-                            >
-                              <i className="ri-download-line text-gray-600"></i>
-                            </button>
-                            <button
-                              onClick={() => handlePreviewDocument(doc.id, doc.name)}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-100 transition-all duration-200 btn-hover-scale"
-                              title="预览文档"
-                              disabled={doc.status !== 'completed'}
-                            >
-                              <i className={`ri-eye-line ${doc.status === 'completed' ? 'text-blue-600' : 'text-gray-400'}`}></i>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteDocument(doc.id)}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-100 transition-all duration-200 btn-hover-scale"
-                              title="删除文档"
-                            >
-                              <i className="ri-delete-bin-line text-red-600"></i>
-                            </button>
                           </div>
                         </div>
-                      </div>
-                    )) : (
-                      <div className="text-center py-8">
-                        <i className="ri-file-list-line text-4xl text-gray-300 mb-2"></i>
-                        <p className="text-gray-500">暂无文档</p>
-                        <p className="text-sm text-gray-400 mt-1">点击上传文档按钮添加项目相关文档</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      )) : (
+                        <div className="text-center py-8 h-full flex items-center justify-center flex-col">
+                          <i className="ri-file-list-line text-4xl text-gray-300 mb-2"></i>
+                          <p className="text-gray-500">暂无文档</p>
+                          <p className="text-sm text-gray-400 mt-1">点击上传文档按钮添加项目相关文档</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
