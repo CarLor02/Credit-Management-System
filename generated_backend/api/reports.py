@@ -373,7 +373,8 @@ def register_report_routes(app):
 
             current_app.logger.info(f"开始生成报告 - 公司: {company_name}, 知识库: {knowledge_name}, 项目ID: {project_id}")
 
-            # 更新项目报告状态为正在生成
+            # 更新项目状态为处理中，报告状态为正在生成
+            project.status = ProjectStatus.PROCESSING
             project.report_status = ReportStatus.GENERATING
             db.session.commit()
 

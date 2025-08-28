@@ -91,7 +91,6 @@ def register_stats_routes(app):
             completed_projects = Project.query.filter_by(status=ProjectStatus.COMPLETED).count()
             processing_projects = Project.query.filter_by(status=ProjectStatus.PROCESSING).count()
             collecting_projects = Project.query.filter_by(status=ProjectStatus.COLLECTING).count()
-            archived_projects = Project.query.filter_by(status=ProjectStatus.ARCHIVED).count()
             
             completion_rate = (completed_projects / total_projects * 100) if total_projects > 0 else 0
             
@@ -124,7 +123,6 @@ def register_stats_routes(app):
                     'completed': completed_projects,
                     'processing': processing_projects,
                     'collecting': collecting_projects,
-                    'archived': archived_projects,
                     'completion_rate': round(completion_rate, 1)
                 },
                 'documents': {

@@ -24,10 +24,9 @@ class ProjectType(enum.Enum):
 
 class ProjectStatus(enum.Enum):
     """项目状态枚举"""
-    COLLECTING = 'collecting'
-    PROCESSING = 'processing'
-    COMPLETED = 'completed'
-    ARCHIVED = 'archived'
+    COLLECTING = 'collecting'    # 资料收集中
+    PROCESSING = 'processing'    # 处理中
+    COMPLETED = 'completed'      # 已完成
 
 class Priority(enum.Enum):
     """优先级枚举"""

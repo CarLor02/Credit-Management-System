@@ -231,7 +231,7 @@ def register_project_routes(app):
                 project.category = data['category']
             if 'priority' in data and data['priority'] in ['low', 'medium', 'high']:
                 project.priority = Priority(data['priority'])
-            if 'status' in data and data['status'] in ['collecting', 'processing', 'completed', 'archived']:
+            if 'status' in data and data['status'] in ['collecting', 'processing', 'completed']:
                 project.status = ProjectStatus(data['status'])
             if 'score' in data:
                 project.score = data['score']

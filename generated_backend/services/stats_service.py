@@ -47,7 +47,6 @@ class StatsService:
         completed_projects = Project.query.filter_by(status=ProjectStatus.COMPLETED).count()
         processing_projects = Project.query.filter_by(status=ProjectStatus.PROCESSING).count()
         collecting_projects = Project.query.filter_by(status=ProjectStatus.COLLECTING).count()
-        archived_projects = Project.query.filter_by(status=ProjectStatus.ARCHIVED).count()
 
         # 文档统计
         total_documents = Document.query.count()
@@ -73,7 +72,6 @@ class StatsService:
             'completed_projects': completed_projects,
             'processing_projects': processing_projects,
             'collecting_projects': collecting_projects,
-            'archived_projects': archived_projects,
             'total_documents': total_documents,
             'completed_documents': completed_documents,
             'processing_documents': processing_documents,
