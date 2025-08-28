@@ -162,7 +162,7 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
               <option value="">请选择项目</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
-                  {project.name}
+                  {project.name} #{project.id}
                 </option>
               ))}
             </select>
@@ -177,7 +177,10 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
                   <i className="ri-folder-line text-blue-600"></i>
                 </div>
                 <div>
-                  <h4 className="font-medium text-gray-800">{selectedProjectData.name}</h4>
+                  <h4 className="font-medium text-gray-800">
+                    {selectedProjectData.name}
+                    <span className="ml-2 text-xs text-gray-500">#{selectedProjectData.id}</span>
+                  </h4>
                   <div className="flex items-center space-x-4 text-sm text-gray-600">
                     <span>类型: {selectedProjectData.type === 'enterprise' ? '企业' : '个人'}</span>
                     <span>•</span>

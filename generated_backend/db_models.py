@@ -215,7 +215,7 @@ class Project(db.Model):
             'progress': self.progress,
             'created_by': self.created_by,
             'assigned_to': self.assigned_to,
-            'documents': len(list(self.documents)),
+            'documents': self.documents.count(),  # 使用count()方法更高效
             'lastUpdate': self.updated_at.strftime('%Y-%m-%d'),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),

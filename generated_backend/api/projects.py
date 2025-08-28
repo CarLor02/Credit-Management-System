@@ -79,6 +79,21 @@ def register_project_routes(app):
             projects_data = []
             for project in projects:
                 project_dict = project.to_dict()
+                
+                # 根据用户权限重新计算文档数量
+                if current_user.role != UserRole.ADMIN:
+                    # 非管理员只能看到自己上传的文档或有权限访问的文档
+                    accessible_docs_count = Document.query.filter(
+                        Document.project_id == project.id
+                    ).filter(
+                        or_(
+                            Document.upload_by == current_user.id,
+                            project.created_by == current_user.id,
+                            project.assigned_to == current_user.id
+                        )
+                    ).count()
+                    project_dict['documents'] = accessible_docs_count
+                
                 projects_data.append(project_dict)
 
             # 直接返回项目数组，与mock格式完全一致
@@ -129,6 +144,14 @@ def register_project_routes(app):
             # 验证项目类型
             if data['type'] not in ['enterprise', 'individual']:
                 return jsonify({'success': False, 'error': '无效的项目类型'}), 400
+
+            # 检查项目名称是否已存在（同一用户下）
+            existing_project = Project.query.filter(
+                Project.name == data['name'],
+                Project.created_by == current_user.id
+            ).first()
+            if existing_project:
+                return jsonify({'success': False, 'error': '您已有同名项目，请使用不同的项目名称'}), 400
 
             # 创建项目
             project = Project(

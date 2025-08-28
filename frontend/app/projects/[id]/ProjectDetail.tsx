@@ -412,11 +412,20 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
             return;
           }
 
-          setProject(prev => prev ? {...prev, report_status: 'generated', progress: 100} : prev);
+          // 🔧 修复：报告生成完成时同时更新项目状态为已完成
+          setProject(prev => prev ? {
+            ...prev, 
+            report_status: 'generated', 
+            status: 'completed',  // 添加这一行，设置项目状态为已完成
+            progress: 100
+          } : prev);
+          
           // 更新流式内容服务状态
           if (project?.id) {
             streamingContentService.setGeneratingStatus(project.id, false);
           }
+          
+          console.log('🎉 项目状态已更新：report_status=generated, status=completed, progress=100');
         };
 
         // 监听报告生成错误事件
