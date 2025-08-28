@@ -473,6 +473,16 @@ def register_report_routes(app):
                     'company_name': company_name
                 }
 
+                # 对测试内容进行markdown后处理
+                try:
+                    current_app.logger.info("开始对测试报告内容进行后处理...")
+                    processed_mock_content = process_markdown_content(mock_content)
+                    current_app.logger.info("测试报告内容后处理完成")
+                    mock_content = processed_mock_content
+                except Exception as e:
+                    current_app.logger.error(f"测试报告内容后处理失败: {e}")
+                    # 即使后处理失败，仍然使用原始内容
+
                 # 保存报告到本地文件
                 file_path = save_report_to_file(company_name, mock_content, project_id)
                 current_app.logger.info(f"测试报告已保存到: {file_path}")
@@ -1137,7 +1147,7 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
         if workflow_run_id:
             workflow_events[workflow_run_id] = {
                 'events': events,
-                'content': full_content,
+                'content': full_content,  # 这里已经是处理后的内容
                 'metadata': metadata,
                 'timestamp': time.time(),
                 'company_name': company_name,
@@ -1408,6 +1418,17 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
         if project_id in active_workflows:
             del active_workflows[project_id]
             print(f"已清理项目 {project_id} 的活跃工作流")
+
+    # 对最终内容进行markdown后处理
+    if full_content:
+        try:
+            current_app.logger.info("开始对流式报告内容进行后处理...")
+            processed_content = process_markdown_content(full_content)
+            current_app.logger.info("流式报告内容后处理完成")
+            full_content = processed_content
+        except Exception as e:
+            current_app.logger.error(f"流式报告内容后处理失败: {e}")
+            # 即使后处理失败，仍然返回原始内容
 
     print(f"流式解析完成 - workflow_run_id: {workflow_run_id}, task_id: {task_id}, 事件数: {len(events)}, 内容长度: {len(full_content)}")
     return workflow_run_id, full_content, metadata, events, task_id

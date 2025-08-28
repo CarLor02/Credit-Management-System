@@ -32,19 +32,22 @@ class MarkdownPostProcessor:
             return markdown_content
             
         try:
-            # 1. 修复表格格式
-            content = self.fix_table_format(markdown_content)
+            # 1. 应用前端使用的正则表达式处理
+            content = self.apply_frontend_regex_processing(markdown_content)
             
-            # 2. 修复列表格式
+            # 2. 修复表格格式
+            content = self.fix_table_format(content)
+            
+            # 3. 修复列表格式
             content = self.fix_list_format(content)
             
-            # 3. 修复标题格式
+            # 4. 修复标题格式
             content = self.fix_heading_format(content)
             
-            # 4. 清理多余的空行
+            # 5. 清理多余的空行
             content = self.clean_extra_newlines(content)
             
-            # 5. 修复代码块格式
+            # 6. 修复代码块格式
             content = self.fix_code_block_format(content)
             
             self.logger.info("Markdown后处理完成")
@@ -53,6 +56,56 @@ class MarkdownPostProcessor:
         except Exception as e:
             self.logger.error(f"Markdown后处理失败: {str(e)}")
             return markdown_content  # 出错时返回原内容
+    
+    def apply_frontend_regex_processing(self, content: str) -> str:
+        """
+        应用前端使用的正则表达式处理逻辑
+        
+        处理逻辑包括：
+        1. 将 \\n 替换为换行符
+        2. 将 \r?\n 统一为 \n
+        3. 移除代码块标记
+        4. 在表格行前后添加换行符
+        5. 在表格分隔符行前后添加换行符
+        6. 在标题行前后添加换行符
+        7. 在 | 符号前后添加空格
+        8. 将多个连续换行符替换为最多2个换行符
+        
+        Args:
+            content: 原始内容
+            
+        Returns:
+            处理后的内容
+        """
+        if not content:
+            return content
+            
+        # 1. 将 \\n 替换为换行符
+        content = re.sub(r'\\n', '\n', content)
+        
+        # 2. 将 \r?\n 统一为 \n
+        content = re.sub(r'\r?\n', '\n', content)
+        
+        # 3. 移除代码块标记 ```[a-zA-Z]*\n? 和 ```
+        content = re.sub(r'```[a-zA-Z]*\n?', '', content)
+        content = re.sub(r'```', '', content)
+        
+        # 4. 在表格行前后添加换行符 (|...|)
+        content = re.sub(r'^(\|.*\|)$', r'\n\1\n', content, flags=re.MULTILINE)
+        
+        # 5. 在表格分隔符行前后添加换行符 (|---|)
+        content = re.sub(r'^(\|[\s-]+\|)$', r'\n\1\n', content, flags=re.MULTILINE)
+        
+        # 6. 在标题行前后添加换行符 (# 标题)
+        content = re.sub(r'^(\s*#{1,6}\s.*)$', r'\n\1\n', content, flags=re.MULTILINE)
+        
+        # 7. 在 | 符号前后添加空格
+        content = re.sub(r'\|', ' | ', content)
+        
+        # 8. 将多个连续换行符替换为最多2个换行符
+        content = re.sub(r'\n{3,}', '\n\n', content)
+        
+        return content
     
     def fix_table_format(self, content: str) -> str:
         """
