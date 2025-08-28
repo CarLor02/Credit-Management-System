@@ -52,14 +52,19 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
       }
     } else {
       // 没有流式数据时，使用项目的状态
-      setCurrentProgress(project.progress || 0);
+      // 如果项目已完成或报告已生成，进度应该是100%
+      let finalProgress = project.progress || 0;
+      if (project.status === 'completed' || project.report_status === 'generated') {
+        finalProgress = 100;
+      }
+      setCurrentProgress(finalProgress);
       setReportStatus(project.report_status || 'not_generated');
     }
 
     return () => {
       streamingContentService.removeListener(project.id, handleProgressUpdate);
     };
-  }, [project.id, project.progress, project.report_status]);
+  }, [project.id, project.progress, project.report_status, project.status]);
 
   // ESC键关闭弹窗
   useEffect(() => {

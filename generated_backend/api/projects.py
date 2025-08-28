@@ -75,23 +75,10 @@ def register_project_routes(app):
             total = query.count()
             projects = query.order_by(Project.updated_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
-            # 转换为字典列表，使用简化的格式与mock保持一致
+            # 转换为字典列表，使用模型的to_dict方法确保包含所有字段
             projects_data = []
             for project in projects:
-                project_dict = {
-                    'id': project.id,
-                    'name': project.name,
-                    'type': project.type.value.lower(),
-                    'status': project.status.value.lower(),
-                    'score': project.score,
-                    'riskLevel': project.risk_level.value.lower(),
-                    'lastUpdate': project.updated_at.strftime('%Y-%m-%d'),
-                    'documents': len(list(project.documents)),
-                    'progress': project.progress,
-                    # 知识库相关字段
-                    'dataset_id': project.dataset_id,
-                    'knowledge_base_name': project.knowledge_base_name
-                }
+                project_dict = project.to_dict()
                 projects_data.append(project_dict)
 
             # 直接返回项目数组，与mock格式完全一致

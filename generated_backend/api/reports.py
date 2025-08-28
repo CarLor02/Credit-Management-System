@@ -17,7 +17,7 @@ from websocket_handlers import (
 )
 
 # 导入数据库模型
-from db_models import Project, AnalysisReport, ReportType, ReportStatus
+from db_models import Project, AnalysisReport, ReportType, ReportStatus, ProjectStatus
 
 # 导入PDF转换服务
 from services.pdf_converter import convert_report_to_pdf, is_pdf_conversion_available
@@ -539,6 +539,9 @@ def register_report_routes(app):
                 if project:
                     project.report_status = ReportStatus.GENERATED
                     project.report_path = file_path
+                    # 报告生成完成，更新项目状态和进度
+                    project.status = ProjectStatus.COMPLETED
+                    project.progress = 100
                     db.session.commit()
 
                 # 通过WebSocket广播报告完成
