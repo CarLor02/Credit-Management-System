@@ -294,8 +294,12 @@ def register_report_routes(app):
             knowledge_name = data.get('knowledge_name')
             project_id = data.get('project_id')
 
-            current_app.logger.info(f"收到生成报告请求，参数: {data}")
-            current_app.logger.info(f"解析参数: dataset_id={dataset_id}, company_name={company_name}, knowledge_name={knowledge_name}, project_id={project_id}")
+            # 简化日志：只在调试模式下打印请求详情
+            if current_app.config.get('DEBUG', False):
+                current_app.logger.info(f"收到生成报告请求，参数: {data}")
+                current_app.logger.info(f"解析参数: dataset_id={dataset_id}, company_name={company_name}, knowledge_name={knowledge_name}, project_id={project_id}")
+            else:
+                current_app.logger.info(f"收到生成报告请求 - 公司: {company_name}, 项目ID: {project_id}")
 
             # 验证必要参数
             if not company_name:
@@ -1090,7 +1094,9 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
         api_key = current_app.config.get('REPORT_API_KEY', 'app-c8cKydhESsFxtG7QZvZkR5YU')
 
         current_app.logger.info(f"调用报告生成API (流式): {report_api_url}")
-        current_app.logger.info(f"使用公司名称: {company_name}, 知识库名称: {knowledge_name}")
+        # 简化日志：只在调试模式下打印详细信息
+        if current_app.config.get('DEBUG', False):
+            current_app.logger.info(f"使用公司名称: {company_name}, 知识库名称: {knowledge_name}")
 
         # 构建请求数据 - 使用streaming模式
         request_data = {
@@ -1104,7 +1110,9 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
             "conversation_id": ""
         }
 
-        current_app.logger.info(f"请求数据: {request_data}")
+        # 简化日志：只在调试模式下打印请求数据
+        if current_app.config.get('DEBUG', False):
+            current_app.logger.info(f"请求数据: {request_data}")
 
         response = requests.post(
             report_api_url,
@@ -1139,8 +1147,10 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
         # 使用解析方法处理流式响应，传递项目房间ID用于WebSocket广播
         workflow_run_id, full_content, metadata, events, task_id = parse_dify_streaming_response(response, company_name, project_id, project_room_id)
 
-        current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}, task_id: {task_id}")
-        current_app.logger.info(f"提取到的事件数量: {len(events)}")
+        # 简化日志：只在调试模式下打印详细信息
+        if current_app.config.get('DEBUG', False):
+            current_app.logger.info(f"流式响应解析完成，workflow_run_id: {workflow_run_id}, task_id: {task_id}")
+            current_app.logger.info(f"提取到的事件数量: {len(events)}")
         current_app.logger.info(f"内容长度: {len(full_content) if full_content is not None else 0}")
 
         # 存储流式数据到全局变量，供前端查询
@@ -1318,23 +1328,31 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
 
             # 检查是否是结束标记
             if data_str.strip() == '[DONE]':
-                print("收到结束标记 [DONE]")
+                # 简化日志：只在调试模式下打印结束标记
+                if current_app.config.get('DEBUG', False):
+                    print("收到结束标记 [DONE]")
                 break
 
             try:
                 # 解析 JSON 数据
                 data = json.loads(data_str)
-                print(f"解析的 JSON 数据: {json.dumps(data, ensure_ascii=False)[:500]}...")
+                # 简化日志：只在调试模式下打印完整JSON数据
+                if current_app.config.get('DEBUG', False):
+                    print(f"解析的 JSON 数据: {json.dumps(data, ensure_ascii=False)[:500]}...")
 
                 # 提取task_id（如果存在）
                 if 'task_id' in data and task_id is None:
                     task_id = data['task_id']
-                    print(f"提取到task_id: {task_id}")
+                    # 简化日志：只在调试模式下打印task_id
+                    if current_app.config.get('DEBUG', False):
+                        print(f"提取到task_id: {task_id}")
                     # 保存task_id到活跃工作流中
                     with workflow_lock:
                         if project_id in active_workflows:
                             active_workflows[project_id]['task_id'] = task_id
-                            print(f"已保存task_id到项目 {project_id}")
+                            # 简化日志：只在调试模式下打印保存信息
+                            if current_app.config.get('DEBUG', False):
+                                print(f"已保存task_id到项目 {project_id}")
 
                 # 提取生成的内容
                 content_chunk = None
@@ -1348,25 +1366,35 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                 if content_chunk is not None and content_chunk != "":
                     # 累积内容
                     full_content += content_chunk
-                    print(f"累积内容，当前总长度: {len(full_content)}")
-                    print(f"内容块详情: {repr(content_chunk[:100])}")  # 使用repr显示转义字符
+                    # 简化日志：每累积1000个字符才打印一次长度
+                    # 简化日志：只在调试模式下打印累积内容信息
+                    if current_app.config.get('DEBUG', False):
+                        if len(full_content) % 1000 < len(content_chunk):
+                            print(f"累积内容，当前总长度: {len(full_content)}")
+                        print(f"内容块详情: {repr(content_chunk[:100])}")
 
                     # 通过WebSocket广播内容到项目房间
                     try:
                         socketio = current_app.socketio
                         if project_room_id:
                             broadcast_workflow_content(socketio, project_room_id, content_chunk)
-                            print(f"已广播内容块到房间 {project_room_id}: {repr(content_chunk[:50])}")
+                            # 简化日志：只在调试模式下打印广播详情
+                            if current_app.config.get('DEBUG', False):
+                                print(f"已广播内容块到房间 {project_room_id}: {repr(content_chunk[:50])}")
                     except Exception as e:
-                        print(f"WebSocket内容广播失败: {e}")
+                        # 简化日志：只在调试模式下打印WebSocket广播失败详情
+                        if current_app.config.get('DEBUG', False):
+                            print(f"WebSocket内容广播失败: {e}")
 
                 # 提取事件信息
                 if 'event' in data:
                     event_type = data['event']
-                    print(f"提取到事件: {event_type}")
+                    # 简化日志：只在调试模式下打印事件提取信息
+                    if current_app.config.get('DEBUG', False):
+                        print(f"提取到事件: {event_type}")
 
-                    # 调试：打印节点事件的详细信息
-                    if event_type in ['node_started', 'node_finished']:
+                    # 调试：只在调试模式下打印节点事件的详细信息
+                    if event_type in ['node_started', 'node_finished'] and current_app.config.get('DEBUG', False):
                         print(f"📊 节点事件详情: {json.dumps(data, ensure_ascii=False, indent=2)}")
                         if 'data' in data:
                             print(f"📊 节点数据: title={data['data'].get('title')}, node_id={data['data'].get('node_id')}")
@@ -1382,7 +1410,9 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                         'parallel_branch_finished': 'parallel_branch_finished'
                     }.get(event_type, event_type)
 
-                    print(f"📤 广播事件: {mapped_event} 到房间: {project_room_id}")
+                    # 简化日志：只在调试模式下打印事件广播信息
+                    if current_app.config.get('DEBUG', False):
+                        print(f"📤 广播事件: {mapped_event} 到房间: {project_room_id}")
 
                     events.append(mapped_event)
                     sequence_number += 1
@@ -1393,15 +1423,21 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                         if project_room_id:
                             broadcast_workflow_event(socketio, project_room_id, mapped_event, data)
                     except Exception as e:
-                        print(f"WebSocket事件广播失败: {e}")
+                        # 简化日志：只在调试模式下打印WebSocket事件广播失败详情
+                        if current_app.config.get('DEBUG', False):
+                            print(f"WebSocket事件广播失败: {e}")
 
                 # 提取元数据
                 if 'metadata' in data:
                     metadata.update(data['metadata'])
-                    print(f"提取到元数据: {json.dumps(data['metadata'], ensure_ascii=False)[:100]}...")
+                    # 简化日志：只在调试模式下打印元数据信息
+                    if current_app.config.get('DEBUG', False):
+                        print(f"提取到元数据: {json.dumps(data['metadata'], ensure_ascii=False)[:100]}...")
 
             except json.JSONDecodeError as e:
-                print(f"JSON 解析错误: {e}, 原始数据: {data_str}")
+                # 简化日志：只在调试模式下打印JSON解析错误详情
+                if current_app.config.get('DEBUG', False):
+                    print(f"JSON 解析错误: {e}, 原始数据: {data_str}")
                 continue
 
     # 流式解析完成，广播完成事件到项目房间
@@ -1409,15 +1445,21 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
         socketio = current_app.socketio
         if project_room_id:
             broadcast_workflow_complete(socketio, project_room_id, full_content, project_id)
-            print(f"已广播完成事件到房间 {project_room_id}，最终内容长度: {len(full_content)}")
+            # 简化日志：只在调试模式下打印广播详情
+            if current_app.config.get('DEBUG', False):
+                print(f"已广播完成事件到房间 {project_room_id}，最终内容长度: {len(full_content)}")
     except Exception as e:
-        print(f"WebSocket完成事件广播失败: {e}")
+        # 简化日志：只在调试模式下打印WebSocket完成事件广播失败详情
+        if current_app.config.get('DEBUG', False):
+            print(f"WebSocket完成事件广播失败: {e}")
 
     # 清理活跃工作流（无论是正常完成还是被停止）
     with workflow_lock:
         if project_id in active_workflows:
             del active_workflows[project_id]
-            print(f"已清理项目 {project_id} 的活跃工作流")
+            # 简化日志：只在调试模式下打印清理信息
+            if current_app.config.get('DEBUG', False):
+                print(f"已清理项目 {project_id} 的活跃工作流")
 
     # 对最终内容进行markdown后处理
     if full_content:
@@ -1430,7 +1472,12 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
             current_app.logger.error(f"流式报告内容后处理失败: {e}")
             # 即使后处理失败，仍然返回原始内容
 
-    print(f"流式解析完成 - workflow_run_id: {workflow_run_id}, task_id: {task_id}, 事件数: {len(events)}, 内容长度: {len(full_content)}")
+    # 简化日志：只在调试模式下打印详细解析信息
+    if current_app.config.get('DEBUG', False):
+        print(f"流式解析完成 - workflow_run_id: {workflow_run_id}, task_id: {task_id}, 事件数: {len(events)}, 内容长度: {len(full_content)}")
+    else:
+        print(f"流式解析完成 - 内容长度: {len(full_content)}")
+    
     return workflow_run_id, full_content, metadata, events, task_id
 
 
