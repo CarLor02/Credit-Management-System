@@ -373,6 +373,13 @@ def register_report_routes(app):
 
             current_app.logger.info(f"开始生成报告 - 公司: {company_name}, 知识库: {knowledge_name}, 项目ID: {project_id}")
 
+            # 在启动任务前检查解析状态（仅在非测试环境下）
+            if dataset_id and not dataset_id.startswith('test_'):
+                parsing_complete = check_parsing_status(dataset_id)
+                if not parsing_complete:
+                    current_app.logger.error(f"项目 {project_id} 文档解析尚未完成")
+                    return jsonify({"success": False, "error": "文档解析尚未完成，请等待解析完成后再生成报告"}), 400
+
             # 更新项目状态为处理中，报告状态为正在生成
             project.status = ProjectStatus.PROCESSING
             project.report_status = ReportStatus.GENERATING
@@ -435,13 +442,7 @@ def register_report_routes(app):
         try:
             socketio = current_app.socketio
 
-            # 检查解析状态（仅在非测试环境下）
-            if dataset_id and not dataset_id.startswith('test_'):
-                parsing_complete = check_parsing_status(dataset_id)
-                if not parsing_complete:
-                    # 通过WebSocket广播错误
-                    broadcast_workflow_error(socketio, project_room_id, "文档解析尚未完成，请等待解析完成后再生成报告", project_id)
-                    return
+            # 注：解析状态检查已在主函数中完成，这里不再重复检查
 
             # 对于测试数据，返回模拟响应
             if dataset_id and dataset_id.startswith('test_'):
@@ -1193,7 +1194,7 @@ def call_report_generation_api_streaming(company_name, knowledge_name, project_i
         raise Exception(f"调用流式报告生成API失败: {error_msg}")
 
 
-def call_report_generation_api(company_name, knowledge_name):
+def call_report_generation_api(company_name, knowledge_name, project_id=None):
     """调用报告生成API - 阻塞模式（保持向后兼容）"""
     try:
         # 新API调用
