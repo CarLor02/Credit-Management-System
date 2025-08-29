@@ -93,8 +93,8 @@ class MarkdownPostProcessor:
         # 4. 在表格行前后添加换行符 (|...|)
         content = re.sub(r'^(\|.*\|)$', r'\n\1\n', content, flags=re.MULTILINE)
         
-        # 5. 在表格分隔符行前后添加换行符 (|---|)
-        content = re.sub(r'^(\|[\s-]+\|)$', r'\n\1\n', content, flags=re.MULTILINE)
+        # # 5. 在表格分隔符行前后添加换行符 (|---|)
+        # content = re.sub(r'^(\|[\s-]+\|)$', r'\n\1\n', content, flags=re.MULTILINE)
         
         # 6. 在标题行前后添加换行符 (# 标题)
         content = re.sub(r'^(\s*#{1,6}\s.*)$', r'\n\1\n', content, flags=re.MULTILINE)
