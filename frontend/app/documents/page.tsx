@@ -21,7 +21,7 @@ function DocumentsContent() {
 
   // 从URL参数获取项目ID并自动选择
   useEffect(() => {
-    const projectId = searchParams.get('project');
+    const projectId = searchParams.get('project_id');
     if (projectId) {
       setSelectedProject(projectId);
       // 项目数据会在ProjectSelector加载完成后通过onProjectChange回调设置
