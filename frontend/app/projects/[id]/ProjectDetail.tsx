@@ -362,9 +362,9 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       id: project.id,
       name: project.name,
       type: project.type,
-      description: '', // 需要后端提供此字段
-      category: 'other', // 需要后端提供此字段
-      priority: 'medium'
+      description: project.description || '',
+      category: project.category || 'other',
+      priority: project.priority || 'medium'
     };
   };
 

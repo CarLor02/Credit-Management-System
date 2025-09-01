@@ -17,6 +17,8 @@ export interface Project {
   documents: number;
   progress: number;
   description?: string;
+  category?: string;
+  priority?: 'low' | 'medium' | 'high';
   created_by?: number;
   assigned_to?: number;
   created_at?: string;
