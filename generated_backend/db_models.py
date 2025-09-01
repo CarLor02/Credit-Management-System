@@ -273,7 +273,7 @@ class Document(db.Model):
             'id': self.id,
             'name': self.name,
             'project': self.project.name if self.project else '',
-            'type': self.get_frontend_file_type(),
+            'type': self.file_type,  # 直接使用数据库中的原始值
             'size': self.format_file_size(),
             'status': self.status.value.lower(),  # 转换为小写
             'progress': self.progress,
@@ -286,22 +286,6 @@ class Document(db.Model):
             'processed_file_path': self.processed_file_path,
             'has_processed_file': bool(self.processed_file_path and os.path.exists(self.processed_file_path)) if self.processed_file_path else False
         }
-
-    def get_frontend_file_type(self):
-        """获取前端期望的文件类型"""
-        extension = self.file_type.lower()
-        if extension in ['pdf']:
-            return 'pdf'
-        elif extension in ['xls', 'xlsx']:
-            return 'excel'
-        elif extension in ['doc', 'docx']:
-            return 'word'
-        elif extension in ['jpg', 'jpeg', 'png', 'gif']:
-            return 'image'
-        elif extension in ['markdown']:
-            return 'markdown'
-        else:
-            return 'pdf'  # 默认返回pdf
 
     def format_file_size(self):
         """格式化文件大小"""

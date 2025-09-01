@@ -109,7 +109,7 @@ def register_document_routes(app):
                     'name': doc.name,
                     'project': doc.project.name if doc.project else '',
                     'project_id': doc.project_id,  # 添加项目ID
-                    'type': doc.get_frontend_file_type(),
+                    'type': doc.file_type,  # 直接使用数据库中的原始值
                     'size': doc.format_file_size(),
                     'status': doc.status.value.lower(),
                     'uploadTime': doc.created_at.strftime('%Y-%m-%d %H:%M'),
@@ -145,7 +145,7 @@ def register_document_routes(app):
                 'name': document.name,
                 'project': document.project.name if document.project else '',
                 'project_id': document.project_id,  # 添加项目ID
-                'type': document.get_frontend_file_type(),
+                'type': document.file_type,  # 直接使用数据库中的原始值
                 'size': document.format_file_size(),
                 'status': document.status.value.lower(),
                 'uploadTime': document.created_at.strftime('%Y-%m-%d %H:%M'),
@@ -293,7 +293,7 @@ def register_document_routes(app):
                     'name': document.name,
                     'project': project.name,
                     'project_id': project.id,  # 添加项目ID
-                    'type': document.get_frontend_file_type(),
+                    'type': document.file_type,  # 直接使用数据库中的原始值
                     'size': document.format_file_size(),
                     'status': 'uploading',
                     'uploadTime': document.created_at.strftime('%Y-%m-%d %H:%M'),
