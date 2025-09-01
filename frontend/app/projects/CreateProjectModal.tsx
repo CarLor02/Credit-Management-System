@@ -56,8 +56,23 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, editDat
 
     try {
       if (editData) {
-        // 更新项目逻辑（暂时不实现）
-        console.log('更新项目:', { ...editData, ...formData });
+        // 更新项目逻辑
+        const response = await projectService.updateProject(editData.id, {
+          name: formData.name,
+          description: formData.description,
+          category: formData.category,
+          priority: formData.priority as 'low' | 'medium' | 'high',
+          // 注意：type字段在后端模型中是不可变的，所以不包含在更新数据中
+        });
+
+        if (response.success) {
+          onClose();
+          if (onSuccess) {
+            onSuccess();
+          }
+        } else {
+          setError(response.error || '更新项目失败');
+        }
       } else {
         // 创建新项目
         const response = await projectService.createProject({
@@ -139,7 +154,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, editDat
                 征信类型 *
               </label>
               <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <label className={`flex items-center p-3 border rounded-lg transition-colors ${editData ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}`}>
                   <input
                     type="radio"
                     name="type"
@@ -147,13 +162,14 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, editDat
                     checked={formData.type === 'enterprise'}
                     onChange={handleInputChange}
                     className="mr-3"
+                    disabled={!!editData}
                   />
                   <div className="flex items-center">
                     <i className="ri-building-line text-blue-600 mr-2"></i>
                     <span className="text-sm font-medium">企业征信</span>
                   </div>
                 </label>
-                <label className="flex items-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <label className={`flex items-center p-3 border rounded-lg transition-colors ${editData ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}`}>
                   <input
                     type="radio"
                     name="type"
@@ -161,6 +177,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, editDat
                     checked={formData.type === 'individual'}
                     onChange={handleInputChange}
                     className="mr-3"
+                    disabled={!!editData}
                   />
                   <div className="flex items-center">
                     <i className="ri-user-line text-purple-600 mr-2"></i>

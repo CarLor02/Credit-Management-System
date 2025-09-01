@@ -43,9 +43,13 @@ export interface CreateProjectData {
  */
 export interface UpdateProjectData {
   name?: string;
+  description?: string;
+  category?: string;
+  priority?: 'low' | 'medium' | 'high';
   status?: 'collecting' | 'processing' | 'completed';
   score?: number;
   riskLevel?: 'low' | 'medium' | 'high';
+  progress?: number;
 }
 
 /**
