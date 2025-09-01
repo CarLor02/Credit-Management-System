@@ -16,6 +16,7 @@ import { Project } from '@/services/projectService';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { streamingContentService } from '@/services/streamingContentService';
+import { getFileIconByType } from '@/utils/fileIcons';
 
 interface ProjectDetailProps {
   projectId: string;
@@ -950,24 +951,6 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     }
   };
 
-  // 获取文件图标
-  const getFileIcon = (type: string) => {
-    switch (type) {
-      case 'pdf':
-        return 'ri-file-pdf-line text-red-600';
-      case 'excel':
-        return 'ri-file-excel-line text-green-600';
-      case 'word':
-        return 'ri-file-word-line text-blue-600';
-      case 'image':
-        return 'ri-image-line text-purple-600';
-      case 'markdown':
-        return 'ri-markdown-line text-orange-600';
-      default:
-        return 'ri-file-line text-gray-600';
-    }
-  };
-
   // 下载文档
   const handleDownloadDocument = async (id: number, name: string) => {
     try {
@@ -1668,10 +1651,12 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                     </div>
                   ) : (
                     <div className="h-full overflow-y-auto pr-2 space-y-4">
-                      {documents.length > 0 ? documents.map((doc) => (
+                      {documents.length > 0 ? documents.map((doc) => {
+                        const fileIcon = getFileIconByType(doc.type);
+                        return (
                         <div key={doc.id} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-all duration-200 ease-in-out transform hover:scale-[1.01] hover:shadow-md">
-                          <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
-                            <i className={`${getFileIcon(doc.type)} text-lg`}></i>
+                          <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${fileIcon.bg}`}>
+                            <i className={`${fileIcon.icon} ${fileIcon.color} text-lg`}></i>
                           </div>
                           
                           <div className="flex-1 min-w-0">
@@ -1740,7 +1725,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                             </div>
                           </div>
                         </div>
-                      )) : (
+                        );
+                      }) : (
                         <div className="text-center py-8 h-full flex items-center justify-center flex-col">
                           <i className="ri-file-list-line text-4xl text-gray-300 mb-2"></i>
                           <p className="text-gray-500">暂无文档</p>

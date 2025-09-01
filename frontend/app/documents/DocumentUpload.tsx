@@ -6,6 +6,7 @@ import { documentService } from '@/services/documentService';
 import { Project } from '@/services/projectService';
 import Portal from '@/components/Portal';
 import { useNotification } from '@/contexts/NotificationContext';
+import { getFileIconByFileName } from '@/utils/fileIcons';
 
 interface DocumentUploadProps {
   selectedProject: string;
@@ -163,35 +164,6 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const getFileIcon = (fileName: string) => {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-
-    switch (extension) {
-      case 'pdf':
-        return { icon: 'ri-file-pdf-line', color: 'text-red-600', bg: 'bg-red-100' };
-      case 'xlsx':
-      case 'xls':
-        return { icon: 'ri-file-excel-line', color: 'text-green-600', bg: 'bg-green-100' };
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif':
-      case 'bmp':
-      case 'webp':
-        return { icon: 'ri-image-line', color: 'text-purple-600', bg: 'bg-purple-100' };
-      case 'md':
-      case 'markdown':
-        return { icon: 'ri-markdown-line', color: 'text-blue-600', bg: 'bg-blue-100' };
-      case 'txt':
-        return { icon: 'ri-file-text-line', color: 'text-gray-600', bg: 'bg-gray-100' };
-      case 'doc':
-      case 'docx':
-        return { icon: 'ri-file-word-line', color: 'text-blue-600', bg: 'bg-blue-100' };
-      default:
-        return { icon: 'ri-file-line', color: 'text-gray-600', bg: 'bg-gray-100' };
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
@@ -295,7 +267,7 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
               {/* 文件列表 */}
               <div className="max-h-60 overflow-y-auto mb-6 border border-gray-200 rounded-lg">
                 {pendingFiles.map((file, index) => {
-                  const fileIcon = getFileIcon(file.name);
+                  const fileIcon = getFileIconByFileName(file.name);
                   return (
                     <div key={index} className="flex items-center justify-between p-3 border-b border-gray-100 last:border-b-0">
                       <div className="flex items-center space-x-3 flex-1 min-w-0">
