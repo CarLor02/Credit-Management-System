@@ -15,6 +15,7 @@ function DocumentsContent() {
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedProjectData, setSelectedProjectData] = useState<any>(null);
   const [documentListHeight, setDocumentListHeight] = useState(400);
+  const [isProjectSelectorLoaded, setIsProjectSelectorLoaded] = useState(false); // 新增状态跟踪项目选择器加载完成
   const projectSelectorRef = useRef<ProjectSelectorRef>(null);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
@@ -92,6 +93,8 @@ function DocumentsContent() {
               onProjectChange={(projectId, projectData) => {
                 setSelectedProject(projectId);
                 setSelectedProjectData(projectData || null);
+                // 标记项目选择器已加载完成
+                setIsProjectSelectorLoaded(true);
               }}
             />
             <DocumentUpload
@@ -124,13 +127,16 @@ function DocumentsContent() {
 
             {/* 文档列表 - 动态高度滑窗 */}
             <div style={{ height: `${documentListHeight}px` }}>
-              <DocumentList
-                activeTab={''} // 传空字符串，后端不做状态筛选
-                searchQuery={searchQuery}
-                selectedProject={selectedProject}
-                refreshTrigger={refreshTrigger}
-                onDocumentChange={handleDocumentChange}
-              />
+              {/* 只有当项目选择器加载完成时才渲染文档列表 */}
+              {isProjectSelectorLoaded && (
+                <DocumentList
+                  activeTab={''} // 传空字符串，后端不做状态筛选
+                  searchQuery={searchQuery}
+                  selectedProject={selectedProject}
+                  refreshTrigger={refreshTrigger}
+                  onDocumentChange={handleDocumentChange}
+                />
+              )}
             </div>
           </div>
         </div>
