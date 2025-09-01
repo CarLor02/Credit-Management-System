@@ -1893,10 +1893,19 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         <CreateProjectModal
           isOpen={showEditModal}
           onClose={() => setShowEditModal(false)}
-          onSuccess={() => {
+          onSuccess={async () => {
             setShowEditModal(false);
             // 重新加载项目数据
-            router.refresh();
+            try {
+              const response = await projectService.getProjectById(parseInt(projectId));
+              if (response.success && response.data) {
+                setProject(response.data);
+              }
+            } catch (error) {
+              console.error('Failed to refresh project data:', error);
+              // 如果直接获取数据失败，再尝试使用router.refresh()
+              router.refresh();
+            }
           }}
           editData={getEditData()}
         />
