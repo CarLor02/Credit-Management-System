@@ -72,6 +72,16 @@ const ProjectSelector = forwardRef<ProjectSelectorRef, ProjectSelectorProps>(({ 
     }
   }, [selectedProject, projects, onProjectChange]);
 
+  // 当项目列表加载完成时，如果已存在selectedProject，则触发回调
+  useEffect(() => {
+    if (projects.length > 0 && selectedProject) {
+      const projectData = projects.find(p => p.id.toString() === selectedProject);
+      if (projectData) {
+        onProjectChange(selectedProject, projectData);
+      }
+    }
+  }, [projects, selectedProject, onProjectChange]);
+
   const selectedProjectData = projects.find(p => p.id.toString() === selectedProject);
 
   // 重新构建知识库
