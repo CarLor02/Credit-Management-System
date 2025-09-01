@@ -368,6 +368,22 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     };
   };
 
+  // 处理编辑按钮点击事件
+  const handleEditClick = async () => {
+    try {
+      // 重新获取项目数据以确保是最新的
+      const response = await projectService.getProjectById(parseInt(projectId));
+      if (response.success && response.data) {
+        setProject(response.data);
+      }
+      setShowEditModal(true);
+    } catch (err) {
+      console.error('获取最新项目数据失败:', err);
+      // 即使获取最新数据失败，也仍然打开编辑弹窗
+      setShowEditModal(true);
+    }
+  };
+
   // 报告预览状态
   const [showReportPreview, setShowReportPreview] = useState(false);
 
@@ -1098,7 +1114,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                   </>
                 )}
               </div>
-              <p className="text-gray-600 mb-4">项目描述</p>
+              <p className="text-gray-600 mb-4">{project.description || '暂无项目描述'}</p>
               {project && (
                 <div className="flex items-center space-x-6 text-sm text-gray-500">
                   <span>类型：{project.type === 'enterprise' ? '企业征信' : '个人征信'}</span>
@@ -1110,7 +1126,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
             </div>
             <div className="flex space-x-3 ml-6">
               <button
-                onClick={() => setShowEditModal(true)}
+                onClick={handleEditClick}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
               >
                 <i className="ri-edit-line mr-2"></i>
