@@ -136,15 +136,22 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
   // 从流式内容服务加载数据
   useEffect(() => {
-    if (projectId) {
+    if (projectId && isOpen) {
       const streamingData = streamingContentService.getProjectData(projectId);
       if (streamingData) {
+        console.log('📄 恢复流式内容数据:', {
+          eventsCount: streamingData.events.length,
+          isGenerating: streamingData.isGenerating,
+          contentLength: streamingData.reportContent.length
+        });
         setStreamingEvents(streamingData.events);
         setGenerating(streamingData.isGenerating);
         if (streamingData.reportContent) {
           setReportContent(streamingData.reportContent);
         }
         // hasStreamingContent 已删除，不再使用
+      } else {
+        console.log('📄 没有找到流式内容数据');
       }
 
       // 添加监听器
@@ -163,7 +170,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         streamingContentService.removeListener(projectId, handleStreamingUpdate);
       };
     }
-  }, [projectId]);
+  }, [projectId, isOpen]);
 
   // 防抖和缓存相关状态 - 使用 ref 避免依赖项问题
   const lastFetchTimeRef = useRef<number>(0);
@@ -388,37 +395,12 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (eventType === 'content_generated' || eventType === 'markdown_content') {
         // 内容事件直接更新报告内容，并自动滚动
         setReportContent(prev => {
-          let processedContent = content
-                                .replace(/\\n/g, '\n')                           // 转义换行 → 真换行
-                                .replace(/\r?\n/g, '\n')                         // 统一换行符
-                                .replace(/```[a-zA-Z]*\n?/g, '')                 // 去掉 ```lang 标记
-                                .replace(/```/g, '')                             // 去掉结尾 ```
-                                // 表格块整体前后加换行，避免逐行加换行破坏表格
-                                .replace(/(\n?)(\|.*\|(?:\n\|.*\|)+)(\n?)/g, '\n$2\n')
-                                // 标题前后补换行
-                                .replace(/^(\s*#{1,6}\s.*)$/gm, '\n$1\n')
-                                // 给竖线加空格，保证对齐
-                                .replace(/\|/g, ' | ')
-                                // 避免连续空行过多
-                                .replace(/\n{3,}/g, '\n\n');
-          // 特殊处理：如果新内容以标题开始，确保前面有足够的换行符
-          const trimmedContent = processedContent.trim();
-          if (trimmedContent.match(/^#{1,6}\s/) || trimmedContent.match(/^第[一二三四五六七八九十\d]+[节章]/)) {
-            // 如果前面有内容且不是以换行结尾，添加双换行
-            if (prev && !prev.endsWith('\n\n')) {
-              if (prev.endsWith('\n')) {
-                processedContent = '\n' + processedContent;
-              } else {
-                processedContent = '\n\n' + processedContent;
-              }
-            }
-          }
+          // 🔧 修复：简化片段处理，只做基本的换行符处理，避免破坏完整内容格式
+          const processedContent = content
+            .replace(/\\n/g, '\n')     // 转义换行 → 真换行
+            .replace(/\r?\n/g, '\n');  // 统一换行符
 
-          // 如果内容看起来像标题但没有#号，添加###
-          if (trimmedContent.match(/^第[一二三四五六七八九十\d]+[节章]/) && !trimmedContent.startsWith('#')) {
-            processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/m, '$1### $2');
-          }
-
+          // 简单累积，保持原始格式，复杂的格式处理留给preprocessMarkdown函数
           const newContent = prev ? prev + processedContent : processedContent;
 
           // 只在正在生成且有内容时才自动滚动（不检查htmlLoading和htmlContent，因为这些状态可能被闭包捕获）
@@ -761,17 +743,17 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     if (!isOpen) {
       // 清除HTML内容缓存
       setHtmlContent('');
-      // 清除报告内容缓存
-      setReportContent('');
-      // 清除流式内容服务中的报告内容，但保留事件历史
-      if (projectId) {
-        streamingContentService.updateReportContent(projectId, '');
-      }
+      // 🔧 修复：不清除报告内容缓存，保持流式内容持久化
+      // setReportContent(''); // 注释掉，保持流式内容
+      // 🔧 修复：不清除流式内容服务中的报告内容，保持持久化
+      // if (projectId) {
+      //   streamingContentService.updateReportContent(projectId, '');
+      // }
       // 重置HTML内容获取标记，下次打开时重新获取
       hasLoadedHtmlContentRef.current = false;
       // 重置初始事件添加标记
       hasAddedInitialEventRef.current = false;
-      console.log('🧹 清除HTML和报告内容缓存并重置标记');
+      console.log('🧹 清除HTML内容缓存并重置标记（保持流式内容）');
     }
   }, [isOpen, projectId]);
 
