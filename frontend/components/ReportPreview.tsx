@@ -382,8 +382,19 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (eventType === 'content_generated' || eventType === 'markdown_content') {
         // 内容事件直接更新报告内容，并自动滚动
         setReportContent(prev => {
-          let processedContent = content.replace(/\\n/g, '\n').replace(/\r?\n/g, '\n').replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').replace(/^(\|.*\|)$/gm, '\n$1\n').replace(/^(\|[\s-]+\|)$/gm, '\n$1\n').replace(/^(\s*#{1,6}\s.*)$/gm, '\n$1\n').replace(/\|/g, ' | ').replace(/\n{3,}/g, '\n\n');
-
+          let processedContent = content
+                                .replace(/\\n/g, '\n')                           // 转义换行 → 真换行
+                                .replace(/\r?\n/g, '\n')                         // 统一换行符
+                                .replace(/```[a-zA-Z]*\n?/g, '')                 // 去掉 ```lang 标记
+                                .replace(/```/g, '')                             // 去掉结尾 ```
+                                // 表格块整体前后加换行，避免逐行加换行破坏表格
+                                .replace(/(\n?)(\|.*\|(?:\n\|.*\|)+)(\n?)/g, '\n$2\n')
+                                // 标题前后补换行
+                                .replace(/^(\s*#{1,6}\s.*)$/gm, '\n$1\n')
+                                // 给竖线加空格，保证对齐
+                                .replace(/\|/g, ' | ')
+                                // 避免连续空行过多
+                                .replace(/\n{3,}/g, '\n\n');
           // 特殊处理：如果新内容以标题开始，确保前面有足够的换行符
           const trimmedContent = processedContent.trim();
           if (trimmedContent.match(/^#{1,6}\s/) || trimmedContent.match(/^第[一二三四五六七八九十\d]+[节章]/)) {
