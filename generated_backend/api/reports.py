@@ -39,6 +39,110 @@ workflow_lock = threading.Lock()
 # 全局变量，用于存储每个工作流的事件和内容
 workflow_events = {}  # 格式: {workflow_run_id: {'events': [], 'content': '', 'metadata': {}}}
 
+# 导入Project模型以获取folder_uuid
+from db_models import Project
+
+# 添加删除非项目文件的函数
+def delete_non_project_files(dataset_id, project_id):
+    """删除知识库中所有非项目文件"""
+    try:
+        # 获取项目信息
+        project = Project.query.get(project_id)
+        if not project:
+            current_app.logger.error(f"项目 {project_id} 不存在")
+            return False
+        
+        # 从数据库中查询该项目的所有文件id
+        from db_models import Document
+        project_documents = Document.query.filter_by(project_id=project_id).all()
+        
+        # 构建项目文件id集合，包括rag_document_id
+        project_file_ids = set()
+        for doc in project_documents:
+            # 添加文档的id字段
+            if doc.rag_document_id:
+                project_file_ids.add(doc.rag_document_id)
+        
+        current_app.logger.info(f"项目 {project_id} 共有 {len(project_documents)} 个文档，文件id集合大小: {len(project_file_ids)}")
+        
+        # 获取知识库中的所有文档
+        RAG_API_BASE_URL = current_app.config.get('RAG_API_BASE_URL')
+        RAG_API_KEY = current_app.config.get('RAG_API_KEY')
+        
+        list_url = f"{RAG_API_BASE_URL}/api/v1/datasets/{dataset_id}/documents"
+        headers = {"Authorization": f"Bearer {RAG_API_KEY}"}
+        params = {"page_size": 100}
+        
+        list_res = requests.get(list_url, headers=headers, params=params, timeout=30)
+        list_res.raise_for_status()
+        list_res_json = list_res.json()
+        
+        if list_res_json.get("code") != 0:
+            raise Exception(f"查询文档列表失败: {list_res_json.get('message')}")
+        
+        docs = list_res_json.get("data", {}).get("docs", [])
+        
+        # 筛选出非项目文件并删除
+        deleted_count = 0
+        for doc in docs:
+            doc_id = doc.get("id")
+            doc_name = doc.get("name", "")
+            
+            # 检查文件名是否在项目文件名集合中
+            if doc_id not in project_file_ids:
+                # 删除非项目文件
+                delete_url = f"{RAG_API_BASE_URL}/api/v1/datasets/{dataset_id}/documents"
+                delete_data = {"ids": [doc_id]}
+                delete_res = requests.delete(delete_url, headers=headers, json=delete_data, timeout=30)
+                
+                if delete_res.status_code == 200:
+                    delete_res_json = delete_res.json()
+                    if delete_res_json.get("code") == 0:
+                        current_app.logger.info(f"成功删除非项目文件: {doc_name} (ID: {doc_id})")
+                        deleted_count += 1
+                    else:
+                        current_app.logger.error(f"删除非项目文件失败: {doc_name} (ID: {doc_id}), 错误: {delete_res_json.get('message')}")
+                else:
+                    current_app.logger.error(f"删除非项目文件请求失败: {doc_name} (ID: {doc_id}), 状态码: {delete_res.status_code}")
+        
+        current_app.logger.info(f"共删除 {deleted_count} 个非项目文件")
+        return True
+    
+    except Exception as e:
+        current_app.logger.error(f"删除非项目文件时发生错误: {e}")
+        return False
+
+
+def check_parsing_status(dataset_id, project_id=None):
+    """检查文档解析状态"""
+    try:
+        # 如果提供了project_id，先删除非项目文件
+        if project_id:
+            delete_non_project_files(dataset_id, project_id)
+        
+        # 真实检查：获取文档列表并检查解析状态
+        RAG_API_BASE_URL = current_app.config.get('RAG_API_BASE_URL')
+        RAG_API_KEY = current_app.config.get('RAG_API_KEY')
+
+        list_url = f"{RAG_API_BASE_URL}/api/v1/datasets/{dataset_id}/documents"
+        headers = {"Authorization": f"Bearer {RAG_API_KEY}"}
+        params = {"page_size": 100}
+
+        list_res = requests.get(list_url, headers=headers, params=params, timeout=30)
+        list_res.raise_for_status()
+        list_res_json = list_res.json()
+
+        if list_res_json.get("code") != 0:
+            raise Exception(f"查询文档列表失败: {list_res_json.get('message')}")
+
+        docs = list_res_json.get("data", {}).get("docs", [])
+        return all(doc.get("progress", 0.0) >= 1.0 for doc in docs)
+
+    except Exception as e:
+        current_app.logger.error(f"检查解析状态失败: {e}")
+        return False
+
+
 def register_report_routes(app):
     """注册报告相关路由"""
 
@@ -375,7 +479,7 @@ def register_report_routes(app):
 
             # 在启动任务前检查解析状态（仅在非测试环境下）
             if dataset_id and not dataset_id.startswith('test_'):
-                parsing_complete = check_parsing_status(dataset_id)
+                parsing_complete = check_parsing_status(dataset_id, project_id)
                 if not parsing_complete:
                     current_app.logger.error(f"项目 {project_id} 文档解析尚未完成")
                     return jsonify({"success": False, "error": "文档解析尚未完成，请等待解析完成后再生成报告"}), 400
@@ -1064,33 +1168,6 @@ def register_report_routes(app):
                 "error": f"下载HTML报告失败: {str(e)}"
             }), 500
 
-
-def check_parsing_status(dataset_id):
-    """检查文档解析状态"""
-    try:
-        # 真实检查：获取文档列表并检查解析状态
-        RAG_API_BASE_URL = current_app.config.get('RAG_API_BASE_URL')
-        RAG_API_KEY = current_app.config.get('RAG_API_KEY')
-
-        list_url = f"{RAG_API_BASE_URL}/api/v1/datasets/{dataset_id}/documents"
-        headers = {"Authorization": f"Bearer {RAG_API_KEY}"}
-        params = {"page_size": 100}
-
-        list_res = requests.get(list_url, headers=headers, params=params, timeout=30)
-        list_res.raise_for_status()
-        list_res_json = list_res.json()
-
-        if list_res_json.get("code") != 0:
-            raise Exception(f"查询文档列表失败: {list_res_json.get('message')}")
-
-        docs = list_res_json.get("data", {}).get("docs", [])
-        return all(doc.get("progress", 0.0) >= 1.0 for doc in docs)
-
-    except Exception as e:
-        current_app.logger.error(f"检查解析状态失败: {e}")
-        return False
-
-
 def call_report_generation_api_streaming(company_name, knowledge_name, project_id=None, project_room_id=None):
     """调用报告生成API - 流式模式"""
     try:
@@ -1307,7 +1384,7 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
     Returns:
         tuple: (workflow_run_id, full_content, metadata, events, task_id)
     """
-    workflow_run_id = f"workflow_{int(time.time())}"  # 新接口没有workflow_run_id，我们自己生成一个
+    workflow_run_id = f"workflow_{int(time.time())}"  # 新接口没有workflow_run_id， ourselves generate one
     full_content = ""
     metadata = {}
     events = []
