@@ -50,6 +50,31 @@ class DocumentStatus(enum.Enum):
     FAILED = 'failed'                          # 失败
     KB_PARSE_FAILED = 'kb_parse_failed'        # 知识库解析失败
 
+class DocumentLabel(enum.Enum):
+    """文档标签枚举 - 使用英文存储"""
+    QICHACHA = 'QICHACHA'                      # 企查查
+    INTRODUCTION = 'INTRODUCTION'              # 简介
+    BUSINESS_LICENSE = 'BUSINESS_LICENSE'      # 营业执照
+    FINANCIAL_STATEMENT = 'FINANCIAL_STATEMENT' # 财务报表
+    BALANCE_SHEET = 'BALANCE_SHEET'            # 资产负债表
+    PROFIT_STATEMENT = 'PROFIT_STATEMENT'      # 利润表
+    CASH_FLOW = 'CASH_FLOW'                    # 现金流量表
+    ENTERPRISE_CREDIT = 'ENTERPRISE_CREDIT'    # 企业征信
+    PERSONAL_CREDIT = 'PERSONAL_CREDIT'        # 法人征信
+
+# 文档标签中文名称映射
+DOCUMENT_LABEL_NAMES = {
+    DocumentLabel.QICHACHA: "企查查",
+    DocumentLabel.INTRODUCTION: "简介",
+    DocumentLabel.BUSINESS_LICENSE: "营业执照",
+    DocumentLabel.FINANCIAL_STATEMENT: "财务报表",
+    DocumentLabel.BALANCE_SHEET: "资产负债表",
+    DocumentLabel.PROFIT_STATEMENT: "利润表",
+    DocumentLabel.CASH_FLOW: "现金流量表",
+    DocumentLabel.ENTERPRISE_CREDIT: "企业征信",
+    DocumentLabel.PERSONAL_CREDIT: "法人征信"
+}
+
 class ReportStatus(enum.Enum):
     """报告状态枚举"""
     NOT_GENERATED = 'not_generated'            # 未生成
@@ -251,6 +276,9 @@ class Document(db.Model):
     processing_result = db.Column(db.Text)
     error_message = db.Column(db.Text)
     
+    # 文档标签字段
+    label = db.Column(db.Enum(DocumentLabel), nullable=True)
+    
     # 新增的文档处理相关字段
     processed_file_path = db.Column(db.String(500))  # 处理后的文件路径
     processing_started_at = db.Column(db.DateTime)   # 处理开始时间
@@ -280,6 +308,8 @@ class Document(db.Model):
             'uploadTime': self.created_at.strftime('%Y-%m-%d %H:%M'),
             'upload_by': self.upload_by,
             'error_message': self.error_message,
+            'label': DOCUMENT_LABEL_NAMES.get(self.label) if self.label else None,  # 返回中文标签名称
+            'label_code': self.label.value if self.label else None,  # 同时返回英文代码
             # 新增处理相关信息
             'processing_started_at': self.processing_started_at.isoformat() if self.processing_started_at else None,
             'processed_at': self.processed_at.isoformat() if self.processed_at else None,

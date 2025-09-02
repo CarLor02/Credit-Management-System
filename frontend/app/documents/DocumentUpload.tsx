@@ -1,8 +1,7 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
-import { documentService } from '@/services/documentService';
+import { documentService, DOCUMENT_LABELS, DocumentLabelType } from '@/services/documentService';
 import { Project } from '@/services/projectService';
 import Portal from '@/components/Portal';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -14,12 +13,17 @@ interface DocumentUploadProps {
   onSuccess?: () => void;
 }
 
+interface FileWithLabel {
+  file: File;
+  label: DocumentLabelType | '';
+}
+
 export default function DocumentUpload({ selectedProject, selectedProjectData, onSuccess }: DocumentUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<FileWithLabel[]>([]);
   const { addNotification } = useNotification();
 
   // ESC键关闭弹窗
@@ -85,11 +89,31 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
     }
 
     setError(null);
-    setPendingFiles(files);
+    // 将文件转换为带label的格式，默认label为空
+    const filesWithLabel = files.map(file => ({
+      file,
+      label: '' as DocumentLabelType | ''
+    }));
+    setPendingFiles(filesWithLabel);
     setShowConfirmModal(true);
   };
 
+  const handleLabelChange = (index: number, label: DocumentLabelType | '') => {
+    setPendingFiles(prev => 
+      prev.map((item, i) => 
+        i === index ? { ...item, label } : item
+      )
+    );
+  };
+
   const handleConfirmUpload = async () => {
+    // 检查是否所有文件都选择了label
+    const hasEmptyLabel = pendingFiles.some(item => !item.label);
+    if (hasEmptyLabel) {
+      setError('请为所有文件选择标签');
+      return;
+    }
+
     setIsUploading(true);
     setShowConfirmModal(false);
 
@@ -100,7 +124,7 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
       }
 
       // 上传每个文件
-      for (const file of pendingFiles) {
+      for (const { file, label } of pendingFiles) {
         // 确定文件类型
         const extension = file.name.split('.').pop()?.toLowerCase();
         let fileType: 'pdf' | 'excel' | 'word' | 'image' | 'markdown' = 'pdf';
@@ -119,7 +143,8 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
           project: selectedProjectData.name,
           project_id: selectedProjectData.id,  // 添加项目ID
           type: fileType,
-          file: file
+          file: file,
+          label: label as DocumentLabelType  // 添加label
         });
 
         if (!response.success) {
@@ -249,7 +274,7 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
             }}
           >
             <div
-              className="bg-white rounded-xl p-6 max-w-lg w-full shadow-xl animate-fadeIn"
+              className="bg-white rounded-xl p-6 max-w-2xl w-full shadow-xl animate-fadeIn"
               style={{
                 maxHeight: '90vh',
                 overflow: 'auto'
@@ -261,26 +286,49 @@ export default function DocumentUpload({ selectedProject, selectedProjectData, o
               </div>
               <h3 className="text-lg font-medium text-gray-800 text-center mb-2">确认上传文件</h3>
               <p className="text-gray-600 text-center mb-4">
-                您选择了 <span className="font-medium">{pendingFiles.length}</span> 个文件，确认上传到项目 &ldquo;<span className="font-medium">{selectedProjectData?.name}</span>&rdquo; 吗？
+                您选择了 <span className="font-medium">{pendingFiles.length}</span> 个文件，请为每个文件选择对应的标签，然后确认上传到项目 &ldquo;<span className="font-medium">{selectedProjectData?.name}</span>&rdquo;
               </p>
 
               {/* 文件列表 */}
               <div className="max-h-60 overflow-y-auto mb-6 border border-gray-200 rounded-lg">
-                {pendingFiles.map((file, index) => {
-                  const fileIcon = getFileIconByFileName(file.name);
+                {pendingFiles.map((item, index) => {
+                  const fileIcon = getFileIconByFileName(item.file.name);
                   return (
-                    <div key={index} className="flex items-center justify-between p-3 border-b border-gray-100 last:border-b-0">
-                      <div className="flex items-center space-x-3 flex-1 min-w-0">
-                        <div className={`w-8 h-8 flex items-center justify-center rounded ${fileIcon.bg}`}>
+                    <div key={index} className="p-4 border-b border-gray-100 last:border-b-0">
+                      <div className="flex items-start space-x-3">
+                        {/* 文件图标 */}
+                        <div className={`w-8 h-8 flex items-center justify-center rounded flex-shrink-0 ${fileIcon.bg}`}>
                           <i className={`${fileIcon.icon} ${fileIcon.color}`}></i>
                         </div>
+                        
+                        {/* 文件信息 */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate" title={file.name}>
-                            {file.name}
+                          <p className="text-sm font-medium text-gray-800 truncate" title={item.file.name}>
+                            {item.file.name}
                           </p>
-                          <p className="text-xs text-gray-500">
-                            {formatFileSize(file.size)}
+                          <p className="text-xs text-gray-500 mb-2">
+                            {formatFileSize(item.file.size)}
                           </p>
+                          
+                          {/* 标签选择 */}
+                          <div className="space-y-1">
+                            <label className="block text-xs font-medium text-gray-700">
+                              选择文档标签 <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={item.label}
+                              onChange={(e) => handleLabelChange(index, e.target.value as DocumentLabelType | '')}
+                              className="w-full text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              disabled={isUploading}
+                            >
+                              <option value="">请选择标签</option>
+                              {DOCUMENT_LABELS.map((labelOption) => (
+                                <option key={labelOption.value} value={labelOption.value}>
+                                  {labelOption.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       </div>
                     </div>

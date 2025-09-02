@@ -175,6 +175,7 @@ class KnowledgeBaseService:
             db.session.commit()
             
             # 生成正确的文件名 - 确保是.md扩展名
+            # 文档名已经包含了中文前缀，不需要再次添加
             base_name = os.path.splitext(document.name)[0]  # 去掉原始扩展名
             md_filename = f"{base_name}.md"
             

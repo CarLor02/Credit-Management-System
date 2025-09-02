@@ -104,16 +104,22 @@ def register_document_routes(app):
             # 转换为字典列表，使用简化的格式与mock保持一致
             documents_data = []
             for doc in documents:
+                # 获取标签的中文显示名称
+                from db_models import DOCUMENT_LABEL_NAMES
+                label_display = DOCUMENT_LABEL_NAMES.get(doc.label) if doc.label else None
+                
                 doc_dict = {
                     'id': doc.id,
-                    'name': doc.name,
+                    'name': doc.original_filename,  # 使用原始文件名显示
                     'project': doc.project.name if doc.project else '',
                     'project_id': doc.project_id,  # 添加项目ID
                     'type': doc.file_type,  # 直接使用数据库中的原始值
                     'size': doc.format_file_size(),
                     'status': doc.status.value.lower(),
                     'uploadTime': doc.created_at.strftime('%Y-%m-%d %H:%M'),
-                    'progress': doc.progress
+                    'progress': doc.progress,
+                    'label': label_display,  # 返回中文标签显示
+                    'label_code': doc.label.value if doc.label else None  # 同时返回英文代码
                 }
                 documents_data.append(doc_dict)
 
@@ -140,16 +146,21 @@ def register_document_routes(app):
                     return jsonify({'error': '您没有权限访问此文档'}), 403
 
             # 使用简化的格式与mock保持一致
+            from db_models import DOCUMENT_LABEL_NAMES
+            label_display = DOCUMENT_LABEL_NAMES.get(document.label) if document.label else None
+            
             document_data = {
                 'id': document.id,
-                'name': document.name,
+                'name': document.original_filename,  # 使用原始文件名显示
                 'project': document.project.name if document.project else '',
                 'project_id': document.project_id,  # 添加项目ID
                 'type': document.file_type,  # 直接使用数据库中的原始值
                 'size': document.format_file_size(),
                 'status': document.status.value.lower(),
                 'uploadTime': document.created_at.strftime('%Y-%m-%d %H:%M'),
-                'progress': document.progress
+                'progress': document.progress,
+                'label': label_display,  # 返回中文标签显示
+                'label_code': document.label.value if document.label else None  # 同时返回英文代码
             }
 
             # 直接返回文档数据，与mock格式完全一致
@@ -200,6 +211,7 @@ def register_document_routes(app):
             project_id = request.form.get('project_id')
             project_name = request.form.get('project')  # 保留用于兼容性
             document_name = request.form.get('name', file.filename)
+            label = request.form.get('label')  # 获取label参数
 
             # 优先使用project_id，如果没有则使用project_name（向后兼容）
             if project_id:
@@ -259,9 +271,44 @@ def register_document_routes(app):
             # 获取文件信息
             file_size = os.path.getsize(file_path)
             
+            # 处理label参数
+            document_label = None
+            if label:
+                try:
+                    from db_models import DocumentLabel, DOCUMENT_LABEL_NAMES
+                    # 直接将前端传来的英文值转换为枚举
+                    if hasattr(DocumentLabel, label):
+                        document_label = getattr(DocumentLabel, label)
+                        current_app.logger.info(f"找到文档标签: {label} -> {document_label}")
+                    else:
+                        # 如果传来的是中文，通过映射找到对应的枚举
+                        for enum_item in DocumentLabel:
+                            if DOCUMENT_LABEL_NAMES.get(enum_item) == label:
+                                document_label = enum_item
+                                current_app.logger.info(f"通过中文标签找到枚举: {label} -> {document_label}")
+                                break
+                        if not document_label:
+                            current_app.logger.warning(f"未找到匹配的文档标签: {label}")
+                except Exception as e:
+                    current_app.logger.warning(f"处理文档标签失败: {e}")
+            
+            # 如果有label，修改document_name添加中文前缀
+            final_document_name = document_name
+            if document_label:
+                from db_models import DOCUMENT_LABEL_NAMES
+                chinese_label = DOCUMENT_LABEL_NAMES.get(document_label)
+                if chinese_label:
+                    label_prefix = chinese_label + "_"
+                    # 检查是否已经有前缀了（避免重复添加）
+                    if not document_name.startswith(label_prefix):
+                        final_document_name = label_prefix + document_name
+                    current_app.logger.info(f"添加中文标签前缀: {chinese_label} -> {final_document_name}")
+                else:
+                    current_app.logger.warning(f"无法找到标签的中文名称: {document_label}")
+            
             # 创建文档记录 - 初始状态为UPLOADING
             document = Document(
-                name=document_name,
+                name=final_document_name,  # 使用添加了label前缀的文件名
                 original_filename=original_filename,  # 使用原始文件名
                 file_path=file_path,
                 file_size=file_size,
@@ -270,7 +317,8 @@ def register_document_routes(app):
                 project_id=project.id,
                 status=DocumentStatus.UPLOADING,  # 初始状态为上传中
                 progress=0,
-                upload_by=current_user.id  # 使用当前用户ID
+                upload_by=current_user.id,  # 使用当前用户ID
+                label=document_label  # 添加label字段
             )
             
             db.session.add(document)

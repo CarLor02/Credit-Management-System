@@ -8,7 +8,7 @@ import { apiClient, ApiResponse } from './api';
 // 文档接口定义
 export interface Document {
   id: number;
-  name: string;
+  name: string;  // 现在对应 original_filename
   project: string;
   project_id: number;
   type: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
@@ -16,6 +16,41 @@ export interface Document {
   status: 'uploading' | 'processing' | 'uploading_to_kb' | 'parsing_kb' | 'completed' | 'failed' | 'kb_parse_failed';
   uploadTime: string;
   progress: number;
+  label?: string;  // 中文标签显示
+  label_code?: string;  // 英文标签代码
+}
+
+/**
+ * 文档标签选项 - 显示中文，值为英文枚举
+ */
+export const DOCUMENT_LABELS = [
+  { value: 'QICHACHA', label: '企查查' },
+  { value: 'INTRODUCTION', label: '简介' },
+  { value: 'BUSINESS_LICENSE', label: '营业执照' },
+  { value: 'FINANCIAL_STATEMENT', label: '财务报表' },
+  { value: 'BALANCE_SHEET', label: '资产负债表' },
+  { value: 'PROFIT_STATEMENT', label: '利润表' },
+  { value: 'CASH_FLOW', label: '现金流量表' },
+  { value: 'ENTERPRISE_CREDIT', label: '企业征信' },
+  { value: 'PERSONAL_CREDIT', label: '法人征信' },
+] as const;
+
+export type DocumentLabelType = typeof DOCUMENT_LABELS[number]['value'];
+
+/**
+ * 获取标签的中文显示名称
+ */
+export function getLabelDisplayName(labelCode: string): string {
+  const label = DOCUMENT_LABELS.find(item => item.value === labelCode);
+  return label ? label.label : labelCode;
+}
+
+/**
+ * 根据中文名称获取标签代码
+ */
+export function getLabelCodeByName(labelName: string): string | undefined {
+  const label = DOCUMENT_LABELS.find(item => item.label === labelName);
+  return label ? label.value : undefined;
 }
 
 /**
@@ -27,6 +62,7 @@ export interface UploadDocumentData {
   project_id: number;
   type: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   file: File;
+  label?: DocumentLabelType;  // 添加label字段
 }
 
 /**
@@ -95,6 +131,11 @@ class DocumentService {
       formData.append('project', data.project);
       formData.append('project_id', data.project_id.toString());
       formData.append('type', data.type);
+      
+      // 添加label字段
+      if (data.label) {
+        formData.append('label', data.label);
+      }
 
       const token = localStorage.getItem('auth_token');
       const headers: Record<string, string> = {};
