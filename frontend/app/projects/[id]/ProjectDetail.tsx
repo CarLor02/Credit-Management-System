@@ -517,8 +517,26 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     try {
       const response = await apiClient.delete(`/projects/${project.id}/report`);
       if (response.success) {
-        // 更新项目状态为未生成
-        setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
+        // 重新获取项目信息以获取最新的状态和进度
+        const projectResponse = await projectService.getProject(project.id);
+        if (projectResponse.success && projectResponse.data) {
+          // 更新项目状态为删除报告后的状态（COLLECTING + 重新计算的进度）
+          const updatedProject = projectResponse.data;
+          setProject(prev => prev ? {
+            ...prev, 
+            report_status: 'not_generated',
+            status: updatedProject.status,     // 应该是 'collecting'
+            progress: updatedProject.progress  // 重新计算的进度
+          } : prev);
+        } else {
+          // 如果获取失败，至少更新报告状态
+          setProject(prev => prev ? {
+            ...prev, 
+            report_status: 'not_generated',
+            status: 'collecting',  // 默认重置为收集中
+            progress: 0           // 默认进度
+          } : prev);
+        }
         return true;
       } else {
         console.error('删除报告失败:', response.error);
@@ -1938,23 +1956,63 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         onClose={handleCloseReportPreview}
         companyName={project?.name || ''}
         projectId={project?.id || 0}
-        onReportDeleted={() => {
-          // 报告删除后的回调，更新项目状态
-          console.log('📄 报告删除回调，更新项目状态');
-          setProject(prev => prev ? {
-            ...prev,
-            report_status: 'not_generated',
-            progress: 0
-          } : prev);
-
-          // 同步更新流式内容服务状态
+        onReportDeleted={async () => {
+          // 报告删除后的回调，重新获取项目最新状态
+          console.log('📄 报告删除回调，重新获取项目状态');
+          
           if (project?.id) {
-            streamingContentService.setGeneratingStatus(project.id, false);
-            streamingContentService.setProjectData(project.id, {
-              progress: 0,
-              isGenerating: false,
-              reportContent: ''
-            });
+            try {
+              // 重新获取项目信息以获取删除报告后的最新状态和进度
+              const projectResponse = await projectService.getProject(project.id);
+              if (projectResponse.success && projectResponse.data) {
+                const updatedProject = projectResponse.data;
+                setProject(prev => prev ? {
+                  ...prev,
+                  report_status: 'not_generated',
+                  status: updatedProject.status,     // 应该是 'collecting'
+                  progress: updatedProject.progress  // 重新计算的进度
+                } : prev);
+                
+                // 同步更新流式内容服务状态
+                streamingContentService.setGeneratingStatus(project.id, false);
+                streamingContentService.setProjectData(project.id, {
+                  progress: updatedProject.progress,
+                  isGenerating: false,
+                  reportContent: ''
+                });
+              } else {
+                // 如果获取失败，使用默认值
+                setProject(prev => prev ? {
+                  ...prev,
+                  report_status: 'not_generated',
+                  status: 'collecting',
+                  progress: 0
+                } : prev);
+                
+                streamingContentService.setGeneratingStatus(project.id, false);
+                streamingContentService.setProjectData(project.id, {
+                  progress: 0,
+                  isGenerating: false,
+                  reportContent: ''
+                });
+              }
+            } catch (error) {
+              console.error('重新获取项目状态失败:', error);
+              // 使用默认值
+              setProject(prev => prev ? {
+                ...prev,
+                report_status: 'not_generated',
+                status: 'collecting',
+                progress: 0
+              } : prev);
+              
+              streamingContentService.setGeneratingStatus(project.id, false);
+              streamingContentService.setProjectData(project.id, {
+                progress: 0,
+                isGenerating: false,
+                reportContent: ''
+              });
+            }
           }
         }}
       />

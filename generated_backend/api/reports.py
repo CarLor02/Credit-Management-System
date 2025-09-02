@@ -40,7 +40,42 @@ workflow_lock = threading.Lock()
 workflow_events = {}  # 格式: {workflow_run_id: {'events': [], 'content': '', 'metadata': {}}}
 
 # 导入Project模型以获取folder_uuid
-from db_models import Project
+from db_models import Project, Document, DocumentStatus
+
+def calculate_project_progress(project_id):
+    """
+    根据项目文档完成情况计算项目进度
+    项目进度计算规则：
+    - 没有文档：0%
+    - 部分文档完成：按完成文档比例计算，最高75%
+    - 所有文档完成：75%（未生成报告的情况下）
+    - 报告生成完成：100%
+    """
+    try:
+        # 获取项目的所有文档
+        documents = Document.query.filter_by(project_id=project_id).all()
+        
+        if not documents:
+            # 没有文档，进度为0
+            return 0
+        
+        # 计算完成的文档数量
+        completed_documents = [doc for doc in documents if doc.status == DocumentStatus.COMPLETED]
+        
+        if len(completed_documents) == 0:
+            # 没有完成的文档，进度为0
+            return 0
+        elif len(completed_documents) == len(documents):
+            # 所有文档都完成了，但没有生成报告，进度为75%
+            return 75
+        else:
+            # 部分文档完成，按比例计算，最高不超过75%
+            completion_ratio = len(completed_documents) / len(documents)
+            return min(int(completion_ratio * 75), 75)
+            
+    except Exception as e:
+        current_app.logger.error(f"计算项目进度失败: {e}")
+        return 0
 
 # 添加删除非项目文件的函数
 def delete_non_project_files(dataset_id, project_id):
@@ -821,12 +856,20 @@ def register_report_routes(app):
                     current_app.logger.error(f"删除报告文件失败: {file_error}")
                     # 继续执行，不因为文件删除失败而中断
 
-            # 清空数据库中的报告路径
+            # 清空数据库中的报告路径，并重置项目状态和进度
             try:
                 project.report_status = ReportStatus.NOT_GENERATED
                 project.report_path = None
+                
+                # 重置项目状态为COLLECTING
+                project.status = ProjectStatus.COLLECTING
+                
+                # 重新计算项目进度（基于文档完成情况）
+                project_progress = calculate_project_progress(project_id)
+                project.progress = project_progress
+                
                 db.session.commit()
-                current_app.logger.info(f"已清空项目 {project_id} 的报告路径")
+                current_app.logger.info(f"已清空项目 {project_id} 的报告路径，重置状态为COLLECTING，进度为{project_progress}%")
             except Exception as db_error:
                 current_app.logger.error(f"更新数据库失败: {db_error}")
                 db.session.rollback()
