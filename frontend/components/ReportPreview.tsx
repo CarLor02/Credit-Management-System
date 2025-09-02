@@ -81,16 +81,21 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     });
 
     // 4. 强化表格格式修复
+    // 4. 表格修复
     processedContent = processedContent
-      // 修复表格单元格格式
-      .replace(/\|([^|\n]*)\|/g, (_, content) => `| ${content.trim()} |`)
-      // 确保表格前后有空行
-      .replace(/([^\n])\n(\|)/g, '$1\n\n$2')
-      .replace(/(\|[^\n]*)\n([^|\n])/g, '$1\n\n$2')
-      // 修复可能缺失的表格分隔行
+      // 只在表格块整体前后加空行
+      .replace(/(\n?)(\|.*\|(?:\n\|.*\|)+)(\n?)/g, '\n$2\n')
+      // 每行单元格对齐处理
+      .replace(/^\|.*\|$/gm, line => {
+        return line
+          .split('|')
+          .map(cell => cell.trim())
+          .filter((_, i, arr) => i === 0 || i === arr.length - 1 ? true : true) // 保留边界
+          .join(' | ');
+      })
+      // 自动补分隔行（只在缺失时）
       .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
-        // 如果表格头后面直接跟数据行，插入分隔行
-        if (!firstRow.includes('---') && !firstRow.includes(':--') && !header.includes('---')) {
+        if (!firstRow.includes('---') && !header.includes('---')) {
           const columnCount = (header.match(/\|/g) || []).length - 1;
           if (columnCount > 0) {
             const separator = '|' + ' --- |'.repeat(columnCount);
@@ -99,6 +104,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         }
         return match;
       });
+
 
     // 5. 清理过多的连续空行
     processedContent = processedContent.replace(/\n{4,}/g, '\n\n\n');
