@@ -1465,19 +1465,21 @@ def parse_dify_streaming_response(response, company_name="", project_id=None, pr
                 if current_app.config.get('DEBUG', False):
                     print(f"解析的 JSON 数据: {json.dumps(data, ensure_ascii=False)[:500]}...")
 
-                # 提取task_id（如果存在）
-                if 'task_id' in data and task_id is None:
-                    task_id = data['task_id']
-                    # 简化日志：只在调试模式下打印task_id
-                    if current_app.config.get('DEBUG', False):
-                        print(f"提取到task_id: {task_id}")
-                    # 保存task_id到活跃工作流中
-                    with workflow_lock:
-                        if project_id in active_workflows:
-                            active_workflows[project_id]['task_id'] = task_id
-                            # 简化日志：只在调试模式下打印保存信息
-                            if current_app.config.get('DEBUG', False):
-                                print(f"已保存task_id到项目 {project_id}")
+                # 🔧 修复：改进task_id提取逻辑，确保能正确获取
+                # 提取task_id（如果存在且尚未获取）
+                if 'task_id' in data:
+                    current_task_id = data['task_id']
+                    # 如果是第一次获取task_id，或者task_id发生变化，则更新
+                    if task_id is None or task_id != current_task_id:
+                        task_id = current_task_id
+                        print(f"🔑 提取到task_id: {task_id}")
+                        # 保存task_id到活跃工作流中
+                        with workflow_lock:
+                            if project_id in active_workflows:
+                                active_workflows[project_id]['task_id'] = task_id
+                                print(f"✅ 已保存task_id到项目 {project_id}")
+                            else:
+                                print(f"⚠️ 项目 {project_id} 不在活跃工作流中")
 
                 # 提取生成的内容
                 content_chunk = None
@@ -1654,14 +1656,20 @@ def call_dify_stop_api(task_id):
         # 从配置中获取Dify API信息
         from config import Config
 
-        # 构建停止接口URL
-        dify_base_url = getattr(Config, 'DIFY_BASE_URL', 'http://115.190.121.59')
-        stop_url = f"{dify_base_url}/v1/chat-messages/{task_id}/stop"
+        # 🔧 修复：使用与报告生成API相同的配置
+        # 构建停止接口URL - 使用与生成API相同的配置
+        dify_base_url = current_app.config.get('REPORT_API_URL', 'http://115.190.121.59/v1/chat-messages')
+        # 从完整URL中提取基础URL
+        if '/v1/chat-messages' in dify_base_url:
+            base_url = dify_base_url.replace('/v1/chat-messages', '')
+        else:
+            base_url = dify_base_url
+        stop_url = f"{base_url}/v1/chat-messages/{task_id}/stop"
 
-        # 获取API密钥
-        api_key = getattr(Config, 'DIFY_API_KEY', '')
+        # 获取API密钥 - 使用与生成API相同的配置
+        api_key = current_app.config.get('REPORT_API_KEY', '')
         if not api_key:
-            current_app.logger.error("未配置DIFY_API_KEY")
+            current_app.logger.error("未配置REPORT_API_KEY")
             return False
 
         # 构建请求头

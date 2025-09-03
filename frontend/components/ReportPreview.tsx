@@ -80,25 +80,31 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       return match;
     });
 
-    // 4. 强化表格格式修复
-    // 4. 表格修复
+    // 4. 🔧 修复：改进表格格式处理，避免在表格行之间添加空行
     processedContent = processedContent
-      // 只在表格块整体前后加空行
-      .replace(/(\n?)(\|.*\|(?:\n\|.*\|)+)(\n?)/g, '\n$2\n')
-      // 每行单元格对齐处理
+      // 确保表格前后有空行，但不在表格行之间添加空行
+      .replace(/([^\n])\n(\|.*\|)/g, '$1\n\n$2')  // 表格前加空行
+      .replace(/(\|.*\|)\n([^|\n])/g, '$1\n\n$2')  // 表格后加空行
+      // 清理表格内部可能的多余空行
+      .replace(/(\|.*\|)\n\n+(\|.*\|)/g, '$1\n$2')  // 移除表格行之间的空行
+      // 每行单元格对齐处理 - 更安全的处理方式
       .replace(/^\|.*\|$/gm, line => {
-        return line
-          .split('|')
-          .map(cell => cell.trim())
-          .filter((_, i, arr) => i === 0 || i === arr.length - 1 ? true : true) // 保留边界
-          .join(' | ');
+        // 只处理真正的表格行，避免处理分隔符行
+        if (line.includes('---')) {
+          return line; // 保持分隔符行不变
+        }
+        const cells = line.split('|');
+        if (cells.length >= 3) { // 至少有开始|、内容、结束|
+          return '| ' + cells.slice(1, -1).map(cell => cell.trim()).join(' | ') + ' |';
+        }
+        return line;
       })
       // 自动补分隔行（只在缺失时）
       .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
         if (!firstRow.includes('---') && !header.includes('---')) {
           const columnCount = (header.match(/\|/g) || []).length - 1;
           if (columnCount > 0) {
-            const separator = '|' + ' --- |'.repeat(columnCount);
+            const separator = '| ' + '--- | '.repeat(columnCount - 1) + '--- |';
             return header + '\n' + separator + '\n' + firstRow;
           }
         }
@@ -110,27 +116,6 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
     processedContent = processedContent.replace(/\n{4,}/g, '\n\n\n');
 
     // 注意：不使用 .trim() 以保留重要的换行符和空格
-    return processedContent;
-
-    // 调试：打印处理前后的标题行
-    if (content !== processedContent) {
-      const originalTitles = content.match(/^#{1,6}.*$/gm) || [];
-      const processedTitles = processedContent.match(/^#{1,6}.*$/gm) || [];
-      const allTitleLikeLines = processedContent.match(/^.*第[一二三四五六七八九十\d]+[节章].*$/gm) || [];
-      const unprocessedTitleLike = content.match(/^[^#]*第[一二三四五六七八九十\d]+[节章].*$/gm) || [];
-
-      console.log('📝 Markdown标题预处理 (分段生成优化版):', {
-        原始标题数量: originalTitles.length,
-        处理后标题数量: processedTitles.length,
-        所有标题样式行数量: allTitleLikeLines.length,
-        未处理的标题样式: unprocessedTitleLike.length,
-        原始标题: originalTitles.slice(0, 5),
-        处理后标题: processedTitles.slice(0, 5),
-        标题样式行示例: allTitleLikeLines.slice(0, 5),
-        未处理标题示例: unprocessedTitleLike.slice(0, 3)
-      });
-    }
-
     return processedContent;
   };
 
