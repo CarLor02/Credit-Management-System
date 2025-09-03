@@ -99,17 +99,18 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         }
         return line;
       })
-      // 自动补分隔行（只在缺失时）
-      .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
-        if (!firstRow.includes('---') && !header.includes('---')) {
-          const columnCount = (header.match(/\|/g) || []).length - 1;
-          if (columnCount > 0) {
-            const separator = '| ' + '--- | '.repeat(columnCount - 1) + '--- |';
-            return header + '\n' + separator + '\n' + firstRow;
-          }
-        }
-        return match;
-      });
+      // 🔧 修复：注释掉自动补分隔行，避免多余的---符号
+      // 让后端的表格处理服务来处理分隔符
+      // .replace(/(\|[^|\n]*\|)\n(\|[^|\n]*\|)/g, (match, header, firstRow) => {
+      //   if (!firstRow.includes('---') && !header.includes('---')) {
+      //     const columnCount = (header.match(/\|/g) || []).length - 1;
+      //     if (columnCount > 0) {
+      //       const separator = '| ' + '--- | '.repeat(columnCount - 1) + '--- |';
+      //       return header + '\n' + separator + '\n' + firstRow;
+      //     }
+      //   }
+      //   return match;
+      // });
 
 
     // 5. 清理过多的连续空行
@@ -501,6 +502,28 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           streamingContentService.updateReportContent(projectId, '');
         }
         console.log('🚀 开始生成报告，设置generating为true，清空旧内容');
+      }
+
+      // 🔧 修复：处理报告删除事件，清空所有内容
+      if (eventType === 'report_deleted') {
+        console.log('🗑️ 收到报告删除事件，清空所有内容');
+        setGenerating(false);
+        setReportContent('');
+        setHtmlContent('');
+        setError(null);
+        setStreamingEvents([]);
+
+        if (projectId) {
+          // 清空流式内容服务中的所有数据
+          streamingContentService.setGeneratingStatus(projectId, false);
+          streamingContentService.updateReportContent(projectId, '');
+          streamingContentService.setProjectData(projectId, {
+            events: [],
+            isGenerating: false,
+            reportContent: ''
+          });
+        }
+        console.log('✅ 报告删除事件处理完成，所有内容已清空');
       }
     };
 

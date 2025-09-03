@@ -860,16 +860,38 @@ def register_report_routes(app):
             try:
                 project.report_status = ReportStatus.NOT_GENERATED
                 project.report_path = None
-                
+
                 # 重置项目状态为COLLECTING
                 project.status = ProjectStatus.COLLECTING
-                
+
                 # 重新计算项目进度（基于文档完成情况）
                 project_progress = calculate_project_progress(project_id)
                 project.progress = project_progress
-                
+
                 db.session.commit()
                 current_app.logger.info(f"已清空项目 {project_id} 的报告路径，重置状态为COLLECTING，进度为{project_progress}%")
+
+                # 🔧 修复：清空活跃工作流和流式内容
+                with workflow_lock:
+                    if project_id in active_workflows:
+                        del active_workflows[project_id]
+                        current_app.logger.info(f"已清空项目 {project_id} 的活跃工作流")
+
+                # 🔧 修复：广播清空事件，让前端清空流式内容
+                try:
+                    socketio = current_app.socketio
+                    socketio.emit('workflow_event', {
+                        'event_type': 'report_deleted',
+                        'workflow_run_id': f'project_{project_id}',
+                        'timestamp': time.time(),
+                        'event_data': {
+                            'project_id': project_id,
+                            'message': '报告已删除，内容已清空'
+                        }
+                    }, room=f'project_{project_id}')
+                    current_app.logger.info(f"已广播报告删除事件到项目 {project_id}")
+                except Exception as ws_error:
+                    current_app.logger.error(f"广播报告删除事件失败: {ws_error}")
             except Exception as db_error:
                 current_app.logger.error(f"更新数据库失败: {db_error}")
                 db.session.rollback()
