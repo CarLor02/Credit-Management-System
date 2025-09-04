@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown换行测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .column {
+            flex: 1;
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .column h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .original {
+            background-color: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        .processed {
+            background-color: #f0f8ff;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        .rendered {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 15px;
+            min-height: 200px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .test-input {
+            width: 100%;
+            height: 150px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <h1>🔧 Markdown换行问题测试</h1>
+    
+    <div style="margin-bottom: 20px;">
+        <h3>测试内容：</h3>
+        <textarea id="testInput" class="test-input" placeholder="输入测试内容...">尊贵的西安市新希望医疗器械有限公司：
+    为解决贵司融资难、融资贵的实际问题，我司专业团队经过深入调研分析，现为贵司提供以下征信分析报告。
+
+## 企业基本信息
+
+| 项目 | 内容 |
+|------|------|
+| 企业名称 | 西安市新希望医疗器械有限公司 |
+| 统一社会信用代码 | 91610000MA6U123456 |
+
+### 主要发现
+1. 企业征信状况良好
+2. 无重大违约记录
+3. 建议继续保持</textarea>
+        
+        <div>
+            <button onclick="testOriginal()">测试原始内容</button>
+            <button onclick="testProcessed()">测试处理后内容</button>
+            <button onclick="testBoth()">对比测试</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="column">
+            <h3>📝 原始内容</h3>
+            <div id="originalContent" class="original"></div>
+            <h4>渲染结果：</h4>
+            <div id="originalRendered" class="rendered"></div>
+        </div>
+        
+        <div class="column">
+            <h3>🔧 处理后内容</h3>
+            <div id="processedContent" class="processed"></div>
+            <h4>渲染结果：</h4>
+            <div id="processedRendered" class="rendered"></div>
+        </div>
+    </div>
+
+    <script>
+        // 模拟前端的preprocessMarkdown函数
+        function preprocessMarkdown(content) {
+            if (!content) return content;
+
+            let processedContent = content;
+
+            // 1. 清理Markdown代码块标记
+            processedContent = processedContent
+                .replace(/```markdown\s*\n/gi, '')
+                .replace(/```\s*$/gm, '')
+                .replace(/```[\w]*\s*\n/gi, '')
+                .replace(/```\s*\n/gi, '');
+
+            // 🔧 修复：处理换行符问题 - 这是核心修复！
+            // 将单个换行符转换为Markdown双换行符，但保护表格和标题
+            processedContent = processedContent
+                // 先保护表格行（包含|的行）
+                .replace(/(\|[^|\n]*\|)\n(?!\|)/g, '$1\n\n')
+                // 保护标题行
+                .replace(/(#{1,6}[^\n]*)\n(?!#{1,6})/g, '$1\n\n')
+                // 处理普通文本的单换行符：如果不是已经是双换行，就转换为双换行
+                .replace(/([^\n])\n([^\n])/g, '$1\n\n$2')
+                // 清理可能产生的三个或更多连续换行符
+                .replace(/\n{3,}/g, '\n\n');
+
+            // 2. 确保标题前有换行符（核心修复）
+            processedContent = processedContent
+                // 在标题前添加双换行符（除了文档开头）
+                .replace(/([^\n])(#{1,6}\s)/g, '$1\n\n$2')
+                // 确保#号后面有空格
+                .replace(/^(#{1,6})([^#\s])/gm, '$1 $2');
+
+            // 3. 处理没有#号的标题行
+            processedContent = processedContent.replace(/^(\s*)(第[一二三四五六七八九十\d]+[节章][^\n]*)/gm, (match, spaces, title) => {
+                if (!title.startsWith('#')) {
+                    return `${spaces}\n\n### ${title}`;
+                }
+                return match;
+            });
+
+            // 4. 🔧 修复：改进表格格式处理，避免在表格行之间添加空行
+            processedContent = processedContent
+                // 确保表格前后有空行，但不在表格行之间添加空行
+                .replace(/([^\n])\n(\|.*\|)/g, '$1\n\n$2')  // 表格前加空行
+                .replace(/(\|.*\|)\n([^|\n])/g, '$1\n\n$2')  // 表格后加空行
+                // 清理表格内部可能的多余空行
+                .replace(/(\|.*\|)\n\n+(\|.*\|)/g, '$1\n$2')  // 移除表格行之间的空行
+                // 每行单元格对齐处理 - 更安全的处理方式
+                .replace(/^\|.*\|$/gm, line => {
+                    // 只处理真正的表格行，避免处理分隔符行
+                    if (line.includes('---')) {
+                        return line; // 保持分隔符行不变
+                    }
+                    const cells = line.split('|');
+                    if (cells.length >= 3) { // 至少有开始|、内容、结束|
+                        return '| ' + cells.slice(1, -1).map(cell => cell.trim()).join(' | ') + ' |';
+                    }
+                    return line;
+                });
+
+            // 5. 清理过多的连续空行
+            processedContent = processedContent.replace(/\n{4,}/g, '\n\n\n');
+
+            // 注意：不使用 .trim() 以保留重要的换行符和空格
+            return processedContent;
+        }
+
+        function testOriginal() {
+            const content = document.getElementById('testInput').value;
+            document.getElementById('originalContent').textContent = content;
+            document.getElementById('originalRendered').innerHTML = marked.parse(content);
+        }
+
+        function testProcessed() {
+            const content = document.getElementById('testInput').value;
+            const processed = preprocessMarkdown(content);
+            document.getElementById('processedContent').textContent = processed;
+            document.getElementById('processedRendered').innerHTML = marked.parse(processed);
+        }
+
+        function testBoth() {
+            testOriginal();
+            testProcessed();
+        }
+
+        // 初始化测试
+        window.onload = function() {
+            testBoth();
+        };
+    </script>
+</body>
+</html>
