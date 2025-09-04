@@ -223,12 +223,15 @@ class MarkdownToPDFConverter:
     
     def convert_markdown_to_html(self, markdown_content, file_path=None):
         """将Markdown内容转换为HTML"""
+        # 🔧 修复：在转换为HTML之前，预处理Markdown内容，修复换行符问题
+        processed_content = self._preprocess_markdown_for_html(markdown_content)
+
         md = markdown.Markdown(
             extensions=MARKDOWN_EXTENSIONS,
             extension_configs=MARKDOWN_EXTENSION_CONFIGS
         )
 
-        html_content = md.convert(markdown_content)
+        html_content = md.convert(processed_content)
 
         # 获取与PDF相同的CSS样式
         css_styles = self.get_css_styles()
@@ -295,6 +298,37 @@ class MarkdownToPDFConverter:
         """
 
         return full_html
+
+    def _preprocess_markdown_for_html(self, markdown_content):
+        """
+        预处理Markdown内容，修复HTML转换时的换行符问题
+
+        主要解决：
+        1. 单个换行符在HTML中不产生换行效果的问题
+        2. 保护表格和标题的格式
+        """
+        if not markdown_content:
+            return markdown_content
+
+        # 🔧 修复：处理换行符问题 - 这是核心修复！
+        # 将单个换行符转换为Markdown双换行符，但保护表格和标题
+        processed_content = markdown_content
+
+        # 先保护表格行（包含|的行）- 确保表格行之间不添加额外换行
+        # 使用负向前瞻，确保表格行后面如果不是表格行，就添加双换行
+        processed_content = re.sub(r'(\|[^|\n]*\|)\n(?!\|)', r'\1\n\n', processed_content)
+
+        # 保护标题行 - 确保标题后面有双换行
+        processed_content = re.sub(r'(#{1,6}[^\n]*)\n(?!#{1,6})', r'\1\n\n', processed_content)
+
+        # 处理普通文本的单换行符：如果不是已经是双换行，就转换为双换行
+        # 使用负向前瞻和负向后瞻，避免处理已经是双换行的情况
+        processed_content = re.sub(r'(?<!\n)\n(?!\n)', r'\n\n', processed_content)
+
+        # 清理可能产生的三个或更多连续换行符
+        processed_content = re.sub(r'\n{3,}', r'\n\n', processed_content)
+
+        return processed_content
 
     def get_logo_base64(self):
         """获取logo的base64编码"""
