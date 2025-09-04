@@ -65,6 +65,18 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       .replace(/```[\w]*\s*\n/gi, '')
       .replace(/```\s*\n/gi, '');
 
+    // 🔧 修复：处理换行符问题 - 这是核心修复！
+    // 将单个换行符转换为Markdown双换行符，但保护表格和标题
+    processedContent = processedContent
+      // 先保护表格行（包含|的行）
+      .replace(/(\|[^|\n]*\|)\n(?!\|)/g, '$1\n\n')
+      // 保护标题行
+      .replace(/(#{1,6}[^\n]*)\n(?!#{1,6})/g, '$1\n\n')
+      // 处理普通文本的单换行符：如果不是已经是双换行，就转换为双换行
+      .replace(/([^\n])\n([^\n])/g, '$1\n\n$2')
+      // 清理可能产生的三个或更多连续换行符
+      .replace(/\n{3,}/g, '\n\n');
+
     // 2. 确保标题前有换行符（核心修复）
     processedContent = processedContent
       // 在标题前添加双换行符（除了文档开头）
