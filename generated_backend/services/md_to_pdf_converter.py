@@ -303,89 +303,14 @@ class MarkdownToPDFConverter:
         """
         预处理Markdown内容，修复HTML转换时的换行符问题
 
-        主要解决：
-        1. 单个换行符在HTML中不产生换行效果的问题
-        2. 保护表格、标题、列表等特殊格式
+        🎯 暂时禁用所有预处理，直接返回原内容
         """
         if not markdown_content:
             return markdown_content
 
-        # 🔧 修复：更精确的换行符处理，避免破坏格式
-        lines = markdown_content.split('\n')
-        processed_lines = []
-        i = 0
-
-        while i < len(lines):
-            current_line = lines[i]
-
-            # 检查当前行的类型 - 更精确的检测
-            current_stripped = current_line.strip()
-            is_table_row = ('|' in current_stripped and
-                          len(current_stripped.split('|')) >= 3 and
-                          not current_stripped.startswith('#'))  # 排除标题中的|
-            is_heading = current_stripped.startswith('#')
-            is_list_item = re.match(r'^\s*[\d]+\.\s', current_line) or re.match(r'^\s*[-*+]\s', current_line)
-            is_code_block = current_stripped.startswith('```')
-            is_empty = current_stripped == ''
-
-            # 检查下一行的类型（如果存在）
-            next_line = lines[i + 1] if i + 1 < len(lines) else ''
-            next_stripped = next_line.strip()
-            next_is_table_row = ('|' in next_stripped and
-                               len(next_stripped.split('|')) >= 3 and
-                               not next_stripped.startswith('#'))
-            next_is_heading = next_stripped.startswith('#')
-            next_is_list_item = re.match(r'^\s*[\d]+\.\s', next_line) or re.match(r'^\s*[-*+]\s', next_line)
-            next_is_code_block = next_stripped.startswith('```')
-            next_is_empty = next_stripped == ''
-
-            # 添加当前行
-            processed_lines.append(current_line)
-
-            # 决定是否需要添加额外的空行
-            if i + 1 < len(lines):  # 不是最后一行
-                # 🔧 更保守的换行处理策略
-                should_add_extra_newline = False
-
-                # 普通文本行的定义：不是表格、标题、列表、代码块、空行
-                is_normal_text = not (is_table_row or is_heading or is_list_item or is_code_block or is_empty)
-                next_is_normal_text = not (next_is_table_row or next_is_heading or next_is_list_item or next_is_code_block or next_is_empty)
-
-                # 只在非常明确的情况下添加空行
-                if is_normal_text and next_is_normal_text:
-                    # 检查是否是真正需要分段的情况
-                    # 1. 当前行不是以空格开头的缩进行
-                    # 2. 下一行也不是缩进行
-                    # 3. 内容看起来像是独立的段落
-                    current_is_indented = current_line.startswith('   ') or current_line.startswith('\t')
-                    next_is_indented = next_line.startswith('   ') or next_line.startswith('\t')
-
-                    # 如果都不是缩进行，且当前行以句号、冒号等结尾，则可能需要分段
-                    if (not current_is_indented and not next_is_indented and
-                        (current_stripped.endswith('。') or current_stripped.endswith('：') or
-                         current_stripped.endswith('.') or current_stripped.endswith(':'))):
-                        should_add_extra_newline = True
-
-                # 绝对不添加空行的情况
-                if (is_table_row or next_is_table_row or
-                    is_list_item or next_is_list_item or
-                    is_heading or next_is_heading or
-                    is_code_block or next_is_code_block):
-                    should_add_extra_newline = False
-
-                # 如果需要添加空行，则添加
-                if should_add_extra_newline:
-                    processed_lines.append('')  # 添加空行
-
-            i += 1
-
-        # 重新组合内容
-        processed_content = '\n'.join(processed_lines)
-
-        # 清理可能产生的过多连续空行
-        processed_content = re.sub(r'\n{3,}', r'\n\n', processed_content)
-
-        return processed_content
+        # 🔧 临时禁用所有预处理逻辑，直接返回原内容
+        # 这样可以确保不会破坏任何Markdown格式
+        return markdown_content
 
     def get_logo_base64(self):
         """获取logo的base64编码"""
