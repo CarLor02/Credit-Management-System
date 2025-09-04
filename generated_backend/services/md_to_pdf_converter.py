@@ -305,27 +305,77 @@ class MarkdownToPDFConverter:
 
         主要解决：
         1. 单个换行符在HTML中不产生换行效果的问题
-        2. 保护表格和标题的格式
+        2. 保护表格、标题、列表等特殊格式
         """
         if not markdown_content:
             return markdown_content
 
-        # 🔧 修复：处理换行符问题 - 这是核心修复！
-        # 将单个换行符转换为Markdown双换行符，但保护表格和标题
-        processed_content = markdown_content
+        # 🔧 修复：更精确的换行符处理，避免破坏格式
+        lines = markdown_content.split('\n')
+        processed_lines = []
+        i = 0
 
-        # 先保护表格行（包含|的行）- 确保表格行之间不添加额外换行
-        # 使用负向前瞻，确保表格行后面如果不是表格行，就添加双换行
-        processed_content = re.sub(r'(\|[^|\n]*\|)\n(?!\|)', r'\1\n\n', processed_content)
+        while i < len(lines):
+            current_line = lines[i]
 
-        # 保护标题行 - 确保标题后面有双换行
-        processed_content = re.sub(r'(#{1,6}[^\n]*)\n(?!#{1,6})', r'\1\n\n', processed_content)
+            # 检查当前行的类型
+            is_table_row = '|' in current_line.strip()
+            is_heading = current_line.strip().startswith('#')
+            is_list_item = re.match(r'^\s*[\d\-\*\+]\s', current_line.strip())
+            is_code_block = current_line.strip().startswith('```')
+            is_empty = current_line.strip() == ''
 
-        # 处理普通文本的单换行符：如果不是已经是双换行，就转换为双换行
-        # 使用负向前瞻和负向后瞻，避免处理已经是双换行的情况
-        processed_content = re.sub(r'(?<!\n)\n(?!\n)', r'\n\n', processed_content)
+            # 检查下一行的类型（如果存在）
+            next_line = lines[i + 1] if i + 1 < len(lines) else ''
+            next_is_table_row = '|' in next_line.strip()
+            next_is_heading = next_line.strip().startswith('#')
+            next_is_list_item = re.match(r'^\s*[\d\-\*\+]\s', next_line.strip())
+            next_is_code_block = next_line.strip().startswith('```')
+            next_is_empty = next_line.strip() == ''
 
-        # 清理可能产生的三个或更多连续换行符
+            # 添加当前行
+            processed_lines.append(current_line)
+
+            # 决定是否需要添加额外的空行
+            if i + 1 < len(lines):  # 不是最后一行
+                # 需要添加额外空行的情况：
+                # 1. 普通文本行后面跟着普通文本行（这是主要修复目标）
+                # 2. 但要排除特殊格式
+
+                should_add_extra_newline = False
+
+                # 普通文本行的定义：不是表格、标题、列表、代码块、空行
+                is_normal_text = not (is_table_row or is_heading or is_list_item or is_code_block or is_empty)
+                next_is_normal_text = not (next_is_table_row or next_is_heading or next_is_list_item or next_is_code_block or next_is_empty)
+
+                if is_normal_text and next_is_normal_text:
+                    # 普通文本行之间需要添加空行
+                    should_add_extra_newline = True
+                elif is_normal_text and next_is_heading:
+                    # 普通文本后面跟标题，需要空行
+                    should_add_extra_newline = True
+                elif is_heading and next_is_normal_text:
+                    # 标题后面跟普通文本，需要空行
+                    should_add_extra_newline = True
+
+                # 特殊保护：表格行之间不添加空行
+                if is_table_row and next_is_table_row:
+                    should_add_extra_newline = False
+
+                # 特殊保护：列表项之间不添加空行
+                if is_list_item and next_is_list_item:
+                    should_add_extra_newline = False
+
+                # 如果需要添加空行，则添加
+                if should_add_extra_newline:
+                    processed_lines.append('')  # 添加空行
+
+            i += 1
+
+        # 重新组合内容
+        processed_content = '\n'.join(processed_lines)
+
+        # 清理可能产生的过多连续空行
         processed_content = re.sub(r'\n{3,}', r'\n\n', processed_content)
 
         return processed_content
