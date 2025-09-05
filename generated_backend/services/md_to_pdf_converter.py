@@ -142,6 +142,12 @@ class MarkdownToPDFConverter:
         p {{
             margin-bottom: 1em;
             text-align: justify;
+            text-indent: 2em;  /* 段落首行缩进两个字符 */
+        }}
+
+        /* 以冒号结尾的段落（如称呼）不缩进 */
+        p.no-indent {{
+            text-indent: 0;
         }}
         
         code {{
@@ -233,6 +239,9 @@ class MarkdownToPDFConverter:
 
         html_content = md.convert(processed_content)
 
+        # 后处理HTML，为特定段落添加CSS类
+        html_content = self._post_process_html(html_content)
+
         # 获取与PDF相同的CSS样式
         css_styles = self.get_css_styles()
 
@@ -303,14 +312,356 @@ class MarkdownToPDFConverter:
         """
         预处理Markdown内容，修复HTML转换时的换行符问题
 
-        🎯 暂时禁用所有预处理，直接返回原内容
+        这个方法集成了前端的所有后处理逻辑，确保渲染一致性
         """
         if not markdown_content:
             return markdown_content
 
-        # 🔧 临时禁用所有预处理逻辑，直接返回原内容
-        # 这样可以确保不会破坏任何Markdown格式
-        return markdown_content
+        try:
+            # 应用通用的Markdown后处理逻辑
+            processed_content = self._apply_universal_postprocessing(markdown_content)
+            return processed_content
+        except Exception as e:
+            print(f"⚠️ Markdown预处理失败: {e}")
+            return markdown_content  # 出错时返回原内容
+
+    def _apply_universal_postprocessing(self, content):
+        """
+        应用通用的Markdown后处理逻辑，与前端保持一致
+
+        简化版本：只做最基本的清理，避免破坏原有格式
+        """
+        if not content:
+            return content
+
+        processed_content = content
+
+        # 1. 清理Markdown代码块标记
+        processed_content = re.sub(r'```markdown\s*\n', '', processed_content, flags=re.IGNORECASE)
+        processed_content = re.sub(r'```\s*$', '', processed_content, flags=re.MULTILINE)
+        processed_content = re.sub(r'```[\w]*\s*\n', '', processed_content, flags=re.IGNORECASE)
+        processed_content = re.sub(r'```\s*\n', '', processed_content, flags=re.IGNORECASE)
+
+        # 2. 修复冒号后换行问题
+        processed_content = self._fix_colon_line_breaks(processed_content)
+
+        # 3. 修复结论格式问题
+        processed_content = self._fix_conclusion_format(processed_content)
+
+        # 4. 基本的换行符修复 - 保守处理
+        processed_content = self._fix_line_breaks_conservative(processed_content)
+
+        # 4. 清理多余的空行
+        processed_content = self._clean_extra_newlines(processed_content)
+
+        return processed_content
+
+    def _fix_colon_line_breaks(self, content):
+        """
+        修复冒号后的换行问题 - 特别处理文档开头的称呼格式
+        """
+        lines = content.split('\n')
+        result_lines = []
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            # 检查是否是以冒号结尾的行（通常是称呼或标题）
+            if line.strip().endswith('：') or line.strip().endswith(':'):
+                result_lines.append(line)
+                # 检查下一行是否有缩进内容
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1]
+                    # 如果下一行有缩进，添加一个空行并去掉缩进
+                    if next_line.startswith('    ') or next_line.startswith('\t'):
+                        result_lines.append('')  # 添加空行
+                        # 去掉缩进并添加到结果中
+                        result_lines.append(next_line.lstrip())
+                        i += 2  # 跳过下一行，因为已经处理了
+                        continue
+            else:
+                result_lines.append(line)
+            i += 1
+
+        return '\n'.join(result_lines)
+
+    def _post_process_html(self, html_content):
+        """
+        后处理HTML内容，为特定段落添加CSS类
+        """
+        import re
+
+        # 为以冒号结尾的段落添加no-indent类
+        def add_no_indent_class(match):
+            p_tag = match.group(0)
+            # 检查段落内容是否以冒号结尾
+            if '：' in p_tag or ':' in p_tag:
+                # 如果段落内容以冒号结尾，添加no-indent类
+                if p_tag.strip().endswith('：</p>') or p_tag.strip().endswith(':</p>'):
+                    return p_tag.replace('<p>', '<p class="no-indent">')
+            return p_tag
+
+        # 使用正则表达式匹配所有段落标签
+        processed_html = re.sub(r'<p>.*?</p>', add_no_indent_class, html_content, flags=re.DOTALL)
+
+        return processed_html
+
+    def _fix_conclusion_format(self, content):
+        """
+        修复结论格式问题 - 将缩进的结论内容转换为正常格式
+        """
+        lines = content.split('\n')
+        result_lines = []
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+
+            # 检查是否是缩进的结论行
+            if re.match(r'^\s+\*\*结论：\*\*\s*$', line):
+                # 添加无缩进的结论标题
+                result_lines.append('**结论：**')
+                i += 1
+
+                # 处理后续的缩进数字列表
+                while i < len(lines):
+                    if i >= len(lines):
+                        break
+                    next_line = lines[i]
+
+                    # 如果是空行，跳出循环
+                    if not next_line.strip():
+                        break
+
+                    # 如果是缩进的数字列表项，去掉缩进
+                    if re.match(r'^\s+(\d+\.\s.*)', next_line):
+                        # 提取数字列表内容，去掉前面的空格
+                        match = re.match(r'^\s+(\d+\.\s.*)', next_line)
+                        if match:
+                            result_lines.append(match.group(1))
+                    else:
+                        # 其他缩进内容也去掉缩进
+                        result_lines.append(next_line.lstrip())
+                    i += 1
+
+                # 添加空行分隔
+                result_lines.append('')
+            else:
+                result_lines.append(line)
+                i += 1
+
+        return '\n'.join(result_lines)
+
+    def _fix_line_breaks_conservative(self, content):
+        """
+        保守的换行符修复 - 只处理明显需要修复的情况
+        """
+        lines = content.split('\n')
+        result_lines = []
+
+        for i, line in enumerate(lines):
+            # 转换数字标题为Markdown标题
+            line = self._convert_numbered_headings(line)
+            result_lines.append(line)
+
+            # 确保标题后有空行
+            if line.startswith('#') and i + 1 < len(lines) and lines[i + 1].strip() and not lines[i + 1].startswith('#'):
+                result_lines.append('')
+
+            # 确保表格前有空行
+            elif (i + 1 < len(lines) and
+                  lines[i + 1].startswith('|') and
+                  line.strip() and
+                  not line.startswith('|')):
+                result_lines.append('')
+
+            # 确保表格后有空行
+            elif (line.startswith('|') and
+                  i + 1 < len(lines) and
+                  lines[i + 1].strip() and
+                  not lines[i + 1].startswith('|')):
+                result_lines.append('')
+
+        content = '\n'.join(result_lines)
+
+        # 清理多余的空行
+        content = re.sub(r'\n{3,}', '\n\n', content)
+
+        return content
+
+    def _convert_numbered_headings(self, line):
+        """
+        将数字开头的加粗文本转换为Markdown标题
+        但只转换那些看起来像独立标题的，不转换列表项
+        """
+        # 匹配模式1: 数字. **文本**
+        pattern1 = r'^(\s*)(\d+)\.\s*\*\*(.*?)\*\*\s*$'
+        # 匹配模式2: 数字. **文本**：（带中文冒号）
+        pattern2 = r'^(\s*)(\d+)\.\s*\*\*(.*?)\*\*：\s*$'
+
+        match = re.match(pattern1, line) or re.match(pattern2, line)
+
+        if match:
+            indent, number, title = match.groups()
+
+            # 只转换没有缩进的数字标题，有缩进的保持为列表项
+            if len(indent) == 0:
+                # 检查标题内容，如果是明显的章节标题才转换
+                title_text = title.strip().lower()
+
+                # 这些关键词表明是章节标题
+                section_keywords = [
+                    # 分析类
+                    '分析', '评估', '建议', '策略', '方案', '计划', '措施',
+                    '优化', '管理', '风险', '融资', '诊断', '结论', '总结',
+                    '现状', '问题', '对策', '路径', '升级', '重组', '处置',
+                    # 业务类
+                    '资本', '治理', '产品', '创新', '能力', '储备', '体系',
+                    '资质', '背书', '竞争', '对标', '监测', '供应链', '集中度',
+                    '验证', '适配', '结构', '市场', '矩阵', '壁垒', '压力',
+                    '波动', '瓶颈', '短期', '中期', '长期', '合规', '稳定',
+                    # 财务类
+                    '流动性', '盈利', '运营', '效率', '成本', '收入', '负债',
+                    '资产', '现金流', '偿债', '融资', '投资', '回报',
+                    # 其他重要词汇
+                    '查询', '显示', '网络', '舆情', '客户', '技术', '专利',
+                    '认证', '荣誉', '引入', '延伸', '研发'
+                ]
+
+                # 如果标题包含章节关键词，转换为h5标题
+                if any(keyword in title_text for keyword in section_keywords):
+                    return f"##### {number}. {title.strip()}"
+
+        return line
+
+    def _fix_line_breaks(self, content):
+        """
+        修复换行符问题 - 核心修复
+        将单个换行符转换为Markdown双换行符，但保护表格和标题
+        """
+        # 先保护表格行（包含|的行）
+        content = re.sub(r'(\|[^|\n]*\|)\n(?!\|)', r'\1\n\n', content)
+
+        # 保护标题行 - 修复：确保标题后有空行
+        content = re.sub(r'(#{1,6}[^\n]*)\n(?!#{1,6}|\n)', r'\1\n\n', content)
+
+        # 保护列表项
+        content = re.sub(r'(\s*[-*+]\s[^\n]*)\n(?!\s*[-*+]|\n)', r'\1\n\n', content)
+        content = re.sub(r'(\s*\d+\.\s[^\n]*)\n(?!\s*\d+\.|\n)', r'\1\n\n', content)
+
+        # 处理普通文本的单换行符：如果不是已经是双换行，就转换为双换行
+        # 但要避免在表格、标题、列表中进行此操作
+        lines = content.split('\n')
+        result_lines = []
+
+        for i, line in enumerate(lines):
+            result_lines.append(line)
+
+            # 如果当前行不为空，下一行也不为空，且都不是特殊格式
+            if (i < len(lines) - 1 and
+                line.strip() and
+                lines[i + 1].strip() and
+                not line.startswith('#') and  # 不是标题
+                not lines[i + 1].startswith('#') and  # 下一行不是标题
+                '|' not in line and  # 不是表格
+                '|' not in lines[i + 1] and  # 下一行不是表格
+                not re.match(r'^\s*[-*+]\s', line) and  # 不是列表
+                not re.match(r'^\s*\d+\.\s', line)):  # 不是数字列表
+
+                # 检查下一行是否为空，如果不是则添加空行
+                if i + 1 < len(lines) and lines[i + 1].strip():
+                    result_lines.append('')
+
+        content = '\n'.join(result_lines)
+
+        # 清理可能产生的三个或更多连续换行符
+        content = re.sub(r'\n{3,}', '\n\n', content)
+
+        return content
+
+    def _fix_table_format(self, content):
+        """修复表格格式"""
+        # 确保表格前后有空行
+        content = re.sub(r'([^\n])\n(\|)', r'\1\n\n\2', content)
+        content = re.sub(r'(\|[^\n]*)\n([^\|\n])', r'\1\n\n\2', content)
+
+        # 修复表格分隔符
+        lines = content.split('\n')
+        in_table = False
+        result_lines = []
+
+        for i, line in enumerate(lines):
+            if '|' in line and line.strip():
+                if not in_table:
+                    # 表格开始，检查是否需要添加分隔符
+                    in_table = True
+                    result_lines.append(line)
+                    # 如果下一行不是分隔符，添加一个
+                    if i + 1 < len(lines) and not re.match(r'^\s*\|[\s\-\|:]+\|\s*$', lines[i + 1]):
+                        # 生成分隔符行
+                        cols = line.count('|') - 1
+                        separator = '|' + '---|' * cols
+                        result_lines.append(separator)
+                else:
+                    result_lines.append(line)
+            else:
+                if in_table:
+                    in_table = False
+                result_lines.append(line)
+
+        return '\n'.join(result_lines)
+
+    def _fix_heading_format(self, content):
+        """修复标题格式"""
+        # 确保#号后面有空格
+        content = re.sub(r'^(#{1,6})([^#\s])', r'\1 \2', content, flags=re.MULTILINE)
+
+        # 确保标题前有换行符（除了文档开头）
+        content = re.sub(r'([^\n])\n(#{1,6}\s)', r'\1\n\n\2', content)
+
+        # 不要自动转换"第X节"为标题，保持原有格式
+        # 这样可以避免破坏原有的 Markdown 结构
+
+        return content
+
+    def _fix_list_format(self, content):
+        """修复列表格式"""
+        # 确保列表前有空行
+        content = re.sub(r'([^\n])\n(\s*[-*+]\s)', r'\1\n\n\2', content)
+        content = re.sub(r'([^\n])\n(\s*\d+\.\s)', r'\1\n\n\2', content)
+
+        # 修复列表项之间的间距
+        lines = content.split('\n')
+        result_lines = []
+
+        for i, line in enumerate(lines):
+            result_lines.append(line)
+
+            # 如果当前行是列表项，且下一行也是列表项，确保有适当的间距
+            if re.match(r'^\s*[-*+]\s', line) or re.match(r'^\s*\d+\.\s', line):
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1]
+                    if (re.match(r'^\s*[-*+]\s', next_line) or re.match(r'^\s*\d+\.\s', next_line)) and next_line.strip():
+                        # 如果下一行也是列表项，不需要额外空行
+                        pass
+                    elif next_line.strip() and not next_line.startswith(' '):
+                        # 如果下一行不是空行且不是缩进内容，添加空行
+                        result_lines.append('')
+
+        return '\n'.join(result_lines)
+
+    def _clean_extra_newlines(self, content):
+        """清理多余的空行"""
+        # 清理文档开头的空行
+        content = re.sub(r'^\n+', '', content)
+
+        # 清理文档结尾的空行
+        content = re.sub(r'\n+$', '\n', content)
+
+        # 将三个或更多连续换行符替换为两个
+        content = re.sub(r'\n{3,}', '\n\n', content)
+
+        return content
 
     def get_logo_base64(self):
         """获取logo的base64编码"""
