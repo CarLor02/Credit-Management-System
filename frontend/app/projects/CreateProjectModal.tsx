@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { projectService } from '@/services/projectService';
+import { getCategoryOptions } from '@/constants/categories';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -198,13 +199,11 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, editDat
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
               >
                 <option value="">请选择行业分类</option>
-                <option value="technology">科技互联网</option>
-                <option value="finance">金融服务</option>
-                <option value="manufacturing">制造业</option>
-                <option value="retail">零售贸易</option>
-                <option value="healthcare">医疗健康</option>
-                <option value="education">教育培训</option>
-                <option value="other">其他</option>
+                {getCategoryOptions().map((category) => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
+                  </option>
+                ))}
               </select>
             </div>
 
