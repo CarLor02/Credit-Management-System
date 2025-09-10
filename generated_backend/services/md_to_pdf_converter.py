@@ -320,6 +320,10 @@ class MarkdownToPDFConverter:
         try:
             # 应用通用的Markdown后处理逻辑
             processed_content = self._apply_universal_postprocessing(markdown_content)
+
+            # 应用新的通用修复逻辑
+            processed_content = self._apply_common_markdown_fixes(processed_content)
+
             return processed_content
         except Exception as e:
             print(f"⚠️ Markdown预处理失败: {e}")
@@ -359,6 +363,7 @@ class MarkdownToPDFConverter:
     def _fix_colon_line_breaks(self, content):
         """
         修复冒号后的换行问题 - 特别处理文档开头的称呼格式
+        支持冒号行和缩进内容之间有空行的情况
         """
         lines = content.split('\n')
         result_lines = []
@@ -369,18 +374,135 @@ class MarkdownToPDFConverter:
             # 检查是否是以冒号结尾的行（通常是称呼或标题）
             if line.strip().endswith('：') or line.strip().endswith(':'):
                 result_lines.append(line)
-                # 检查下一行是否有缩进内容
-                if i + 1 < len(lines):
-                    next_line = lines[i + 1]
-                    # 如果下一行有缩进，添加一个空行并去掉缩进
-                    if next_line.startswith('    ') or next_line.startswith('\t'):
-                        result_lines.append('')  # 添加空行
-                        # 去掉缩进并添加到结果中
-                        result_lines.append(next_line.lstrip())
-                        i += 2  # 跳过下一行，因为已经处理了
-                        continue
+                i += 1
+
+                # 跳过空行，寻找下一个有内容的行
+                while i < len(lines) and lines[i].strip() == '':
+                    result_lines.append(lines[i])  # 保持空行
+                    i += 1
+
+                # 检查是否有缩进内容
+                if i < len(lines) and (lines[i].startswith('    ') or lines[i].startswith('\t')):
+                    # 去掉缩进并添加到结果中
+                    result_lines.append(lines[i].lstrip())
+                    print(f"🔧 _fix_colon_line_breaks: 修复了缩进问题")
+                    i += 1
+                continue
             else:
                 result_lines.append(line)
+                i += 1
+
+        return '\n'.join(result_lines)
+
+    def _apply_common_markdown_fixes(self, content):
+        """
+        应用通用的Markdown修复逻辑，解决常见的格式问题
+
+        修复的问题包括：
+        1. 移除导致代码块的意外缩进
+        2. 清理孤立的HTML标签（如<think>）
+        3. 修复Mermaid图表格式
+        4. 转换数字列表为标题格式
+        """
+        if not content:
+            return content
+
+        lines = content.split('\n')
+        result_lines = []
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+
+            # 1. 修复意外的缩进导致的代码块问题
+            # 检测以冒号结尾的行后面跟着缩进的内容
+            if line.strip().endswith('：') or line.strip().endswith(':'):
+                result_lines.append(line)
+                i += 1
+
+                # 跳过空行，寻找下一个有内容的行
+                while i < len(lines) and lines[i].strip() == '':
+                    result_lines.append(lines[i])  # 保持空行
+                    i += 1
+
+                # 检查是否有意外缩进的内容
+                if i < len(lines) and lines[i].startswith('    ') and not lines[i].strip().startswith('-') and not lines[i].strip().startswith('*'):
+                    # 移除缩进，避免被解释为代码块
+                    next_line = lines[i].lstrip()
+                    if next_line:  # 只有非空行才处理
+                        result_lines.append(next_line)
+                        print(f"🔧 修复缩进问题: 移除了4个空格的缩进")
+                    else:
+                        result_lines.append(lines[i])  # 保持空行
+                    i += 1
+                continue  # 重要：跳过默认处理，避免重复添加
+
+            # 2. 清理孤立的HTML标签
+            elif line.strip() == '<think>' or line.strip().startswith('<think>'):
+                # 跳过孤立的<think>标签
+                print(f"🧹 清理孤立的HTML标签: {line.strip()}")
+                i += 1
+                continue
+
+            # 3. 修复Mermaid图表格式
+            elif line.strip().startswith('graph ') and (line.startswith('    ') or line.startswith('\t')):
+                # 检测缩进的Mermaid图表，转换为正确的代码块格式
+                print(f"🔧 修复Mermaid图表格式: {line.strip()}")
+                result_lines.append('```mermaid')
+                result_lines.append(line.strip())
+                i += 1
+
+                # 继续处理图表的其他行
+                while i < len(lines) and (lines[i].strip() == '' or
+                                        lines[i].startswith('   ') or
+                                        lines[i].strip().startswith(('A[', 'B[', 'C[', 'D[', 'E[', 'F[')) or
+                                        '-->' in lines[i]):
+                    if lines[i].strip():
+                        result_lines.append(lines[i].strip())
+                    i += 1
+
+                result_lines.append('```')
+                continue
+
+            # 4. 转换特定模式的数字列表为标题格式
+            # 检测类似 "1. **战略定位**" 的模式，在特定上下文中转换为标题
+            elif re.match(r'^\d+\.\s+\*\*[^*]+\*\*\s*$', line.strip()):
+                # 检查上下文，如果前面是四级标题或者已经转换的五级标题，则转换为五级标题
+                if len(result_lines) > 0:
+                    # 查找最近的标题
+                    recent_heading_level = 0
+                    found_base_heading = False
+
+                    for prev_line in reversed(result_lines[-15:]):  # 检查最近15行
+                        if prev_line.strip().startswith('#'):
+                            heading_level = len(prev_line.strip().split()[0])
+
+                            # 如果找到四级标题，这是我们的基准
+                            if heading_level == 4:
+                                found_base_heading = True
+                                break
+                            # 如果找到五级标题且是数字开头，说明是我们转换的标题
+                            elif heading_level == 5 and re.match(r'#####\s+\d+\.', prev_line.strip()):
+                                found_base_heading = True
+                                break
+                            # 如果找到更高级别的标题（1-3级），停止搜索
+                            elif heading_level < 4:
+                                break
+
+                    # 如果找到了基准标题，转换当前行为五级标题
+                    if found_base_heading:
+                        # 提取数字和标题文本
+                        match = re.match(r'^(\d+)\.\s+\*\*([^*]+)\*\*\s*$', line.strip())
+                        if match:
+                            number, title = match.groups()
+                            new_heading = f"##### {number}. {title.strip()}"
+                            result_lines.append(new_heading)
+                            print(f"🔄 转换列表为标题: {line.strip()} -> {new_heading}")
+                            i += 1
+                            continue
+
+            # 默认情况：保持原行不变
+            result_lines.append(line)
             i += 1
 
         return '\n'.join(result_lines)
