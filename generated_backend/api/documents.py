@@ -359,7 +359,7 @@ def register_document_routes(app):
                 details=f'文档上传完成: {document.name}'
             )
             
-            # 触发OCR处理或md文件处理
+            # 触发文档处理
             from services.document_processor import document_processor
             
             # 保存文档ID和项目名，避免会话问题
@@ -368,7 +368,7 @@ def register_document_routes(app):
             
             # 检查是否为md文件
             if file_type == 'markdown':
-                # md文件直接处理，不需要OCR
+                # md文件直接处理
                 def process_md_file():
                     """处理md文件"""
                     try:
@@ -404,7 +404,7 @@ def register_document_routes(app):
                 thread.daemon = True
                 thread.start()
             elif file_type == 'word':
-                # Word文件处理，不需要OCR
+                # Word文件处理
                 def process_word_file():
                     """处理Word文件"""
                     try:
@@ -440,16 +440,16 @@ def register_document_routes(app):
                 thread.daemon = True
                 thread.start()
             else:
-                # 非md和Word文件，使用OCR处理
-                def start_ocr_processing():
-                    """启动OCR处理"""
+                # 非md和Word文件，使用外部API处理
+                def start_document_processing():
+                    """启动文档处理"""
                     try:
                         with app.app_context():
-                            current_app.logger.info(f"开始OCR处理文档: {doc_id}")
+                            current_app.logger.info(f"开始文档处理: {doc_id}")
                             success = document_processor.process_document(doc_id)
                             
                             if success:
-                                current_app.logger.info(f"OCR处理完成: {doc_id}")
+                                current_app.logger.info(f"文档处理完成: {doc_id}")
                                 # 知识库创建和上传由document_processor处理，这里不再重复调用
                                 
                                 # 记录活动日志
@@ -465,14 +465,14 @@ def register_document_routes(app):
                                 except Exception as e:
                                     current_app.logger.warning(f"记录活动日志失败: {e}")
                             else:
-                                current_app.logger.error(f"OCR处理失败: {doc_id}")
+                                current_app.logger.error(f"文档处理失败: {doc_id}")
                                 
                     except Exception as e:
-                        current_app.logger.error(f"OCR处理异常: {e}")
+                        current_app.logger.error(f"文档处理异常: {e}")
                 
-                # 在后台线程中启动OCR处理
+                # 在后台线程中启动文档处理
                 import threading
-                thread = threading.Thread(target=start_ocr_processing)
+                thread = threading.Thread(target=start_document_processing)
                 thread.daemon = True
                 thread.start()
             

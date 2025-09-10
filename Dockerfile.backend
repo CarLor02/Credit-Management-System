@@ -17,11 +17,9 @@ RUN apt-get install -y \
 WORKDIR /app
 
 COPY generated_backend/requirements.txt ./generated_backend/requirements.txt
-COPY OCR/requirements.txt ./OCR/requirements.txt
 
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r generated_backend/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install --no-cache-dir -r OCR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+    pip install --no-cache-dir -r generated_backend/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 安装中文字体支持，解决PDF乱码问题
 RUN apt-get install -y \
@@ -35,7 +33,7 @@ RUN apt-get install -y \
 RUN fc-cache -f -v
 
 # 创建必要的目录结构，为挂载做准备
-RUN mkdir -p /app/generated_backend /app/OCR /app/uploads /app/frontend
+RUN mkdir -p /app/generated_backend /app/uploads /app/frontend
 
 # 复制前端logo文件到容器中（作为备用），解决HTML和PDF预览中logo无法显示的问题
 # 注意：实际运行时会通过挂载覆盖，这里只是确保容器结构完整

@@ -1,6 +1,6 @@
 """
 文档处理服务
-处理已上传的文档，使用OCR工具进行解析
+处理已上传的文档，使用外部API进行解析
 """
 
 import os
@@ -25,16 +25,8 @@ class DocumentProcessor:
     """文档处理器"""
     
     def __init__(self):
-        self.ocr_path = self._get_ocr_path()
         self.processed_folder = 'processed'
         
-    def _get_ocr_path(self) -> str:
-        """获取OCR代码路径"""
-        # 假设OCR文件夹在项目根目录下
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(os.path.dirname(current_dir))
-        return os.path.join(project_root, 'OCR')
-    
     def process_document_async(self, document_id: int, app=None):
         """异步处理文档"""
         def process_in_background():
@@ -106,11 +98,11 @@ class DocumentProcessor:
             document.progress = 20
             db.session.commit()
             
-            # 调用OCR处理，进度为30%
+            # 调用文档处理，进度为30%
             document.progress = 30
             db.session.commit()
             
-            success = self._call_ocr_processor(input_file, processed_file_path, document)
+            success = self._call_document_processor(input_file, processed_file_path, document)
             
             if success:
                 # 更新文档状态，进度为50%（完成文件处理，准备上传知识库）
@@ -123,7 +115,7 @@ class DocumentProcessor:
                 self._check_and_create_knowledge_base(document)
                 return True
             else:
-                self._mark_processing_failed(document, "OCR处理失败")
+                self._mark_processing_failed(document, "文档处理失败")
                 return False
                 
         except Exception as e:
@@ -161,8 +153,8 @@ class DocumentProcessor:
         
         return os.path.join(processed_dir, processed_filename)
     
-    def _call_ocr_processor(self, input_file: str, output_file: str, document: Document) -> bool:
-        """调用OCR处理器或直接处理特定文件类型"""
+    def _call_document_processor(self, input_file: str, output_file: str, document: Document) -> bool:
+        """调用文档处理器或直接处理特定文件类型"""
         try:
             # 确保输出目录存在
             output_dir = os.path.dirname(output_file)
@@ -304,122 +296,6 @@ class DocumentProcessor:
             current_app.logger.error(f"详细错误信息: {traceback.format_exc()}")
             return False
 
-    def _process_with_ocr(self, input_file: str, output_file: str, document: Document, file_type: str) -> bool:
-        """使用OCR处理文件"""
-        try:
-            # 获取输出目录
-            output_dir = os.path.dirname(output_file)
-            
-            # 构建OCR处理命令
-            ocr_script = os.path.join(self.ocr_path, 'process_docs.py')
-            input_dir = os.path.dirname(input_file)
-            
-            # 使用绝对路径
-            input_dir = os.path.abspath(input_dir)
-            temp_output_dir = os.path.abspath(os.path.join(output_dir, f"temp_{uuid.uuid4().hex[:8]}"))
-            
-            # 使用单独的输出目录避免冲突
-            
-            cmd = [
-                sys.executable, ocr_script,
-                '--input', input_dir,
-                '--output', temp_output_dir,
-                '--type', file_type,
-                '--no-recursive',
-                '--no-preserve-structure'
-            ]
-            
-            # 添加API密钥（如果需要）
-            api_key = os.environ.get('YUNWU_API_KEY')
-            if api_key:
-                cmd.extend(['--api-key', api_key])
-            else:
-                current_app.logger.warning("未设置YUNWU_API_KEY环境变量，OCR处理可能失败")
-
-            current_app.logger.info(f"执行OCR命令: {' '.join(cmd)}")
-            current_app.logger.info(f"工作目录: {self.ocr_path}")
-            current_app.logger.info(f"输入目录: {input_dir}")
-            current_app.logger.info(f"输出目录: {temp_output_dir}")
-
-            # 开始OCR处理，进度为50%
-            document.progress = 50
-            db.session.commit()
-
-            # 准备环境变量
-            env = os.environ.copy()
-            if api_key:
-                env['YUNWU_API_KEY'] = api_key
-
-            # 执行OCR处理
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5分钟超时
-                cwd=self.ocr_path,
-                env=env
-            )
-            
-            # OCR处理完成，进度为80%
-            document.progress = 80
-            db.session.commit()
-            
-            current_app.logger.info(f"OCR命令退出码: {result.returncode}")
-            if result.stdout:
-                current_app.logger.info(f"OCR标准输出: {result.stdout}")
-            if result.stderr:
-                current_app.logger.error(f"OCR错误输出: {result.stderr}")
-            
-            if result.returncode == 0:
-                # OCR成功，查找生成的文件并移动到目标位置
-                processed_files = list(Path(temp_output_dir).rglob('*.md'))
-                
-                current_app.logger.info(f"在{temp_output_dir}中找到{len(processed_files)}个处理后的文件")
-                
-                if processed_files:
-                    # 查找与当前文档匹配的文件
-                    target_file = None
-                    base_filename = os.path.splitext(document.filename)[0]
-                    
-                    # 首先尝试找到与文档名称匹配的文件
-                    for file in processed_files:
-                        if base_filename in file.stem:
-                            target_file = file
-                            break
-                    
-                    # 如果没有找到匹配的文件，取第一个
-                    if target_file is None:
-                        target_file = processed_files[0]
-                    
-                    current_app.logger.info(f"移动文件: {target_file} -> {output_file}")
-                    
-                    # 移动文件到最终位置，进度为90%
-                    document.progress = 90
-                    db.session.commit()
-                    
-                    # 移动文件到最终位置
-                    import shutil
-                    shutil.move(str(target_file), output_file)
-                    
-                    # 清理临时目录
-                    shutil.rmtree(temp_output_dir, ignore_errors=True)
-                    
-                    current_app.logger.info(f"OCR处理成功，输出文件: {output_file}")
-                    return True
-                else:
-                    current_app.logger.error("OCR处理未生成任何文件")
-                    return False
-            else:
-                current_app.logger.error(f"OCR处理失败: {result.stderr}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            current_app.logger.error("OCR处理超时")
-            return False
-        except Exception as e:
-            current_app.logger.error(f"调用OCR处理器失败: {e}")
-            return False
-    
     def _get_file_type(self, extension: str) -> Optional[str]:
         """根据文件扩展名获取处理类型"""
         extension = extension.lower()
@@ -543,7 +419,7 @@ class DocumentProcessor:
             return False
     
     def process_markdown_file(self, document_id: int) -> bool:
-        """处理markdown文件（无需OCR，直接复制）"""
+        """处理markdown文件（直接复制）"""
         try:
             document = Document.query.get(document_id)
             if not document:

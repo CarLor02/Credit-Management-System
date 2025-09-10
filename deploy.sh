@@ -142,7 +142,7 @@ check_dependencies_changed() {
     local hash_file=""
 
     if [ "$service" = "backend" ]; then
-        deps_file="generated_backend/requirements.txt OCR/requirements.txt"
+        deps_file="generated_backend/requirements.txt"
         hash_file=".backend_deps_hash"
     elif [ "$service" = "frontend" ]; then
         deps_file="frontend/package.json frontend/pnpm-lock.yaml"
@@ -301,7 +301,6 @@ start_backend() {
         -e PYTHONUNBUFFERED=1 \
         -e PYTHONDONTWRITEBYTECODE=1 \
         -v $(pwd)/generated_backend:/app/generated_backend \
-        -v $(pwd)/OCR:/app/OCR \
         -v $(pwd)/uploads:/app/uploads \
         -v $(pwd)/frontend:/app/frontend \
         ${PROJECT_NAME}-backend-base:latest \

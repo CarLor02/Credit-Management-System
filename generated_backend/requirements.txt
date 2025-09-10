@@ -47,7 +47,7 @@ PyMuPDF>=1.19.0
 # 图像处理
 pillow>=9.0.0
 
-# OCR和AI处理
+# AI处理
 openai>=1.0.0
 
 # 工具依赖
