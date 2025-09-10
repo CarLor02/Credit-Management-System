@@ -13,11 +13,24 @@ from utils import log_action
 
 def generate_token(user_id):
     """生成JWT token"""
-    payload = {
-        'user_id': user_id,
-        'exp': datetime.utcnow() + timedelta(seconds=current_app.config.get('JWT_ACCESS_TOKEN_EXPIRES', 3600))
-    }
-    return jwt.encode(payload, current_app.config.get('JWT_SECRET_KEY'), algorithm='HS256')
+    try:
+        expiry_seconds = current_app.config.get('JWT_ACCESS_TOKEN_EXPIRES', 3600)
+        payload = {
+            'user_id': user_id,
+            'exp': datetime.utcnow() + timedelta(seconds=expiry_seconds),
+            'iat': datetime.utcnow()  # 添加签发时间
+        }
+        secret_key = current_app.config.get('JWT_SECRET_KEY')
+        if not secret_key:
+            current_app.logger.error("JWT_SECRET_KEY未配置")
+            raise ValueError("JWT_SECRET_KEY未配置")
+        
+        token = jwt.encode(payload, secret_key, algorithm='HS256')
+        current_app.logger.debug(f"生成Token成功 - user_id: {user_id}, expires_in: {expiry_seconds}秒")
+        return token
+    except Exception as e:
+        current_app.logger.error(f"生成Token失败: {e}")
+        raise
 
 def verify_token(token):
     """验证JWT token"""
@@ -25,8 +38,13 @@ def verify_token(token):
         payload = jwt.decode(token, current_app.config.get('JWT_SECRET_KEY'), algorithms=['HS256'])
         return payload['user_id']
     except jwt.ExpiredSignatureError:
+        current_app.logger.info(f"Token已过期: {token[:20]}...")
         return None
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        current_app.logger.info(f"无效Token: {e}")
+        return None
+    except Exception as e:
+        current_app.logger.error(f"Token验证异常: {e}")
         return None
 
 def token_required(f):
@@ -40,6 +58,7 @@ def token_required(f):
         token = request.headers.get('Authorization')
 
         if not token:
+            current_app.logger.info(f"缺少认证token - IP: {request.remote_addr}, URL: {request.url}")
             return jsonify({'success': False, 'error': '缺少认证token'}), 401
 
         if token.startswith('Bearer '):
@@ -47,11 +66,13 @@ def token_required(f):
 
         user_id = verify_token(token)
         if not user_id:
+            current_app.logger.info(f"无效token - IP: {request.remote_addr}, URL: {request.url}, Token: {token[:20]}...")
             return jsonify({'success': False, 'error': '无效的token'}), 401
 
         # 获取用户信息
         user = User.query.get(user_id)
         if not user or not user.is_active:
+            current_app.logger.warning(f"用户不存在或已禁用 - user_id: {user_id}, IP: {request.remote_addr}")
             return jsonify({'success': False, 'error': '用户不存在或已禁用'}), 401
 
         # 将用户信息添加到请求上下文
@@ -82,15 +103,18 @@ def register_auth_routes(app):
             data = request.get_json()
             
             if not data or not data.get('username') or not data.get('password'):
+                current_app.logger.info(f"登录失败：用户名或密码为空 - IP: {request.remote_addr}")
                 return jsonify({'success': False, 'error': '用户名和密码不能为空'}), 400
             
             # 查找用户
             user = User.query.filter_by(username=data['username']).first()
             
             if not user or not user.check_password(data['password']):
+                current_app.logger.info(f"登录失败：用户名或密码错误 - 用户名: {data['username']}, IP: {request.remote_addr}")
                 return jsonify({'success': False, 'error': '用户名或密码错误'}), 401
             
             if not user.is_active:
+                current_app.logger.warning(f"登录失败：用户已被禁用 - 用户名: {data['username']}, IP: {request.remote_addr}")
                 return jsonify({'success': False, 'error': '用户已被禁用'}), 401
             
             # 更新最后登录时间
@@ -99,6 +123,9 @@ def register_auth_routes(app):
             
             # 生成token
             token = generate_token(user.id)
+            
+            # 记录登录成功日志
+            current_app.logger.info(f"用户登录成功 - 用户名: {user.username}, 用户ID: {user.id}, IP: {request.remote_addr}")
             
             # 记录登录日志
             log_action(
@@ -125,7 +152,7 @@ def register_auth_routes(app):
             })
             
         except Exception as e:
-            current_app.logger.error(f"用户登录失败: {e}")
+            current_app.logger.error(f"用户登录异常: {e}, IP: {request.remote_addr}")
             return jsonify({'success': False, 'error': '登录失败'}), 500
 
     @app.route('/api/auth/register', methods=['POST'])

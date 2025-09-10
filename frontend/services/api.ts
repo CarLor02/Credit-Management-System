@@ -64,20 +64,25 @@ class ApiClient {
           !endpoint.includes('/auth/register')) {
         const token = localStorage.getItem('auth_token');
         if (token) {
-          // 检查token是否过期
+          // 检查token是否过期（增加5分钟容错时间，避免服务器时间差异导致的问题）
           try {
             const payload = JSON.parse(atob(token.split('.')[1]));
-            const isExpired = payload.exp * 1000 < Date.now();
+            const currentTime = Date.now();
+            const expiredTime = payload.exp * 1000;
+            const bufferTime = 5 * 60 * 1000; // 5分钟容错时间
+            const isExpired = expiredTime < (currentTime - bufferTime);
 
             if (!isExpired) {
               finalHeaders['Authorization'] = `Bearer ${token}`;
             } else {
               // Token过期，清除本地存储
+              console.info('Token已过期，清除本地存储');
               localStorage.removeItem('auth_token');
               localStorage.removeItem('auth_user');
             }
-          } catch (error) {
+          } catch (tokenError) {
             // Token格式错误，清除本地存储
+            console.warn('Token格式错误，清除本地存储:', tokenError);
             localStorage.removeItem('auth_token');
             localStorage.removeItem('auth_user');
           }
@@ -176,20 +181,25 @@ class ApiClient {
       if (typeof window !== 'undefined' && !endpoint.includes('/auth/')) {
         const token = localStorage.getItem('auth_token');
         if (token) {
-          // 检查token是否过期
+          // 检查token是否过期（增加5分钟容错时间，避免服务器时间差异导致的问题）
           try {
             const payload = JSON.parse(atob(token.split('.')[1]));
-            const isExpired = payload.exp * 1000 < Date.now();
+            const currentTime = Date.now();
+            const expiredTime = payload.exp * 1000;
+            const bufferTime = 5 * 60 * 1000; // 5分钟容错时间
+            const isExpired = expiredTime < (currentTime - bufferTime);
 
             if (!isExpired) {
               finalHeaders['Authorization'] = `Bearer ${token}`;
             } else {
               // Token过期，清除本地存储
+              console.info('Token已过期，清除本地存储');
               localStorage.removeItem('auth_token');
               localStorage.removeItem('auth_user');
             }
-          } catch (error) {
+          } catch (tokenError) {
             // Token格式错误，清除本地存储
+            console.warn('Token格式错误，清除本地存储:', tokenError);
             localStorage.removeItem('auth_token');
             localStorage.removeItem('auth_user');
           }
