@@ -109,13 +109,18 @@ def register_auth_routes(app):
             # 查找用户
             user = User.query.filter_by(username=data['username']).first()
             
-            if not user or not user.check_password(data['password']):
-                current_app.logger.info(f"登录失败：用户名或密码错误 - 用户名: {data['username']}, IP: {request.remote_addr}")
-                return jsonify({'success': False, 'error': '用户名或密码错误'}), 401
+            # 详细的错误检查和提示
+            if not user:
+                current_app.logger.info(f"登录失败：用户不存在 - 用户名: {data['username']}, IP: {request.remote_addr}")
+                return jsonify({'success': False, 'error': '用户名错误，用户不存在'}), 401
+            
+            if not user.check_password(data['password']):
+                current_app.logger.info(f"登录失败：密码错误 - 用户名: {data['username']}, IP: {request.remote_addr}")
+                return jsonify({'success': False, 'error': '密码错误'}), 401
             
             if not user.is_active:
                 current_app.logger.warning(f"登录失败：用户已被禁用 - 用户名: {data['username']}, IP: {request.remote_addr}")
-                return jsonify({'success': False, 'error': '用户已被禁用'}), 401
+                return jsonify({'success': False, 'error': '账户已被禁用，请联系管理员'}), 401
             
             # 更新最后登录时间
             user.last_login = datetime.utcnow()
@@ -162,24 +167,34 @@ def register_auth_routes(app):
             data = request.get_json()
 
             # 验证必填字段
-            required_fields = ['username', 'email', 'password']
-            for field in required_fields:
+            required_fields = {
+                'username': '用户名',
+                'email': '邮箱',
+                'password': '密码'
+            }
+            for field, name in required_fields.items():
                 if not data or not data.get(field):
-                    return jsonify({'success': False, 'error': f'{field}不能为空'}), 400
+                    return jsonify({'success': False, 'error': f'{name}不能为空'}), 400
+
+            # 验证邮箱格式
+            import re
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, data['email']):
+                return jsonify({'success': False, 'error': '邮箱格式不正确'}), 400
 
             # 检查用户名是否已存在
             existing_user = User.query.filter_by(username=data['username']).first()
             if existing_user:
-                return jsonify({'success': False, 'error': '用户名已存在'}), 400
+                return jsonify({'success': False, 'error': '用户名已被注册，请选择其他用户名'}), 400
 
             # 检查邮箱是否已存在
             existing_email = User.query.filter_by(email=data['email']).first()
             if existing_email:
-                return jsonify({'success': False, 'error': '邮箱已被使用'}), 400
+                return jsonify({'success': False, 'error': '邮箱已被注册，请使用其他邮箱'}), 400
 
             # 验证密码长度
             if len(data['password']) < 6:
-                return jsonify({'success': False, 'error': '密码长度至少6位'}), 400
+                return jsonify({'success': False, 'error': '密码长度至少6位字符'}), 400
 
             # 创建新用户
             new_user = User(
@@ -339,6 +354,74 @@ def register_auth_routes(app):
             db.session.rollback()
             current_app.logger.error(f"修改密码失败: {e}")
             return jsonify({'success': False, 'error': '修改密码失败'}), 500
+    
+    @app.route('/api/auth/reset-password', methods=['POST'])
+    def reset_password():
+        """重置密码（通过用户名和邮箱验证）"""
+        try:
+            data = request.get_json()
+            
+            # 验证必填字段
+            required_fields = {
+                'username': '用户名',
+                'email': '邮箱',
+                'new_password': '新密码'
+            }
+            for field, name in required_fields.items():
+                if not data.get(field):
+                    return jsonify({'success': False, 'error': f'{name}不能为空'}), 400
+
+            # 验证邮箱格式
+            import re
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, data['email']):
+                return jsonify({'success': False, 'error': '邮箱格式不正确'}), 400
+
+            # 验证新密码长度
+            if len(data['new_password']) < 6:
+                return jsonify({'success': False, 'error': '新密码长度至少6位字符'}), 400
+            
+            # 首先检查用户名是否存在
+            user_by_username = User.query.filter_by(username=data['username']).first()
+            if not user_by_username:
+                current_app.logger.info(f"重置密码失败：用户名不存在 - 用户名: {data['username']}, IP: {request.remote_addr}")
+                return jsonify({'success': False, 'error': '用户名错误，用户不存在'}), 404
+
+            # 检查邮箱是否匹配
+            if user_by_username.email != data['email']:
+                current_app.logger.info(f"重置密码失败：邮箱不匹配 - 用户名: {data['username']}, 输入邮箱: {data['email']}, 实际邮箱: {user_by_username.email}, IP: {request.remote_addr}")
+                return jsonify({'success': False, 'error': '邮箱错误，与用户名不匹配'}), 404
+
+            # 用户名和邮箱都正确
+            user = user_by_username
+            
+            if not user.is_active:
+                current_app.logger.warning(f"重置密码失败：用户已被禁用 - 用户名: {data['username']}, IP: {request.remote_addr}")
+                return jsonify({'success': False, 'error': '账户已被禁用，请联系管理员'}), 403
+            
+            # 设置新密码
+            user.set_password(data['new_password'])
+            user.updated_at = datetime.utcnow()
+            db.session.commit()
+            
+            # 记录日志
+            current_app.logger.info(f"密码重置成功 - 用户名: {user.username}, 用户ID: {user.id}, IP: {request.remote_addr}")
+            log_action(
+                user_id=user.id,
+                action='password_reset',
+                details=f'用户 {user.username} 通过用户名邮箱验证重置密码',
+                ip_address=request.remote_addr
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': '密码重置成功，请使用新密码登录'
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"重置密码异常: {e}, IP: {request.remote_addr}")
+            return jsonify({'success': False, 'error': '重置密码失败，请稍后重试'}), 500
     
     @app.route('/api/users', methods=['GET'])
     @admin_required

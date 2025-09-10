@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function LoginPage() {
   const [loginType, setLoginType] = useState('login');
@@ -16,9 +17,9 @@ export default function LoginPage() {
     phone: ''
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const { login, register, isAuthenticated } = useAuth();
+  const { addNotification } = useNotification();
   const router = useRouter();
 
   // 如果已经登录，重定向到项目管理页面
@@ -30,14 +31,13 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setIsLoading(true);
 
     try {
       if (loginType === 'login') {
         // 登录逻辑
         if (!formData.username || !formData.password) {
-          setError('请输入用户名和密码');
+          addNotification('请输入用户名和密码', 'error');
           return;
         }
 
@@ -45,22 +45,29 @@ export default function LoginPage() {
         if (result.success) {
           router.push('/projects');
         } else {
-          setError(result.error || '登录失败');
+          addNotification(result.error || '登录失败', 'error');
         }
       } else {
         // 注册逻辑
         if (!formData.username || !formData.email || !formData.password) {
-          setError('请填写所有必填字段');
+          addNotification('请填写所有必填字段', 'error');
           return;
         }
 
         if (formData.password !== formData.confirmPassword) {
-          setError('两次输入的密码不一致');
+          addNotification('两次输入的密码不一致', 'error');
           return;
         }
 
         if (formData.password.length < 6) {
-          setError('密码长度至少6位');
+          addNotification('密码长度至少6位字符', 'error');
+          return;
+        }
+
+        // 邮箱格式验证
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailPattern.test(formData.email)) {
+          addNotification('邮箱格式不正确', 'error');
           return;
         }
 
@@ -74,11 +81,11 @@ export default function LoginPage() {
         if (result.success) {
           router.push('/projects');
         } else {
-          setError(result.error || '注册失败');
+          addNotification(result.error || '注册失败', 'error');
         }
       }
     } catch {
-      setError('网络错误，请稍后重试');
+      addNotification('网络错误，请稍后重试', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -89,8 +96,6 @@ export default function LoginPage() {
       ...formData,
       [e.target.name]: e.target.value
     });
-    // 清除错误信息
-    if (error) setError('');
   };
 
   return (
@@ -124,13 +129,6 @@ export default function LoginPage() {
               注册
             </button>
           </div>
-
-          {/* 错误提示 */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-              {error}
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
 

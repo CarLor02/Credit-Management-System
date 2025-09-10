@@ -36,6 +36,13 @@ export interface RegisterRequest {
   phone?: string;
 }
 
+// 重置密码请求接口
+export interface ResetPasswordRequest {
+  username: string;
+  email: string;
+  new_password: string;
+}
+
 // 登录响应接口
 export interface LoginResponse {
   token: string;
@@ -145,7 +152,7 @@ class AuthService {
               console.debug('后端登出调用失败（已忽略）:', error.message);
             });
           }
-        } catch (tokenError) {
+        } catch {
           // Token格式错误，跳过后端调用
           console.debug('Token格式无效，跳过后端登出调用');
         }
@@ -212,6 +219,26 @@ class AuthService {
       };
     }
   }
+
+  /**
+   * 重置密码（通过用户名和邮箱验证）
+   */
+  async resetPassword(resetData: ResetPasswordRequest): Promise<ApiResponse<{ message: string }>> {
+    try {
+      const response = await apiClient.request<{ message: string }>('/auth/reset-password', {
+        method: 'POST',
+        body: resetData
+      });
+
+      return response;
+    } catch (error) {
+      console.error('重置密码失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '重置密码失败'
+      };
+    }
+  }
 }
 
 // 创建并导出服务实例
@@ -220,6 +247,7 @@ export const authService = new AuthService();
 // 导出便捷函数
 export const login = (credentials: LoginRequest) => authService.login(credentials);
 export const register = (userData: RegisterRequest) => authService.register(userData);
+export const resetPassword = (resetData: ResetPasswordRequest) => authService.resetPassword(resetData);
 export const logout = () => authService.logout();
 export const getCurrentUser = () => authService.getCurrentUser();
 export const isLoggedIn = () => authService.isLoggedIn();

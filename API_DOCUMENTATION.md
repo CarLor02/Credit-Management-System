@@ -141,11 +141,25 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
   "error": "用户名和密码不能为空"
 }
 ```
-- **401**: 认证失败
+- **401**: 用户不存在
 ```json
 {
   "success": false,
-  "error": "用户名或密码错误"
+  "error": "用户名错误，用户不存在"
+}
+```
+- **401**: 密码错误
+```json
+{
+  "success": false,
+  "error": "密码错误"
+}
+```
+- **401**: 账户被禁用
+```json
+{
+  "success": false,
+  "error": "账户已被禁用，请联系管理员"
 }
 ```
 
@@ -321,7 +335,95 @@ Content-Type: application/json
 }
 ```
 
-### 2.7 获取用户列表 (管理员)
+### 2.7 重置密码
+
+**接口地址**: `POST /api/auth/reset-password`
+
+**描述**: 通过用户名和邮箱验证重置密码，无需邮件验证
+
+**请求参数**:
+```json
+{
+  "username": "string",    // 用户名，必填
+  "email": "string",       // 邮箱地址，必填
+  "new_password": "string" // 新密码，必填，至少6位
+}
+```
+
+**成功响应** (200):
+```json
+{
+  "success": true,
+  "message": "密码重置成功，请使用新密码登录"
+}
+```
+
+**错误响应**:
+- **400**: 参数错误
+```json
+{
+  "success": false,
+  "error": "用户名不能为空" // 或 "邮箱不能为空" 或 "新密码不能为空"
+}
+```
+- **400**: 邮箱格式错误
+```json
+{
+  "success": false,
+  "error": "邮箱格式不正确"
+}
+```
+- **400**: 密码长度不足
+```json
+{
+  "success": false,
+  "error": "新密码长度至少6位字符"
+}
+```
+- **404**: 用户名不存在
+```json
+{
+  "success": false,
+  "error": "用户名错误，用户不存在"
+}
+```
+- **404**: 邮箱不匹配
+```json
+{
+  "success": false,
+  "error": "邮箱错误，与用户名不匹配"
+}
+```
+- **403**: 用户被禁用
+```json
+{
+  "success": false,
+  "error": "账户已被禁用，请联系管理员"
+}
+```
+
+**示例代码**:
+```javascript
+// 前端调用示例
+const response = await fetch('/api/auth/reset-password', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    username: 'admin',
+    email: 'admin@example.com',
+    new_password: 'newpassword123'
+  })
+});
+
+const result = await response.json();
+if (result.success) {
+  console.log('密码重置成功');
+}
+```
+
+### 2.8 获取用户列表 (管理员)
 
 **接口地址**: `GET /api/users`
 
