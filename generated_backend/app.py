@@ -66,7 +66,7 @@ else:
     )
     app.logger.info("SocketIO配置为单worker模式")
 
-# 初始化数据库（包含自动创建数据库和表）
+# 初始化数据库
 db = init_db(app)
 
 # 测试数据库连接
