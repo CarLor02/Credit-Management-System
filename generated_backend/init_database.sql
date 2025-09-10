@@ -287,11 +287,12 @@ CREATE TABLE statistics_history (
 );
 
 -- 插入种子用户数据
+-- 密码: admin - admin123, user1/user2/user3 - user123
 INSERT INTO users (username, email, password_hash, phone, role, is_active, last_login) VALUES
-('admin', 'admin@example.com', '$2b$12$example_hash_for_admin123', '13800138000', 'admin', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('user1', 'user1@example.com', '$2b$12$example_hash_for_user123', '13800138001', 'user', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('user2', 'user2@example.com', '$2b$12$example_hash_for_user123', '13800138002', 'user', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('user3', 'user3@example.com', '$2b$12$example_hash_for_user123', '13800138003', 'user', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY));
+('admin', 'admin@example.com', 'pbkdf2:sha256:600000$iu0c0jWvMhEsPP8J$56fa52e76e9537f70fe15d7ee5069dde4cf52ae62a65c6c20e4af4b927785f21', '13800138000', 'admin', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('user1', 'user1@example.com', 'pbkdf2:sha256:600000$GizkWjSgyQxr3dyv$4f94bd52e2211fe45056cdae98ba335f397f79b29f5b7fe3efde58332ac79b6c', '13800138001', 'user', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('user2', 'user2@example.com', 'pbkdf2:sha256:600000$AD1WKcMIw1f1ChxH$515fa2c9d658e510f9cc39aa1267253523b62004ea7e20b24aba953fcb78c705', '13800138002', 'user', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('user3', 'user3@example.com', 'pbkdf2:sha256:600000$pG06uYLbGrUdZcac$0e4a7dcb1eec2195a9a0879c45635fc07222be088931d129bfa2076c6e9947e1', '13800138003', 'user', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY));
 
 -- 插入系统设置数据
 INSERT INTO system_settings (`key`, value, description, category, is_public) VALUES
