@@ -16,6 +16,7 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   message?: string;
+  warnings?: string[]; // 添加警告信息字段
 }
 
 /**

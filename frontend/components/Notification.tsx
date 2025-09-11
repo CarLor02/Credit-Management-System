@@ -42,18 +42,18 @@ export default function Notification({ notification, onClose }: Props) {
 
   return (
     <div
-      className={`flex items-start w-full max-w-sm p-4 rounded-lg shadow-lg border ${color.bg} ${color.border} animate-slideInUp`}
+      className={`flex items-start w-full max-w-md p-4 rounded-lg shadow-lg border ${color.bg} ${color.border} animate-slideInUp`}
       role="alert"
     >
       <div className="flex-shrink-0">
         <i className={`${icon} ${color.text} text-xl`}></i>
       </div>
       <div className="ml-3 mr-4 flex-1">
-        <p className={`text-sm font-medium ${color.text}`}>{message}</p>
+        <p className={`text-sm font-medium ${color.text} leading-relaxed break-words`}>{message}</p>
       </div>
       <button
         onClick={handleClose}
-        className={`-mx-1.5 -my-1.5 ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg p-1.5 ${color.text} hover:bg-white hover:shadow-md hover:border hover:border-gray-300 transition-all duration-200 ease-in-out`}
+        className={`-mx-1.5 -my-1.5 ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg p-1.5 ${color.text} hover:bg-white hover:shadow-md hover:border hover:border-gray-300 transition-all duration-200 ease-in-out flex-shrink-0`}
         aria-label="Close"
       >
         <span className="sr-only">Close</span>

@@ -365,12 +365,14 @@ class DocumentProcessor:
         try:
             success_count = 0
             total_count = 0
+            failed_operations = []
             
             # 获取项目的所有文档
             documents = Document.query.filter_by(project_id=project.id).all()
             
             for document in documents:
                 total_count += 1
+                doc_success = True
                 
                 # 删除原始文件
                 try:
@@ -379,6 +381,8 @@ class DocumentProcessor:
                         current_app.logger.info(f"删除原始文件: {document.file_path}")
                 except Exception as e:
                     current_app.logger.warning(f"删除原始文件失败: {e}")
+                    failed_operations.append(f"原始文件 {document.name}: {str(e)}")
+                    doc_success = False
                 
                 # 删除处理后的文件
                 try:
@@ -387,8 +391,11 @@ class DocumentProcessor:
                         current_app.logger.info(f"删除处理后文件: {document.processed_file_path}")
                 except Exception as e:
                     current_app.logger.warning(f"删除处理后文件失败: {e}")
+                    failed_operations.append(f"处理后文件 {document.name}: {str(e)}")
+                    doc_success = False
                 
-                success_count += 1
+                if doc_success:
+                    success_count += 1
             
             # 删除项目相关的文件夹
             try:
@@ -410,13 +417,23 @@ class DocumentProcessor:
                     
             except Exception as e:
                 current_app.logger.warning(f"删除项目文件夹失败: {e}")
+                failed_operations.append(f"项目文件夹删除: {str(e)}")
             
             current_app.logger.info(f"项目文档删除完成: {success_count}/{total_count}")
+            
+            # 如果有失败的操作，抛出异常包含详细信息
+            if failed_operations:
+                error_details = "; ".join(failed_operations[:3])  # 只显示前3个错误
+                if len(failed_operations) > 3:
+                    error_details += f" 等 {len(failed_operations)} 个错误"
+                raise Exception(error_details)
+            
             return success_count == total_count
             
         except Exception as e:
-            current_app.logger.error(f"删除项目文档失败: {e}")
-            return False
+            error_msg = f"删除项目文档失败: {str(e)}"
+            current_app.logger.error(error_msg)
+            raise Exception(error_msg)
     
     def process_markdown_file(self, document_id: int) -> bool:
         """处理markdown文件（直接复制）"""

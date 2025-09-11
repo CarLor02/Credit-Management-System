@@ -326,13 +326,27 @@ def register_project_routes(app):
             try:
                 from services.knowledge_base_service import knowledge_base_service
                 knowledge_base_service.delete_knowledge_base(project.id)
+                current_app.logger.info(f"知识库删除成功，项目: {project_name}")
             except Exception as kb_error:
-                current_app.logger.warning(f"删除知识库失败: {kb_error}")
-                # 继续删除操作，不因为知识库删除失败而中断
+                current_app.logger.error(f"删除知识库失败，中止项目删除: {kb_error}")
+                db.session.rollback()  # 回滚数据库事务
+                return jsonify({
+                    'success': False,
+                    'error': '知识库删除失败'
+                }), 500
+            
+            # 跟踪删除过程中的警告信息（仅用于后续步骤）
+            warnings = []
 
             # 删除项目相关的所有文档文件
-            from services.document_processor import document_processor
-            document_processor.delete_project_documents(project)
+            try:
+                from services.document_processor import document_processor
+                document_processor.delete_project_documents(project)
+                current_app.logger.info(f"项目文档删除成功，项目: {project_name}")
+            except Exception as files_error:
+                error_detail = f"文档文件删除失败: {str(files_error)}"
+                warnings.append(error_detail)
+                current_app.logger.warning(f"删除项目文档文件失败: {files_error}")
 
             # 删除项目的报告文件（如果存在）
             try:
@@ -340,10 +354,10 @@ def register_project_routes(app):
                     os.remove(project.report_path)
                     current_app.logger.info(f"已删除项目报告文件: {project.report_path}")
             except Exception as report_error:
+                error_detail = f"报告文件删除失败: {str(report_error)}"
+                warnings.append(error_detail)
                 current_app.logger.warning(f"删除项目报告文件失败: {report_error}")
                 # 继续删除操作，不因为报告文件删除失败而中断
-
-
 
             # 删除数据库记录（依赖级联删除）
             db.session.delete(project)
@@ -351,10 +365,21 @@ def register_project_routes(app):
 
             current_app.logger.info(f"项目删除成功: {project_name}")
 
-            return jsonify({
-                'success': True,
-                'message': f'项目 "{project_name}" 删除成功'
-            })
+            # 构建响应消息
+            if warnings:
+                response_data = {
+                    'success': True,
+                    'message': f'项目 "{project_name}" 删除成功，但有 {len(warnings)} 个警告',
+                    'warnings': warnings
+                }
+                current_app.logger.warning(f"项目删除完成但有警告: {warnings}")
+            else:
+                response_data = {
+                    'success': True,
+                    'message': f'项目 "{project_name}" 删除成功'
+                }
+
+            return jsonify(response_data)
 
         except Exception as e:
             db.session.rollback()

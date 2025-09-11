@@ -517,6 +517,9 @@ class KnowledgeBaseService:
             
         Returns:
             是否成功删除知识库
+            
+        Raises:
+            Exception: 当删除失败时抛出异常
         """
         try:
             self._get_config()
@@ -525,28 +528,37 @@ class KnowledgeBaseService:
             project = Project.query.get(project_id)
             if not project:
                 logger.error(f"项目不存在: {project_id}")
-                return False
+                raise Exception(f"项目不存在 (ID: {project_id})")
             
             if not project.dataset_id:
                 logger.info(f"项目没有关联的知识库: {project.name}")
                 return True
             
+            dataset_id = project.dataset_id
+            project_name = project.name
+            
             # 调用RAG API删除知识库
-            success = self._delete_dataset_via_api(project.dataset_id)
-            if success:
-                # 清除项目中的知识库信息
-                project.dataset_id = None
-                project.knowledge_base_name = None
-                db.session.commit()
-                logger.info(f"成功删除项目知识库: {project.name}")
-                return True
-            else:
-                logger.error(f"删除项目知识库失败: {project.name}")
-                return False
+            success = self._delete_dataset_via_api(dataset_id)
+            if not success:
+                error_msg = f"RAG API删除知识库失败 (Dataset ID: {dataset_id})"
+                logger.error(f"删除项目知识库失败: {project_name} - {error_msg}")
+                raise Exception(error_msg)
+            
+            # 清除项目中的知识库信息
+            project.dataset_id = None
+            project.knowledge_base_name = None
+            db.session.commit()
+            logger.info(f"成功删除项目知识库: {project_name}")
+            return True
                 
         except Exception as e:
-            logger.error(f"删除知识库异常: {e}")
-            return False
+            # 确保抛出异常而不是返回False
+            if "项目不存在" in str(e) or "RAG API删除知识库失败" in str(e):
+                raise e
+            else:
+                error_msg = f"删除知识库异常: {str(e)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
 
     def _delete_dataset_via_api(self, dataset_id: str) -> bool:
         """

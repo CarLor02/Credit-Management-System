@@ -96,7 +96,20 @@ export default function ProjectsPage() {
         // 重新加载项目列表和统计数据
         await Promise.all([loadProjects(), loadAllProjects()]);
         
-        addNotification('项目删除成功', 'success');
+        // 检查是否有警告信息（文档或报告文件删除失败）
+        if (response.warnings && response.warnings.length > 0) {
+          // 先显示成功消息
+          addNotification(response.message || '项目删除成功', 'success');
+          
+          // 然后显示警告信息
+          response.warnings.forEach((warning: string, index: number) => {
+            setTimeout(() => {
+              addNotification(warning, 'warning', 5000); // 警告信息显示5秒
+            }, (index + 1) * 500); // 每个警告间隔0.5秒显示
+          });
+        } else {
+          addNotification(response.message || '项目删除成功', 'success');
+        }
       } else {
         addNotification(response.error || '删除项目失败', 'error');
       }
