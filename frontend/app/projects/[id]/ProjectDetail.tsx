@@ -395,6 +395,36 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     setShowReportPreview(false);
   }, []);
 
+  // 处理报告状态变化的回调
+  const handleReportStatusChange = useCallback((status: 'generating' | 'generated' | 'not_generated' | 'error' | 'cancelled') => {
+    console.log('📊 收到报告状态变化:', status);
+    setProject(prev => {
+      if (!prev) return prev;
+      
+      let newReportStatus: 'not_generated' | 'generating' | 'generated' | 'cancelled';
+      switch (status) {
+        case 'generating':
+          newReportStatus = 'generating';
+          break;
+        case 'generated':
+          newReportStatus = 'generated';
+          break;
+        case 'error':
+        case 'cancelled':
+        case 'not_generated':
+          newReportStatus = 'not_generated';
+          break;
+        default:
+          newReportStatus = prev.report_status || 'not_generated';
+      }
+      
+      return {
+        ...prev,
+        report_status: newReportStatus
+      };
+    });
+  }, []);
+
   // 减少日志输出频率，避免在控制台看到重复信息
   const lastLoggedStateRef = useRef({ showReportPreview: false });
   useEffect(() => {
@@ -1984,6 +2014,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         onClose={handleCloseReportPreview}
         companyName={project?.name || ''}
         projectId={project?.id || 0}
+        onStatusChange={handleReportStatusChange}
         onReportDeleted={async () => {
           // 报告删除后的回调，重新获取项目最新状态
           console.log('📄 报告删除回调，重新获取项目状态');

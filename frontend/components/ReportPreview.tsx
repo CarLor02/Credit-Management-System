@@ -16,6 +16,7 @@ interface ReportPreviewProps {
   projectId: number;
   companyName: string;
   onReportDeleted?: () => void;
+  onStatusChange?: (status: 'generating' | 'generated' | 'not_generated' | 'error' | 'cancelled') => void;
 }
 
 const ReportPreview: React.FC<ReportPreviewProps> = ({
@@ -23,7 +24,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
   onClose,
   projectId,
   companyName,
-  onReportDeleted
+  onReportDeleted,
+  onStatusChange
 }) => {
   const [reportContent, setReportContent] = useState<string>('');
   const [htmlContent, setHtmlContent] = useState<string>('');
@@ -513,6 +515,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
           // 清空流式内容服务中的旧内容
           streamingContentService.updateReportContent(projectId, '');
         }
+        
+        // 通知父组件状态变化
+        onStatusChange?.('generating');
         console.log('🚀 开始生成报告，设置generating为true，清空旧内容');
       }
 
@@ -535,6 +540,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             reportContent: ''
           });
         }
+        
+        // 通知父组件报告已删除
+        onStatusChange?.('not_generated');
         console.log('✅ 报告删除事件处理完成，所有内容已清空');
       }
     };
@@ -611,6 +619,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         streamingContentService.setGeneratingStatus(projectId, false);
       }
 
+      // 通知父组件状态变化为已生成
+      onStatusChange?.('generated');
+
       // 优先使用完成事件中的最终内容，否则从文件加载最新内容
       if (data.final_content) {
         console.log('✅ 使用完成事件中的最终内容');
@@ -649,6 +660,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
         streamingContentService.setGeneratingStatus(projectId, false);
       }
 
+      // 通知父组件错误状态
+      onStatusChange?.('error');
+
       console.log('❌ 报告生成出错，设置generating为false');
     };
 
@@ -671,6 +685,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (projectId) {
         streamingContentService.setGeneratingStatus(projectId, false);
       }
+
+      // 通知父组件取消状态
+      onStatusChange?.('cancelled');
 
       console.log('🚫 报告生成已取消，设置generating为false');
     };
@@ -979,6 +996,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       if (response.success) {
         addNotification('报告删除成功', 'success');
         onReportDeleted?.();
+        // 通知父组件报告已删除
+        onStatusChange?.('not_generated');
         onClose();
       } else {
         addNotification(response.error || '删除报告失败', 'error');
@@ -1004,6 +1023,9 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
         // 更新流式内容服务状态
         streamingContentService.setGeneratingStatus(projectId, false);
+
+        // 通知父组件生成已取消
+        onStatusChange?.('cancelled');
 
         const stopEvent = {
           timestamp: new Date().toLocaleTimeString(),
