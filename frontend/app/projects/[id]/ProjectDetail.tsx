@@ -434,9 +434,52 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   const [showReportPreview, setShowReportPreview] = useState(false);
 
   // 优化回调函数，防止不必要的重新渲染
-  const handleCloseReportPreview = useCallback(() => {
+  const handleCloseReportPreview = useCallback(async () => {
+    console.log('🔍 关闭报告预览窗口，检查项目状态是否需要更新');
+    
+    // 关闭预览窗口
     setShowReportPreview(false);
-  }, []);
+    
+    // 在关闭预览窗口后，重新获取项目最新状态，确保显示正确的进度
+    if (project?.id) {
+      try {
+        const response = await projectService.getProjectById(parseInt(projectId));
+        if (response.success && response.data) {
+          console.log('🔄 获取到最新项目状态:', {
+            progress: response.data.progress,
+            status: response.data.status,
+            report_status: response.data.report_status
+          });
+          
+          const newData = response.data;
+          
+          // 只在状态有实际变化时才更新，避免不必要的重新渲染
+          setProject(prev => {
+            if (!prev) return newData;
+            
+            // 检查是否有实际变化
+            const hasChanges = 
+              prev.progress !== newData.progress ||
+              prev.status !== newData.status ||
+              prev.report_status !== newData.report_status;
+            
+            if (hasChanges) {
+              console.log('📊 项目状态有变化，更新本地状态');
+              return newData;
+            } else {
+              console.log('📊 项目状态无变化，保持当前状态');
+              return prev;
+            }
+          });
+        } else {
+          console.warn('获取最新项目状态失败，保持当前状态');
+        }
+      } catch (error) {
+        console.error('获取最新项目状态时出错:', error);
+        // 出错时保持当前状态，不做任何更改
+      }
+    }
+  }, [project?.id, projectId]);
 
   // 处理报告状态变化的回调
   const handleReportStatusChange = useCallback((status: 'generating' | 'generated' | 'not_generated' | 'error' | 'cancelled') => {
