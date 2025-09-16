@@ -323,35 +323,37 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
             });
           } else {
             console.log('❌ 项目暂无报告，确保状态为未生成');
-            // 确保状态为未生成
+            // 确保状态为未生成，但保持原有的进度值
             setProject(prev => prev ? {
               ...prev,
-              report_status: 'not_generated',
-              progress: 0
+              report_status: 'not_generated'
+              // 注意：不再重置progress，保持从数据库获取的真实进度
             } : prev);
 
-            // 同步更新流式内容服务状态
+            // 同步更新流式内容服务状态，但使用项目的真实进度
             streamingContentService.setGeneratingStatus(project.id, false);
+            // 使用当前项目状态快照中的进度，避免闭包问题
+            const currentProgress = project.progress || 0;
             streamingContentService.setProjectData(project.id, {
-              progress: 0,
+              progress: currentProgress,
               isGenerating: false
             });
           }
         } catch (error: any) {
           // 静默处理错误，不显示错误信息
           console.log('检查报告时出现错误:', error?.message || error);
-          // 出错时设置为未生成状态
+          // 出错时只设置报告状态为未生成，不重置进度
           setProject(prev => prev ? {
             ...prev,
-            report_status: 'not_generated',
-            progress: 0
+            report_status: 'not_generated'
+            // 注意：不再重置progress，保持从数据库获取的真实进度
           } : prev);
         }
       };
 
       checkReportOnce();
     }
-  }, [project?.id]); // 只在项目ID变化时执行一次
+  }, [project?.id, project?.progress]); // 依赖项目ID和进度
 
   // 获取编辑数据
   const getEditData = () => {
@@ -1981,34 +1983,38 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
                   reportContent: ''
                 });
               } else {
-                // 如果获取失败，使用默认值
+                // 如果获取失败，保持当前项目状态，不重置进度
+                console.warn('获取删除报告后的项目状态失败，保持当前状态');
                 setProject(prev => prev ? {
                   ...prev,
-                  report_status: 'not_generated',
-                  status: 'collecting',
-                  progress: 0
+                  report_status: 'not_generated'
+                  // 不再强制重置status和progress
                 } : prev);
                 
                 streamingContentService.setGeneratingStatus(project.id, false);
+                // 保持当前进度，不重置为0
+                const currentProgress = project?.progress || 0;
                 streamingContentService.setProjectData(project.id, {
-                  progress: 0,
+                  progress: currentProgress,
                   isGenerating: false,
                   reportContent: ''
                 });
               }
             } catch (error) {
               console.error('重新获取项目状态失败:', error);
-              // 使用默认值
+              // 保持当前项目状态，不重置进度
+              console.warn('重新获取项目状态失败，保持当前状态');
               setProject(prev => prev ? {
                 ...prev,
-                report_status: 'not_generated',
-                status: 'collecting',
-                progress: 0
+                report_status: 'not_generated'
+                // 不再强制重置status和progress
               } : prev);
               
               streamingContentService.setGeneratingStatus(project.id, false);
+              // 保持当前进度，不重置为0
+              const currentProgress = project?.progress || 0;
               streamingContentService.setProjectData(project.id, {
-                progress: 0,
+                progress: currentProgress,
                 isGenerating: false,
                 reportContent: ''
               });
