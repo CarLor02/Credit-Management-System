@@ -1152,8 +1152,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
             <p className="text-sm text-gray-500 mt-1">公司：{companyName}</p>
           </div>
           <div className="flex items-center space-x-3">
-            {/* 预览切换和下载按钮 */}
-            {reportContent && (
+            {/* 预览切换和下载按钮 - 只在报告完全生成后显示 */}
+            {reportContent && !generating && (
               <>
                 {/* 预览模式切换按钮 */}
                 {isPdfPreview ? (
@@ -1208,8 +1208,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
 
             {/* 操作按钮组 */}
             <div className="flex items-center gap-2">
-              {/* 删除按钮 */}
-              {reportContent && (
+              {/* 删除按钮 - 只在报告完全生成后显示 */}
+              {reportContent && !generating && (
                 <button
                   onClick={handleDeleteReport}
                   disabled={deletingReport}
