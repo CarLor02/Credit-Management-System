@@ -745,6 +745,20 @@ def register_report_routes(app):
 
             # 获取项目名称（在检查报告之前先获取，避免后续数据库连接问题）
             company_name = project.name
+            
+            # 获取项目的报告状态
+            report_status = project.report_status.value if project.report_status else 'not_generated'
+
+            # 如果报告正在生成中，返回生成状态
+            if project.report_status == ReportStatus.GENERATING:
+                return jsonify({
+                    "success": False,
+                    "error": "报告正在生成中",
+                    "has_report": False,
+                    "company_name": company_name,
+                    "report_status": report_status,
+                    "is_generating": True
+                }), 202  # 202 Accepted 表示正在处理
 
             # 如果报告路径为空或None，返回友好提示
             if not project.report_path or project.report_path.strip() == "":
@@ -752,7 +766,8 @@ def register_report_routes(app):
                     "success": False,
                     "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": company_name
+                    "company_name": company_name,
+                    "report_status": report_status
                 }), 404  # 使用404状态码，表示资源不存在
 
             # 检查文件是否存在
@@ -771,7 +786,8 @@ def register_report_routes(app):
                     "success": False,
                     "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": company_name
+                    "company_name": company_name,
+                    "report_status": "not_generated"
                 }), 404  # 使用404状态码
 
             # 读取报告内容
@@ -785,7 +801,8 @@ def register_report_routes(app):
                         "success": False,
                         "error": "该项目尚未生成报告",
                         "has_report": False,
-                        "company_name": company_name
+                        "company_name": company_name,
+                        "report_status": report_status
                     }), 404
 
                 # 对内容进行后处理，修复表格等格式问题
@@ -801,7 +818,8 @@ def register_report_routes(app):
                     "content": processed_content,
                     "file_path": project.report_path,
                     "company_name": company_name,
-                    "has_report": True
+                    "has_report": True,
+                    "report_status": report_status
                 })
             except Exception as read_error:
                 current_app.logger.error(f"读取报告文件失败: {read_error}")
@@ -809,7 +827,8 @@ def register_report_routes(app):
                     "success": False,
                     "error": "该项目尚未生成报告",
                     "has_report": False,
-                    "company_name": company_name
+                    "company_name": company_name,
+                    "report_status": report_status
                 }), 404
 
         except Exception as e:

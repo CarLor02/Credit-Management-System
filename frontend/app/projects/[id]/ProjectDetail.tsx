@@ -303,10 +303,53 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
             file_path: string;
             company_name: string;
             has_report: boolean;
+            report_status?: string;
+            is_generating?: boolean;
             error?: string;
           }>(`/projects/${project.id}/report`);
 
-          if (response.success && response.data?.has_report && response.data?.content) {
+          console.log('🔍 检查报告API响应:', {
+            success: response.success,
+            has_report: response.data?.has_report,
+            report_status: response.data?.report_status,
+            is_generating: response.data?.is_generating,
+            error: response.data?.error
+          });
+
+          // 根据后端返回的report_status设置前端状态
+          if (response.data?.report_status) {
+            const backendStatus = response.data.report_status;
+            let frontendStatus: 'not_generated' | 'generating' | 'generated' | 'cancelled';
+            
+            switch (backendStatus) {
+              case 'generating':
+                frontendStatus = 'generating';
+                break;
+              case 'generated':
+                frontendStatus = 'generated';
+                break;
+              case 'cancelled':
+                frontendStatus = 'cancelled';
+                break;
+              default:
+                frontendStatus = 'not_generated';
+            }
+
+            console.log('🔍 设置项目状态为:', frontendStatus);
+            setProject(prev => prev ? {
+              ...prev,
+              report_status: frontendStatus,
+              // 如果是已生成状态，进度设为100%
+              progress: frontendStatus === 'generated' ? 100 : (prev.progress || 0)
+            } : prev);
+
+            // 同步更新流式内容服务状态
+            streamingContentService.setGeneratingStatus(project.id, frontendStatus === 'generating');
+            streamingContentService.setProjectData(project.id, {
+              progress: frontendStatus === 'generated' ? 100 : (project.progress || 0),
+              isGenerating: frontendStatus === 'generating'
+            });
+          } else if (response.success && response.data?.has_report && response.data?.content) {
             console.log('✅ 发现已存在的报告，更新项目状态');
             // 更新项目状态为已生成
             setProject(prev => prev ? {
