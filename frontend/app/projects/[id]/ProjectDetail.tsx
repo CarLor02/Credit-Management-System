@@ -556,8 +556,32 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       return;
     }
 
+    // 重新获取最新的项目信息，确保状态检查基于最新数据
+    let latestProject: Project;
+    try {
+      console.log('🔄 重新获取最新项目信息...');
+      const response = await projectService.getProjectById(parseInt(projectId));
+      if (response.success && response.data) {
+        latestProject = response.data;
+        // 更新本地项目状态
+        setProject(latestProject);
+        console.log('✅ 项目信息已更新:', {
+          report_status: latestProject.report_status,
+          progress: latestProject.progress
+        });
+      } else {
+        console.error('获取最新项目信息失败:', response.error);
+        addNotification('获取项目最新状态失败，请稍后重试', 'error');
+        return;
+      }
+    } catch (error) {
+      console.error('获取最新项目信息时发生错误:', error);
+      addNotification('获取项目最新状态失败，请稍后重试', 'error');
+      return;
+    }
+
     // 如果报告已生成，直接下载PDF
-    if (project.report_status === 'generated') {
+    if (latestProject.report_status === 'generated') {
       try {
         const token = localStorage.getItem('auth_token');
         if (!token) {
@@ -565,7 +589,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           return;
         }
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api'}/projects/${project.id}/report/download-pdf`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api'}/projects/${latestProject.id}/report/download-pdf`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -579,7 +603,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
 
         // 获取文件名
         const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = `${project.name}_征信报告.pdf`;
+        let filename = `${latestProject.name}_征信报告.pdf`;
         if (contentDisposition) {
           const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
           if (filenameMatch && filenameMatch[1]) {
@@ -614,29 +638,29 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     }
 
     // 检查必要的项目信息
-    if (!project.dataset_id && !project.knowledge_base_name) {
+    if (!latestProject.dataset_id && !latestProject.knowledge_base_name) {
       addNotification('项目尚未创建知识库，请先上传文档并等待处理完成', 'warning');
       return;
     }
 
     // 检查是否正在生成报告
-    if (project.report_status === 'generating') {
-      addNotification('报告正在生成中，请稍后再试', 'info');
+    if (latestProject.report_status === 'generating') {
+      addNotification('报告正在生成中，请稍后再试', 'error');
       return;
     }
 
     // 检查是否已有报告，如果有则提示用户是否覆盖
     // 注意：cancelled 状态允许重新生成，不需要覆盖提醒
     console.log('🔍 检查报告状态:', {
-      report_status: project.report_status,
-      project_id: project.id
+      report_status: latestProject.report_status,
+      project_id: latestProject.id
     });
 
     // 无论项目状态如何，都要检查是否真的有报告文件
-    const hasExistingReport = await checkExistingReportForGeneration();
+    const hasExistingReport = await checkExistingReportForGeneration(latestProject.id);
     console.log('🔍 检查结果:', {
       hasExistingReport,
-      report_status: project.report_status
+      report_status: latestProject.report_status
     });
 
     if (hasExistingReport) {
@@ -663,15 +687,16 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
     }
 
     // 开始生成报告
-    await startReportGeneration();
+    await startReportGeneration(latestProject);
   };
 
   // 检查是否已有报告（用于生成前的检查）
-  const checkExistingReportForGeneration = async (): Promise<boolean> => {
-    if (!project?.id) return false;
+  const checkExistingReportForGeneration = async (projectIdToCheck?: number): Promise<boolean> => {
+    const idToUse = projectIdToCheck || project?.id;
+    if (!idToUse) return false;
 
     try {
-      console.log('🔍 正在检查项目报告:', project.id);
+      console.log('🔍 正在检查项目报告:', idToUse);
       const response = await apiClient.get<{
         success: boolean;
         content: string;
@@ -679,7 +704,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         company_name: string;
         has_report: boolean;
         error?: string;
-      }>(`/projects/${project.id}/report`);
+      }>(`/projects/${idToUse}/report`);
 
       console.log('🔍 检查报告API响应:', {
         success: response.success,
@@ -698,18 +723,19 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
   };
 
   // 开始报告生成的函数
-  const startReportGeneration = async () => {
-    if (!project) return;
+  const startReportGeneration = async (projectToUse?: Project) => {
+    const projectForGeneration = projectToUse || project;
+    if (!projectForGeneration) return;
 
     try {
       // 更新项目状态为正在生成
       setProject(prev => prev ? {...prev, report_status: 'generating'} : prev);
 
       // 更新流式内容服务状态
-      if (project.id) {
-        streamingContentService.setGeneratingStatus(project.id, true);
+      if (projectForGeneration.id) {
+        streamingContentService.setGeneratingStatus(projectForGeneration.id, true);
         // 清空之前的流式内容
-        streamingContentService.clearProjectData(project.id);
+        streamingContentService.clearProjectData(projectForGeneration.id);
       }
 
       // 调用后端API生成报告
@@ -721,10 +747,10 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         status?: string;
         error?: string;
       }>('/generate_report', {
-        dataset_id: project.dataset_id,
-        company_name: project.name,
-        knowledge_name: project.knowledge_base_name,
-        project_id: project.id
+        dataset_id: projectForGeneration.dataset_id,
+        company_name: projectForGeneration.name,
+        knowledge_name: projectForGeneration.knowledge_base_name,
+        project_id: projectForGeneration.id
       });
 
       console.log('Generate report response:', response);
@@ -740,7 +766,7 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
         // 后端已开始异步生成报告，立即打开预览弹窗
         console.log('🎯 设置showReportPreview为true');
         setShowReportPreview(true);
-        console.log('报告生成已开始，项目ID:', project.id);
+        console.log('报告生成已开始，项目ID:', projectForGeneration.id);
       } else {
         console.log('❌ 弹窗条件不满足:', {
           response_success: response.success,
@@ -757,14 +783,14 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
           setShowReportPreview(true);
           // 确保项目状态为generating
           setProject(prev => prev ? {...prev, report_status: 'generating'} : prev);
-          if (project.id) {
-            streamingContentService.setGeneratingStatus(project.id, true);
+          if (projectForGeneration.id) {
+            streamingContentService.setGeneratingStatus(projectForGeneration.id, true);
           }
         } else {
           // 其他错误，恢复状态
           setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
-          if (project.id) {
-            streamingContentService.setGeneratingStatus(project.id, false);
+          if (projectForGeneration.id) {
+            streamingContentService.setGeneratingStatus(projectForGeneration.id, false);
           }
           addNotification(errorMessage || '启动报告生成失败', 'error');
         }
@@ -773,8 +799,8 @@ export default function ProjectDetail({ projectId }: ProjectDetailProps) {
       console.error('Generate report error:', error);
       // 生成失败，恢复状态
       setProject(prev => prev ? {...prev, report_status: 'not_generated'} : prev);
-      if (project.id) {
-        streamingContentService.setGeneratingStatus(project.id, false);
+      if (projectForGeneration.id) {
+        streamingContentService.setGeneratingStatus(projectForGeneration.id, false);
       }
 
       // 根据错误类型提供更具体的错误信息
