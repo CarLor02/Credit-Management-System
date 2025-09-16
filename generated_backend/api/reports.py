@@ -520,8 +520,11 @@ def register_report_routes(app):
                     return jsonify({"success": False, "error": "文档解析尚未完成，请等待解析完成后再生成报告"}), 400
 
             # 更新项目状态为处理中，报告状态为正在生成
+            # 保持当前进度或重新计算进度，不重置为0
+            current_progress = project.progress or calculate_project_progress(project_id)
             project.status = ProjectStatus.PROCESSING
             project.report_status = ReportStatus.GENERATING
+            project.progress = current_progress  # 保持当前进度，不重置为0
             db.session.commit()
 
             # 项目WebSocket房间ID

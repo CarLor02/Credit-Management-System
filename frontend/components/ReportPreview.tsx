@@ -995,10 +995,33 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({
       const response = await apiClient.delete(`/projects/${projectId}/report`);
       if (response.success) {
         addNotification('报告删除成功', 'success');
-        onReportDeleted?.();
+        
+        // 手动清空所有内容状态，确保UI立即更新
+        setReportContent('');
+        setHtmlContent('');
+        setError(null);
+        setStreamingEvents([]);
+        setGenerating(false);
+        
+        // 清空流式内容服务中的所有数据
+        if (projectId) {
+          streamingContentService.setGeneratingStatus(projectId, false);
+          streamingContentService.updateReportContent(projectId, '');
+          streamingContentService.setProjectData(projectId, {
+            events: [],
+            isGenerating: false,
+            reportContent: ''
+          });
+        }
+        
         // 通知父组件报告已删除
         onStatusChange?.('not_generated');
-        onClose();
+        onReportDeleted?.();
+        
+        // 可选：短暂延迟后关闭窗口，让用户看到清空效果
+        setTimeout(() => {
+          onClose();
+        }, 500);
       } else {
         addNotification(response.error || '删除报告失败', 'error');
       }
