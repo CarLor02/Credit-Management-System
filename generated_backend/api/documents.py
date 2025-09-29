@@ -90,7 +90,7 @@ def register_document_routes(app):
                 query = query.filter(Document.project_id == project_id)
             
             # 状态过滤
-            if status and status in ['uploading', 'processing', 'uploading_to_kb', 'parsing_kb', 'completed', 'failed', 'kb_parse_failed']:
+            if status and status in ['uploading', 'processing', 'processed', 'uploading_to_kb', 'parsing_kb', 'completed', 'failed', 'kb_parse_failed']:
                 query = query.filter(Document.status == DocumentStatus(status))
             
             # 文件类型过滤
@@ -127,8 +127,63 @@ def register_document_routes(app):
             return jsonify(documents_data)
             
         except Exception as e:
-            current_app.logger.error(f"获取文档列表失败: {e}")
-            return jsonify({'success': False, 'error': '获取文档列表失败'}), 500
+            current_app.logger.error(f"重试文档处理失败: {e}")
+            return jsonify({'success': False, 'error': '重试失败'}), 500
+
+    @app.route('/api/documents/<int:document_id>/upload-to-knowledge-base', methods=['POST'])
+    @token_required
+    def upload_document_to_knowledge_base(document_id):
+        """手动上传文档到知识库"""
+        try:
+            current_user = request.current_user
+            
+            # 获取文档信息
+            document = Document.query.get(document_id)
+            if not document:
+                return jsonify({'success': False, 'error': '文档不存在'}), 404
+            
+            # 权限检查：只有文档上传者、项目创建者或管理员可以上传
+            project = document.project
+            if not project:
+                return jsonify({'success': False, 'error': '项目不存在'}), 404
+            
+            if (current_user.role != UserRole.ADMIN and 
+                document.upload_by != current_user.id and 
+                project.created_by != current_user.id):
+                return jsonify({'success': False, 'error': '权限不足'}), 403
+            
+            # 检查文档状态
+            if document.status != DocumentStatus.PROCESSED:
+                status_messages = {
+                    DocumentStatus.UPLOADING: '文档正在上传中',
+                    DocumentStatus.PROCESSING: '文档正在处理中',
+                    DocumentStatus.UPLOADING_TO_KB: '文档正在上传到知识库',
+                    DocumentStatus.PARSING_KB: '文档正在解析中',
+                    DocumentStatus.COMPLETED: '文档已完成知识库解析',
+                    DocumentStatus.FAILED: '文档处理失败',
+                    DocumentStatus.KB_PARSE_FAILED: '文档知识库解析失败'
+                }
+                message = status_messages.get(document.status, f'文档状态不正确: {document.status.value}')
+                return jsonify({'success': False, 'error': message}), 400
+            
+            # 调用文档处理器的手动上传方法
+            from services.document_processor import document_processor
+            success = document_processor.upload_to_knowledge_base_manually(document_id)
+            
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': '文档已开始上传到知识库，请稍后查看状态'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': '上传到知识库失败，请稍后重试'
+                }), 500
+                
+        except Exception as e:
+            current_app.logger.error(f"手动上传文档到知识库API失败: {e}")
+            return jsonify({'success': False, 'error': '服务器内部错误'}), 500
     
     @app.route('/api/documents/<int:document_id>', methods=['GET'])
     @token_required
@@ -966,98 +1021,3 @@ def _upload_document_to_knowledge_base(document, knowledge_base):
     except Exception as e:
         current_app.logger.error(f"上传文档到知识库失败: {e}")
         db.session.rollback()
-
-    @app.route('/api/projects/<int:project_id>/rebuild-knowledge-base', methods=['POST'])
-    @token_required
-    def rebuild_knowledge_base(project_id):
-        """重新构建项目的知识库"""
-        try:
-            current_user = request.current_user
-
-            # 检查项目是否存在
-            project = Project.query.get(project_id)
-            if not project:
-                return jsonify({
-                    'success': False,
-                    'error': '项目不存在'
-                }), 404
-
-            # 检查权限 - 只有项目所有者或管理员可以重新构建知识库
-            if project.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-                return jsonify({
-                    'success': False,
-                    'error': '权限不足'
-                }), 403
-
-            # 获取项目的所有文档
-            documents = Document.query.filter_by(project_id=project_id).all()
-            if not documents:
-                return jsonify({
-                    'success': False,
-                    'error': '项目中没有文档'
-                }), 400
-
-            # 初始化服务
-            knowledge_base_service = KnowledgeBaseService()
-            document_processor = DocumentProcessor()
-
-            # 记录操作日志
-            log_action(current_user.id, 'rebuild_knowledge_base', f'重新构建项目知识库: {project.name}')
-
-            # 步骤1: 删除现有知识库
-            current_app.logger.info(f"开始重新构建项目知识库: {project.name}")
-            if project.dataset_id:
-                current_app.logger.info(f"删除现有知识库: {project.dataset_id}")
-                knowledge_base_service.delete_knowledge_base(project_id)
-
-            # 步骤2: 重置所有文档状态为处理中
-            current_app.logger.info(f"重置文档状态为处理中")
-            for document in documents:
-                document.status = DocumentStatus.PROCESSING
-                document.processed_file_path = None
-                document.knowledge_base_status = 'pending'
-                document.parsing_progress = 0
-
-                # 删除已处理的MD文件
-                if document.processed_file_path and os.path.exists(document.processed_file_path):
-                    try:
-                        os.remove(document.processed_file_path)
-                        current_app.logger.info(f"删除已处理文件: {document.processed_file_path}")
-                    except Exception as e:
-                        current_app.logger.warning(f"删除已处理文件失败: {e}")
-
-            db.session.commit()
-
-            # 步骤3: 重新创建知识库
-            current_app.logger.info(f"重新创建知识库")
-            dataset_id = knowledge_base_service.create_knowledge_base_for_project(
-                project_id=project_id,
-                user_id=current_user.id
-            )
-
-            if not dataset_id:
-                return jsonify({
-                    'success': False,
-                    'error': '创建知识库失败'
-                }), 500
-
-            # 步骤4: 异步重新处理所有文档
-            current_app.logger.info(f"开始异步重新处理 {len(documents)} 个文档")
-            for document in documents:
-                # 异步处理文档
-                document_processor.process_document_async(document.id)
-
-            return jsonify({
-                'success': True,
-                'message': f'知识库重新构建已启动，正在处理 {len(documents)} 个文档',
-                'dataset_id': dataset_id,
-                'document_count': len(documents)
-            })
-
-        except Exception as e:
-            current_app.logger.error(f"重新构建知识库失败: {e}")
-            db.session.rollback()
-            return jsonify({
-                'success': False,
-                'error': f'重新构建知识库失败: {str(e)}'
-            }), 500

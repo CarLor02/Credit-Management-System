@@ -338,12 +338,44 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
     }
   };
 
+  // 上传文档到知识库
+  const handleUploadToKnowledgeBase = async (documentId: number, documentName: string) => {
+    const confirmed = await showConfirm({
+      title: '确认上传知识库',
+      message: `确定要将文档"<strong>${documentName}</strong>"上传到知识库吗？<br><br>上传后将开始知识库解析过程。`,
+      confirmText: '确认上传',
+      cancelText: '取消',
+      type: 'warning'
+    });
+    
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await documentService.uploadToKnowledgeBase(documentId);
+
+      if (response.success) {
+        addNotification(response.message || '文档已开始上传到知识库，请稍后查看状态', 'success');
+        // 刷新文档列表
+        loadDocuments(false);
+      } else {
+        addNotification(response.error || '上传到知识库失败，请稍后重试', 'error');
+      }
+    } catch (error) {
+      console.error('上传文档到知识库失败:', error);
+      addNotification('上传到知识库失败，请稍后重试', 'error');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
         return 'bg-green-100 text-green-800';
-      case 'uploading':
+      case 'processed':
         return 'bg-yellow-100 text-yellow-800';
+      case 'uploading':
+        return 'bg-gray-100 text-gray-800';
       case 'processing':
         return 'bg-blue-100 text-blue-800';
       case 'uploading_to_kb':
@@ -354,22 +386,24 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
       case 'kb_parse_failed':
         return 'bg-red-100 text-red-800';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-600';
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'completed':
-        return '知识库解析成功';
       case 'uploading':
-        return '本地上传中';
+        return '上传中';
       case 'processing':
-        return '处理文件中';
+        return '处理中';
+      case 'processed':
+        return '待上传知识库';
       case 'uploading_to_kb':
         return '上传知识库中';
       case 'parsing_kb':
         return '知识库解析中';
+      case 'completed':
+        return '已完成';
       case 'failed':
       case 'kb_parse_failed':
         return '失败';
@@ -498,6 +532,17 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                       ) : (
                         <i className="ri-refresh-line text-orange-600"></i>
                       )}
+                    </button>
+                  )}
+
+                  {/* 上传知识库按钮 - 只在已处理状态时显示 */}
+                  {doc.status === 'processed' && (
+                    <button
+                      onClick={() => handleUploadToKnowledgeBase(doc.id, doc.name)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-green-100 transition-all duration-200 btn-hover-scale"
+                      title="上传到知识库"
+                    >
+                      <i className="ri-upload-cloud-line text-green-600"></i>
                     </button>
                   )}
 

@@ -105,14 +105,16 @@ class DocumentProcessor:
             success = self._call_document_processor(input_file, processed_file_path, document)
             
             if success:
-                # 更新文档状态，进度为50%（完成文件处理，准备上传知识库）
+                # 更新文档状态，进度为100%（完成文件处理，待手动上传知识库）
                 document.processed_file_path = processed_file_path
                 document.processed_at = datetime.utcnow()
-                document.progress = 50
+                document.status = DocumentStatus.PROCESSED  # 设置为已处理状态，待手动上传知识库
+                document.progress = 100
                 db.session.commit()
                 
-                current_app.logger.info(f"文档处理完成: {document.name}")
-                self._check_and_create_knowledge_base(document)
+                current_app.logger.info(f"文档处理完成: {document.name}，状态设置为已处理，等待手动上传知识库")
+                # 不再自动检查和创建知识库，等待用户手动触发
+                # self._check_and_create_knowledge_base(document)
                 return True
             else:
                 self._mark_processing_failed(document, "文档处理失败")
@@ -475,17 +477,17 @@ class DocumentProcessor:
             with open(processed_file_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
-            # 更新文档状态为已完成，进度为100%
-            document.status = DocumentStatus.COMPLETED
+            # 更新文档状态为已处理，进度为100%（等待手动上传知识库）
+            document.status = DocumentStatus.PROCESSED  # 设置为已处理状态，等待手动上传知识库
             document.processed_file_path = processed_file_path
             document.processed_at = datetime.utcnow()
             document.progress = 100
             db.session.commit()
             
-            current_app.logger.info(f"markdown文件处理完成: {document.filename}")
+            current_app.logger.info(f"markdown文件处理完成: {document.filename}，状态设置为已处理，等待手动上传知识库")
             
-            # 检查是否需要创建知识库
-            self._check_and_create_knowledge_base(document)
+            # 不再自动检查是否需要创建知识库，等待用户手动触发
+            # self._check_and_create_knowledge_base(document)
             
             return True
                 
@@ -572,6 +574,39 @@ class DocumentProcessor:
         except Exception as e:
             current_app.logger.error(f"上传文档到知识库异常: {e}")
             # 不影响文档处理的主流程，只记录错误
+
+    def upload_to_knowledge_base_manually(self, document_id: int) -> bool:
+        """手动上传文档到知识库"""
+        try:
+            document = Document.query.get(document_id)
+            if not document:
+                current_app.logger.error(f"文档不存在: {document_id}")
+                return False
+            
+            # 检查文档状态
+            if document.status != DocumentStatus.PROCESSED:
+                current_app.logger.error(f"文档状态不正确，当前状态: {document.status.value}，应为 processed")
+                return False
+            
+            # 检查是否有处理后的文件
+            if not document.processed_file_path or not os.path.exists(document.processed_file_path):
+                current_app.logger.error(f"处理后的文件不存在: {document.processed_file_path}")
+                return False
+            
+            current_app.logger.info(f"开始手动上传文档 {document.name} 到知识库")
+            
+            # 检查并创建知识库
+            self._check_and_create_knowledge_base(document)
+            
+            return True
+            
+        except Exception as e:
+            current_app.logger.error(f"手动上传文档到知识库失败: {e}")
+            if 'document' in locals():
+                document.status = DocumentStatus.FAILED
+                document.error_message = f"手动上传知识库失败: {str(e)}"
+                db.session.commit()
+            return False
 
 # 全局文档处理器实例
 document_processor = DocumentProcessor()

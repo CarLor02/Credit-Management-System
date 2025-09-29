@@ -44,6 +44,7 @@ class DocumentStatus(enum.Enum):
     """文档状态枚举"""
     UPLOADING = 'uploading'                    # 本地上传中
     PROCESSING = 'processing'                  # 处理文件中
+    PROCESSED = 'processed'                    # 文档处理完成，待上传知识库
     UPLOADING_TO_KB = 'uploading_to_kb'       # 上传知识库中
     PARSING_KB = 'parsing_kb'                  # 知识库解析中
     COMPLETED = 'completed'                    # 知识库解析成功

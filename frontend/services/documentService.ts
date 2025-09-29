@@ -13,7 +13,7 @@ export interface Document {
   project_id: number;
   type: 'pdf' | 'excel' | 'word' | 'image' | 'markdown';
   size: string;
-  status: 'uploading' | 'processing' | 'uploading_to_kb' | 'parsing_kb' | 'completed' | 'failed' | 'kb_parse_failed';
+  status: 'uploading' | 'processing' | 'processed' | 'uploading_to_kb' | 'parsing_kb' | 'completed' | 'failed' | 'kb_parse_failed';
   uploadTime: string;
   progress: number;
   label?: string;  // 中文标签显示
@@ -284,6 +284,23 @@ class DocumentService {
       return {
         success: false,
         error: error instanceof Error ? error.message : '重试文档处理失败'
+      };
+    }
+  }
+
+  /**
+   * 手动上传文档到知识库
+   */
+  async uploadToKnowledgeBase(documentId: number): Promise<ApiResponse<void>> {
+    try {
+      return await apiClient.request<void>(`/documents/${documentId}/upload-to-knowledge-base`, {
+        method: 'POST'
+      });
+    } catch (error) {
+      console.error('上传文档到知识库失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '上传文档到知识库失败'
       };
     }
   }
