@@ -296,37 +296,25 @@ class KnowledgeBaseService:
         def check_parsing_status():
             """后台检查解析状态"""
             with app.app_context():
-                max_attempts = 60  # 最多检查60次 (10分钟)
-                attempt = 0
-                
-                while attempt < max_attempts:
+                while True:
                     try:
-                        # 等待10秒再检查
                         import time
                         time.sleep(5)
-                        
-                        # 查询解析状态
-                        parsing_complete = self._check_document_parsing_status(dataset_id, document_id)
-                        
-                        if parsing_complete is None:
-                            # 查询失败，继续尝试
-                            attempt += 1
+
+                        parsing_status = self._check_document_parsing_status(dataset_id, document_id)
+
+                        if parsing_status is None:
                             continue
-                        elif parsing_complete:
-                            # 解析完成，更新数据库状态
+                        elif parsing_status is True:
                             self._update_document_parsing_complete(doc_db_id)
                             break
-                        else:
-                            # 解析未完成，继续等待
-                            attempt += 1
-                            
+                        elif parsing_status == "failed":
+                            self._update_document_parsing_failed(doc_db_id, "知识库解析失败")
+                            break
+                        # 未完成则继续等待
                     except Exception as e:
                         logger.error(f"检查解析状态异常: {e}")
-                        attempt += 1
-                
-                # 如果达到最大尝试次数仍未完成，标记为失败
-                if attempt >= max_attempts:
-                    self._update_document_parsing_failed(doc_db_id, "解析超时")
+                        continue
         
         # 启动后台线程
         thread = threading.Thread(target=check_parsing_status)
@@ -347,43 +335,42 @@ class KnowledgeBaseService:
             None: 查询失败
         """
         try:
-            # 查询文档列表获取解析状态
             list_url = f"{self.rag_api_base_url}/api/v1/datasets/{dataset_id}/documents"
             headers = {"Authorization": f"Bearer {self.rag_api_key}"}
             params = {"page_size": 100}
-            
+
             response = requests.get(list_url, headers=headers, params=params, timeout=30)
             response.raise_for_status()
-            
+
             result = response.json()
             if result.get("code") != 0:
                 logger.error(f"查询文档列表失败: {result.get('message')}")
                 return None
-                
-            # 查找目标文档
+
             docs = result.get("data", {}).get("docs", [])
             target_doc = None
             for doc in docs:
                 if doc.get("id") == document_id:
                     target_doc = doc
                     break
-            
+
             if not target_doc:
                 logger.error(f"未找到文档: {document_id}")
                 return None
-            
-            # 检查解析进度
+
             progress = target_doc.get("progress", 0.0)
             run_status = target_doc.get("run", "0")
-            
             logger.info(f"文档 {document_id} 解析进度: {progress}, 运行状态: {run_status}")
-            
-            # 如果进度达到1.0且不在运行状态，认为解析完成
+
+            # 解析完成
             if progress >= 1.0 and run_status == 'DONE':
                 return True
-            else:
-                return False
-                
+            # 解析失败（RAGFlow后端定义的失败状态）
+            if run_status in ['FAILED', 'ERROR', 'CANCELLED']:
+                return "failed"
+            # 解析未完成
+            return False
+
         except requests.exceptions.RequestException as e:
             logger.error(f"查询解析状态请求失败: {e}")
             return None
@@ -440,31 +427,31 @@ class KnowledgeBaseService:
         try:
             from db_models import Document, DocumentStatus
             from flask import current_app
-            
+
             # 在后台线程中需要创建新的应用上下文
             with current_app.app_context():
                 # 创建新的数据库会话
                 from sqlalchemy import create_engine
                 from sqlalchemy.orm import sessionmaker
-                
+
                 engine = create_engine(current_app.config['SQLALCHEMY_DATABASE_URI'])
                 Session = sessionmaker(bind=engine)
                 session = Session()
-                
+
                 try:
                     document = session.query(Document).get(doc_db_id)
                     if document:
-                        document.status = DocumentStatus.FAILED
+                        document.status = DocumentStatus.KB_PARSE_FAILED
                         document.progress = 80
                         document.error_message = error_message
                         session.commit()
-                        logger.warning(f"文档 {doc_db_id} 解析失败: {error_message}")
+                        logger.warning(f"文档 {doc_db_id} 知识库解析失败: {error_message}")
                     else:
                         logger.error(f"未找到文档: {doc_db_id}")
-                        
+
                 finally:
                     session.close()
-                
+
         except Exception as e:
             logger.error(f"更新文档解析失败状态失败: {e}")
 
