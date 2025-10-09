@@ -366,7 +366,7 @@ class KnowledgeBaseService:
             if progress >= 1.0 and run_status == 'DONE':
                 return True
             # 解析失败（RAGFlow后端定义的失败状态）
-            if run_status in ['FAILED', 'ERROR', 'CANCELLED']:
+            if run_status in ['FAILED', 'ERROR', 'CANCEL']:
                 return "failed"
             # 解析未完成
             return False
