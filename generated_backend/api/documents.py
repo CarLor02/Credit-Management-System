@@ -38,6 +38,36 @@ def get_file_type(filename):
         return 'other'
 
 def register_document_routes(app):
+    @app.route('/api/documents/<int:document_id>/kb-retry', methods=['POST'])
+    @token_required
+    def retry_kb_parse_failed(document_id):
+        """知识库解析失败重试：删除知识库绑定文件后重新上传解析"""
+        try:
+            current_user = request.current_user
+            document = Document.query.get_or_404(document_id)
+            if document.status != DocumentStatus.KB_PARSE_FAILED:
+                return jsonify({'success': False, 'error': '仅知识库解析失败状态可重试'}), 400
+            # 删除知识库绑定文件
+            from services.knowledge_base_service import knowledge_base_service
+            kb_deleted = knowledge_base_service.delete_document_from_knowledge_base(document.project_id, document.id)
+            # 重新上传知识库并解析
+            kb_uploaded = knowledge_base_service.upload_document_to_knowledge_base(document.project_id, document.id)
+            # 记录操作日志
+            log_action(
+                user_id=current_user.id,
+                action='retry_kb_parse_failed',
+                resource_type='document',
+                resource_id=document_id,
+                details=f'重试知识库解析失败文档"{document.name}"'
+            )
+            if kb_uploaded:
+                return jsonify({'success': True, 'message': f'文档"{document.name}"知识库重试任务已启动'})
+            else:
+                return jsonify({'success': False, 'error': '知识库重试失败'}), 500
+        except Exception as e:
+            current_app.logger.error(f"知识库重试API错误: {e}")
+            db.session.rollback()
+            return jsonify({'success': False, 'error': '服务器内部错误'}), 500
     """注册文档相关路由"""
     
     @app.route('/api/documents', methods=['GET'])

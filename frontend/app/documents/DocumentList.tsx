@@ -295,15 +295,26 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
   };
 
   // 重试文档处理
-  const handleRetryDocument = async (documentId: number, documentName: string) => {
+  const handleRetryDocument = async (documentId: number, documentName: string, status: string) => {
     if (retryingDocuments.has(documentId)) {
       return; // 防止重复点击
     }
 
+  const confirmText = '确认重试';
+    let confirmTitle = '确认重试处理';
+    let confirmMessage = `确定要重试处理文档"<strong>${documentName}</strong>"吗？<br><br>此操作将重新开始文档处理流程。`;
+    let retryFunc = () => documentService.retryDocumentProcessing(documentId);
+
+    if (status === 'kb_parse_failed') {
+      confirmTitle = '确认重试知识库解析';
+      confirmMessage = `确定要重试知识库解析文档"<strong>${documentName}</strong>"吗？<br><br>此操作将删除知识库原有绑定文件并重新上传解析。`;
+      retryFunc = () => documentService.retryKnowledgeBaseParseFailed(documentId);
+    }
+
     const confirmed = await showConfirm({
-      title: '确认重试处理',
-      message: `确定要重试处理文档"<strong>${documentName}</strong>"吗？<br><br>此操作将重新开始文档处理流程。`,
-      confirmText: '确认重试',
+      title: confirmTitle,
+      message: confirmMessage,
+      confirmText,
       cancelText: '取消',
       type: 'warning'
     });
@@ -313,23 +324,18 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
     }
 
     try {
-      // 添加到重试中的文档集合
       setRetryingDocuments(prev => new Set(prev).add(documentId));
-
-      const response = await documentService.retryDocumentProcessing(documentId);
-
+      const response = await retryFunc();
       if (response.success) {
-        addNotification(response.message || '文档重试处理任务已启动', 'success');
-        // 刷新文档列表
+        addNotification(response.message || '重试任务已启动', 'success');
         loadDocuments(false);
       } else {
         addNotification(response.error || '重试失败，请稍后重试', 'error');
       }
     } catch (error) {
-      console.error('重试文档处理失败:', error);
+      console.error('重试失败:', error);
       addNotification('重试失败，请稍后重试', 'error');
     } finally {
-      // 从重试中的文档集合中移除
       setRetryingDocuments(prev => {
         const newSet = new Set(prev);
         newSet.delete(documentId);
@@ -405,8 +411,9 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
       case 'completed':
         return '已完成';
       case 'failed':
+        return '文件处理失败';
       case 'kb_parse_failed':
-        return '失败';
+        return '知识库解析失败';
       default:
         return '未知';
     }
@@ -522,10 +529,10 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                   {/* 重试按钮 - 只在失败状态时显示 */}
                   {(doc.status === 'failed' || doc.status === 'kb_parse_failed') && (
                     <button
-                      onClick={() => handleRetryDocument(doc.id, doc.name)}
+                      onClick={() => handleRetryDocument(doc.id, doc.name, doc.status)}
                       disabled={retryingDocuments.has(doc.id)}
                       className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-orange-100 transition-all duration-200 btn-hover-scale disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="重试处理"
+                      title={doc.status === 'kb_parse_failed' ? '重试知识库解析' : '重试处理'}
                     >
                       {retryingDocuments.has(doc.id) ? (
                         <i className="ri-loader-4-line text-orange-600 animate-spin"></i>
@@ -558,9 +565,9 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                     onClick={() => handlePreviewDocument(doc.id, doc.name)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-100 transition-all duration-200 btn-hover-scale"
                     title="预览文档"
-                    disabled={doc.status !== 'completed'}
+                    disabled={['uploading', 'processing', 'uploading_to_kb', 'parsing_kb', 'failed'].includes(doc.status)}
                   >
-                    <i className={`ri-eye-line ${doc.status === 'completed' ? 'text-blue-600' : 'text-gray-400'}`}></i>
+                    <i className={`ri-eye-line ${!['uploading', 'processing', 'uploading_to_kb', 'parsing_kb', 'failed'].includes(doc.status) ? 'text-blue-600' : 'text-gray-400'}`}></i>
                   </button>
                   <button
                     onClick={() => handleDeleteDocument(doc.id)}

@@ -80,6 +80,22 @@ export interface DocumentQueryParams {
 
 class DocumentService {
   /**
+   * 重试知识库解析失败（先删除知识库绑定文件再重新上传解析）
+   */
+  async retryKnowledgeBaseParseFailed(documentId: number): Promise<ApiResponse<void>> {
+    try {
+      return await apiClient.request<void>(`/documents/${documentId}/kb-retry`, {
+        method: 'POST'
+      });
+    } catch (error) {
+      console.error('重试知识库解析失败:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '重试知识库解析失败'
+      };
+    }
+  }
+  /**
    * 获取文档列表
    */
   async getDocuments(params?: DocumentQueryParams): Promise<ApiResponse<Document[]>> {
