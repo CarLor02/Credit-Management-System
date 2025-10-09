@@ -565,9 +565,9 @@ export default function DocumentList({ activeTab, searchQuery, selectedProject, 
                     onClick={() => handlePreviewDocument(doc.id, doc.name)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-100 transition-all duration-200 btn-hover-scale"
                     title="预览文档"
-                    disabled={['uploading', 'processing', 'uploading_to_kb', 'parsing_kb', 'failed'].includes(doc.status)}
+                    disabled={['uploading', 'processing', 'failed'].includes(doc.status)}
                   >
-                    <i className={`ri-eye-line ${!['uploading', 'processing', 'uploading_to_kb', 'parsing_kb', 'failed'].includes(doc.status) ? 'text-blue-600' : 'text-gray-400'}`}></i>
+                    <i className={`ri-eye-line ${!['uploading', 'processing', 'failed'].includes(doc.status) ? 'text-blue-600' : 'text-gray-400'}`}></i>
                   </button>
                   <button
                     onClick={() => handleDeleteDocument(doc.id)}
